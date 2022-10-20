@@ -20,13 +20,8 @@ use tracing::{
 };
 use tracing_subscriber::{
     self,
-    filter::FilterFn,
-    layer::{
-        Filter,
-        SubscriberExt,
-    },
+    layer::Filter,
     util::SubscriberInitExt,
-    EnvFilter,
     Layer,
 };
 
@@ -57,77 +52,8 @@ impl tracing::Subscriber for AlwaysSubscriber {
     fn exit(&self, _span: &span::Id) {}
 }
 
-fn env_filter_fn(env_filter: EnvFilter) -> FilterFn<impl Fn(&Metadata<'_>) -> bool> {
-    let fake_subscriber = AlwaysSubscriber.with(env_filter);
-
-    FilterFn::new(move |m| fake_subscriber.enabled(m))
-}
-
-#[test]
-fn test_env_filter_fn() {
-    let filter_string = "foo=warn,bar=info,error,baz=trace";
-    let env_filter = EnvFilter::new(filter_string);
-    let filter_fn = env_filter_fn(env_filter);
-    let filter = &filter_fn as &dyn Filter<AlwaysSubscriber>;
-
-    struct Cs;
-    impl Callsite for Cs {
-        fn set_interest(&self, _interest: Interest) {}
-        fn metadata(&self) -> &Metadata<'_> {
-            unimplemented!()
-        }
-    }
-
-    macro_rules! meta {
-        ($tgt:expr, $lvl:expr) => {
-            Metadata::new(
-                "arya",
-                $tgt,
-                $lvl,
-                None,
-                None,
-                None,
-                FieldSet::new(&[], identify_callsite!(&Cs)),
-                Kind::SPAN,
-            )
-        };
-    }
-
-    macro_rules! test_filter {
-        ($filter:expr, $mname:ident, $tgt:expr, $lvl:expr, $expect:ident) => {
-            #[allow(warnings)]
-            const $mname: Metadata<'_> = meta!($tgt, $lvl);
-            assert!($filter.callsite_enabled(&$mname).$expect());
-        };
-    }
-
-    test_filter!(filter, m1, "foo", Level::DEBUG, is_never);
-    test_filter!(filter, m2, "foo", Level::WARN, is_always);
-    test_filter!(filter, m3, "baz", Level::WARN, is_always);
-    test_filter!(filter, m4, "spam", Level::WARN, is_never);
-    test_filter!(filter, m5, "eggs", Level::ERROR, is_never);
-}
-
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // let std_filter_string = env::var("RUST_LOG").unwrap_or("info".into());
-    // let otel_filter_string = env::var("OTEL_LOG").unwrap_or("info".into());
-    // println!("stdout filter: {}", std_filter_string);
-    // println!("otel filter: {}", otel_filter_string);
-    // let std_filter = EnvFilter::new(std_filter_string);
-    // let otel_filter = EnvFilter::new(otel_filter_string);
-    // let std_output = tracing_subscriber::fmt::layer().pretty();
-    // let tracer = opentelemetry_jaeger::new_pipeline()
-    //     .with_service_name(env!("CARGO_PKG_NAME"))
-    //     .install_simple()?;
-    // let opentelemetry = tracing_opentelemetry::layer().with_tracer(tracer);
-    // tracing_subscriber::registry()
-    //     .with(opentelemetry.with_filter(env_filter_fn(otel_filter)))
-    //     .with(std_output.with_filter(env_filter_fn(std_filter)))
-    //     .try_init()?;
-
-    // console_subscriber::init();
-
     tracing_subscriber::fmt()
         .pretty()
         // .with_span_events(FmtSpan::ENTER)
