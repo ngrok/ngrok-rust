@@ -5,3 +5,4 @@ pub mod mw {
 #[macro_use]
 pub mod rpc;
 pub mod proto;
+pub mod raw_session;
