@@ -1,14 +1,21 @@
 use std::sync::Arc;
 
 use async_rustls::{
-    rustls::{self, ServerCertVerified},
+    rustls::{
+        self,
+        ServerCertVerified,
+    },
     webpki,
 };
-
 use muxado::heartbeat::HeartbeatConfig;
-use ngrok::proto::AuthExtra;
-use ngrok::raw_session::RawSession;
-use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
+use ngrok::{
+    proto::AuthExtra,
+    raw_session::RawSession,
+};
+use tokio_util::compat::{
+    FuturesAsyncReadCompatExt,
+    TokioAsyncReadCompatExt,
+};
 use tracing_subscriber::fmt::format::FmtSpan;
 
 struct NoVerify;

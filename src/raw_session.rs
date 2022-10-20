@@ -1,14 +1,31 @@
 use std::time::Duration;
 
-use crate::proto::{Auth, AuthExtra, AuthResp, Bind, BindExtra, BindOpts, BindResp, VERSION};
-use crate::rpc::RPCRequest;
-
 use anyhow::Error;
-use muxado::heartbeat::HeartbeatConfig;
-use muxado::session::SessionBuilder;
-use muxado::typed::TypedSession;
+use muxado::{
+    heartbeat::HeartbeatConfig,
+    session::SessionBuilder,
+    typed::TypedSession,
+};
+use tokio::io::{
+    AsyncRead,
+    AsyncReadExt,
+    AsyncWrite,
+    AsyncWriteExt,
+};
 
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use crate::{
+    proto::{
+        Auth,
+        AuthExtra,
+        AuthResp,
+        Bind,
+        BindExtra,
+        BindOpts,
+        BindResp,
+        VERSION,
+    },
+    rpc::RPCRequest,
+};
 
 pub struct RawSession {
     id: String,

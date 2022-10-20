@@ -1,5 +1,8 @@
 use muxado::typed::StreamType;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{
+    de::DeserializeOwned,
+    Serialize,
+};
 
 pub trait RPCRequest: Serialize {
     type Response: DeserializeOwned;

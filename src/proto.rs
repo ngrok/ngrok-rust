@@ -1,10 +1,21 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{
+    collections::HashMap,
+    str::FromStr,
+};
 
 use muxado::typed::StreamType;
-use serde::{de::Visitor, Deserialize, Serialize};
+use serde::{
+    de::Visitor,
+    Deserialize,
+    Serialize,
+};
 use thiserror::Error;
 
-use crate::mw::{HttpMiddleware, TcpMiddleware, TlsMiddleware};
+use crate::mw::{
+    HttpMiddleware,
+    TcpMiddleware,
+    TlsMiddleware,
+};
 
 pub const AUTH_REQ: StreamType = StreamType::clamp(0);
 pub const BIND_REQ: StreamType = StreamType::clamp(1);
@@ -491,8 +502,12 @@ pub struct LabelEndpoint {
 // representation that the Go messages use
 mod base64proto {
     use prost::Message;
-    use serde::{Deserialize, Serialize};
-    use serde::{Deserializer, Serializer};
+    use serde::{
+        Deserialize,
+        Deserializer,
+        Serialize,
+        Serializer,
+    };
 
     pub fn serialize<M: Message, S: Serializer>(v: &M, s: S) -> Result<S::Ok, S::Error> {
         let bytes = v.encode_to_vec();
