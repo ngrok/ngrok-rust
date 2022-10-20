@@ -11,6 +11,8 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
+      - name: install protoc
+        run: sudo apt-get install -y protobuf-compiler
       - uses: actions-rs/cargo@v1
         name: build crate
         with:
