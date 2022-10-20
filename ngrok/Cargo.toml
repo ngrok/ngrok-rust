@@ -1,0 +1,22 @@
+[package]
+name = "ngrok"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+prost = "0.11.0"
+muxado = { path = "../muxado", version = "0.1.0" }
+serde = { version = "1.0.144", features = ["derive"] }
+serde_json = "1.0.85"
+thiserror = "1.0.37"
+base64 = "0.13.0"
+anyhow = "1.0.65"
+tokio = "1.21.2"
+
+[build-dependencies]
+prost-build = "0.11.1"
+
+[dev-dependencies]
+async-rustls = { version = "0.2.0", features = ["dangerous_configuration"] }
+tokio-util = { version = "0.7.4", features = ["compat"] }
+tracing-subscriber = "0.3.16"

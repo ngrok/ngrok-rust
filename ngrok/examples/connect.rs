@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    time::Duration,
+};
 
 use async_rustls::{
     rustls::{
@@ -57,7 +60,11 @@ async fn main() -> anyhow::Result<()> {
         )
         .await?;
 
-    let mut sess = RawSession::connect(tls_conn.compat(), HeartbeatConfig::default()).await?;
+    let mut sess = RawSession::connect(
+        tls_conn.compat(),
+        HeartbeatConfig::<fn(Duration)>::default(),
+    )
+    .await?;
 
     let resp = sess
         .auth(
