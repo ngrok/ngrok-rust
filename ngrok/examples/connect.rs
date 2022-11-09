@@ -1,4 +1,6 @@
 use std::{
+    env,
+    os,
     sync::Arc,
     time::Duration,
 };
@@ -14,6 +16,13 @@ use muxado::heartbeat::HeartbeatConfig;
 use ngrok::{
     proto::AuthExtra,
     raw_session::RawSession,
+};
+use tokio::io::{
+    self,
+    AsyncBufReadExt,
+    AsyncReadExt,
+    AsyncWriteExt,
+    BufReader,
 };
 use tokio_util::compat::{
     FuturesAsyncReadCompatExt,
@@ -40,7 +49,7 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .pretty()
         .with_span_events(FmtSpan::ENTER)
-        .with_env_filter(std::env::var("RUST_LOG").unwrap_or("info".into()))
+        .with_env_filter(std::env::var("RUST_LOG").unwrap_or_default())
         .init();
 
     let mut config = rustls::ClientConfig::new();
@@ -71,12 +80,49 @@ async fn main() -> anyhow::Result<()> {
             "1234",
             AuthExtra {
                 version: "3.0.0".into(),
+                auth_token: env::var("NGROK_AUTHTOKEN").unwrap_or_default(),
                 ..Default::default()
             },
         )
         .await?;
 
     println!("{:#?}", resp);
+
+    let resp = sess
+        .listen(
+            "tcp",
+            ngrok::proto::BindOpts::TCPEndpoint(Default::default()),
+            Default::default(),
+            "1234",
+            "nothing",
+        )
+        .await?;
+
+    println!("{:#?}", resp);
+
+    loop {
+        let mut stream = sess.accept().await?;
+
+        tokio::spawn(async move {
+            println!("accepted stream: {:?}", stream.header);
+
+            let (rx, mut tx) = io::split(&mut *stream.stream);
+
+            let mut lines = BufReader::new(rx);
+
+            loop {
+                let mut buf = String::new();
+                let len = lines.read_line(&mut buf).await?;
+                if len == 0 {
+                    break;
+                }
+                tx.write_all(buf.as_bytes()).await?;
+                tx.flush().await?;
+            }
+
+            Result::<(), anyhow::Error>::Ok(())
+        });
+    }
 
     Ok(())
 }

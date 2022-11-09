@@ -3,6 +3,7 @@ use std::{
     str::FromStr,
 };
 
+use anyhow::Error;
 use muxado::typed::StreamType;
 use serde::{
     de::Visitor,
@@ -10,6 +11,11 @@ use serde::{
     Serialize,
 };
 use thiserror::Error;
+use tokio::io::{
+    AsyncRead,
+    AsyncReadExt,
+};
+use tracing::debug;
 
 use crate::mw::{
     HttpMiddleware,
@@ -120,7 +126,7 @@ pub enum BindOpts {
     TLSEndpoint(TLSEndpoint),
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct BindExtra {
     pub token: String,
@@ -137,7 +143,7 @@ pub struct BindResp {
     #[serde(rename = "URL")]
     pub url: String,
     pub proto: String,
-    pub bind_opts: BindOpts,
+    pub bind_opts: Option<BindOpts>,
     pub error: String,
     pub extra: BindRespExtra,
 }
@@ -174,6 +180,7 @@ rpc_req!(
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct Unbind {
+    #[serde(rename = "Id")]
     pub client_id: String,
     // extra: not sure what this field actually contains
 }
@@ -194,7 +201,23 @@ pub struct ProxyHeader {
     pub client_addr: String,
     pub proto: String,
     pub edge_type: EdgeType,
+    #[serde(rename = "PassthroughTLS")]
     pub passthrough_tls: bool,
+}
+
+impl ProxyHeader {
+    pub async fn read_from_stream(mut stream: impl AsyncRead + Unpin) -> Result<Self, Error> {
+        let size = stream.read_i64_le().await?;
+        let mut buf = vec![0u8; size as usize];
+
+        stream.read_exact(&mut buf).await?;
+
+        let header = String::from_utf8_lossy(&buf);
+
+        debug!(?header, "read header");
+
+        Ok(serde_json::from_str(&header)?)
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -205,24 +228,25 @@ pub enum EdgeType {
     HTTPS,
 }
 
-impl From<i64> for EdgeType {
-    fn from(v: i64) -> Self {
-        match v {
-            1 => EdgeType::TCP,
-            2 => EdgeType::TLS,
-            3 => EdgeType::HTTPS,
+impl FromStr for EdgeType {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "1" => EdgeType::TCP,
+            "2" => EdgeType::TLS,
+            "3" => EdgeType::HTTPS,
             _ => EdgeType::Undefined,
-        }
+        })
     }
 }
 
-impl From<EdgeType> for i64 {
-    fn from(et: EdgeType) -> i64 {
-        match et {
-            EdgeType::Undefined => 0,
-            EdgeType::TCP => 1,
-            EdgeType::TLS => 2,
-            EdgeType::HTTPS => 3,
+impl EdgeType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            EdgeType::Undefined => "0",
+            EdgeType::TCP => "1",
+            EdgeType::TLS => "2",
+            EdgeType::HTTPS => "3",
         }
     }
 }
@@ -232,7 +256,7 @@ impl Serialize for EdgeType {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_i64(i64::from(*self))
+        serializer.serialize_str(self.as_str())
     }
 }
 
@@ -241,21 +265,14 @@ struct EdgeTypeVisitor;
 impl<'de> Visitor<'de> for EdgeTypeVisitor {
     type Value = EdgeType;
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("0, 1, or 2")
+        formatter.write_str(r#""0", "1", "2", or "3""#)
     }
 
-    fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
     {
-        Ok(EdgeType::from(v))
-    }
-
-    fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        Ok(EdgeType::from(v as i64))
+        Ok(EdgeType::from_str(v).unwrap())
     }
 }
 
@@ -264,7 +281,7 @@ impl<'de> Deserialize<'de> for EdgeType {
     where
         D: serde::Deserializer<'de>,
     {
-        deserializer.deserialize_i64(EdgeTypeVisitor)
+        deserializer.deserialize_str(EdgeTypeVisitor)
     }
 }
 

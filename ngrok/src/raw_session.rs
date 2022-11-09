@@ -1,10 +1,13 @@
-use std::time::Duration;
+use std::{
+    collections::HashMap,
+    time::Duration,
+};
 
 use anyhow::Error;
 use muxado::{
     heartbeat::HeartbeatConfig,
     session::SessionBuilder,
-    typed::TypedSession,
+    typed::{TypedSession, TypedStream},
 };
 use tokio::io::{
     AsyncRead,
@@ -22,7 +25,12 @@ use crate::{
         BindExtra,
         BindOpts,
         BindResp,
-        VERSION,
+        StartTunnelWithLabel,
+        StartTunnelWithLabelResp,
+        Unbind,
+        UnbindResp,
+        RESTART_REQ,
+        VERSION, STOP_REQ, UPDATE_REQ, ProxyHeader,
     },
     rpc::RPCRequest,
 };
@@ -101,4 +109,48 @@ impl RawSession {
 
         self.rpc(req).await
     }
+
+    pub async fn listen_label(
+        &mut self,
+        labels: HashMap<String, String>,
+        metadata: impl Into<String>,
+        forwards_to: impl Into<String>,
+    ) -> Result<StartTunnelWithLabelResp, Error> {
+        let req = StartTunnelWithLabel {
+            labels,
+            metadata: metadata.into(),
+            forwards_to: forwards_to.into(),
+        };
+
+        self.rpc(req).await
+    }
+
+    pub async fn unlisten(&mut self, id: impl Into<String>) -> Result<UnbindResp, Error> {
+        self.rpc(Unbind {
+            client_id: id.into(),
+        })
+        .await
+    }
+
+    pub async fn accept(&mut self) -> Result<TunnelStream, Error> {
+        Ok(loop {
+            let mut stream = self.inner.accept_typed().await?;
+
+            match stream.typ() {
+                RESTART_REQ => {}
+                STOP_REQ => {}
+                UPDATE_REQ => {}
+                _ => {
+                    let header = ProxyHeader::read_from_stream(&mut *stream).await?;
+
+                    break TunnelStream{header, stream}
+                },
+            }
+        })
+    }
+}
+
+pub struct TunnelStream {
+    pub header: ProxyHeader,
+    pub stream: TypedStream,
 }
