@@ -73,7 +73,6 @@ impl RawSession {
         let mut buf = Vec::new();
         stream.read_to_end(&mut buf).await?;
 
-        println!("buf: {:#?}", String::from_utf8_lossy(&buf));
         Ok(serde_json::from_slice(&*buf)?)
     }
 

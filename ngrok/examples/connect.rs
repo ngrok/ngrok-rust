@@ -11,6 +11,7 @@ use tokio::io::{
     AsyncWriteExt,
     BufReader,
 };
+use tracing::info;
 use tracing_subscriber::fmt::format::FmtSpan;
 
 #[tokio::main]
@@ -31,12 +32,13 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn handle_tunnel(mut tunnel: Tunnel, sess: Arc<Session>) {
+    info!("bound new tunnel: {}", tunnel.url());
     tokio::spawn(async move {
         loop {
             let stream = if let Some(stream) = tunnel.try_next().await? {
                 stream
             } else {
-                println!("tunnel closed!");
+                info!("tunnel closed!");
                 break;
             };
 
@@ -44,7 +46,7 @@ fn handle_tunnel(mut tunnel: Tunnel, sess: Arc<Session>) {
             let id: String = tunnel.id().into();
 
             tokio::spawn(async move {
-                println!("accepted connection: {:?}", stream.header());
+                info!("accepted connection: {:?}", stream.header());
                 let (rx, mut tx) = io::split(stream);
 
                 let mut lines = BufReader::new(rx);
@@ -57,22 +59,22 @@ fn handle_tunnel(mut tunnel: Tunnel, sess: Arc<Session>) {
                     }
 
                     if buf.contains("bye!") {
-                        println!("unbind requested");
+                        info!("unbind requested");
                         tx.write_all("later!".as_bytes()).await?;
                         sess.close_tunnel(id).await?;
                         return Ok(());
                     } else if buf.contains("another!") {
-                        println!("another requested");
+                        info!("another requested");
                         let new_tunnel = sess.start_tunnel().await?;
                         tx.write_all(new_tunnel.url().as_bytes()).await?;
                         handle_tunnel(new_tunnel, sess.clone());
                     } else {
-                        println!("read line: {}", buf);
+                        info!("read line: {}", buf);
                         tx.write_all(buf.as_bytes()).await?;
-                        println!("echoed line");
+                        info!("echoed line");
                     }
                     tx.flush().await?;
-                    println!("flushed");
+                    info!("flushed");
                 }
 
                 Result::<(), anyhow::Error>::Ok(())
