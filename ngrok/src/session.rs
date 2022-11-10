@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     env,
     io,
     net::SocketAddr,
@@ -15,23 +16,47 @@ use async_rustls::{
     rustls,
     webpki,
 };
+use futures::{
+    future::poll_fn,
+    pin_mut,
+    Future,
+    FutureExt,
+};
 use muxado::heartbeat::HeartbeatConfig;
 use thiserror::Error;
-use tokio::net::ToSocketAddrs;
+use tokio::{
+    net::ToSocketAddrs,
+    sync::{
+        mpsc::{
+            channel,
+            Sender,
+        },
+        Mutex,
+        RwLock,
+    },
+};
 use tokio_util::compat::{
     FuturesAsyncReadCompatExt,
     TokioAsyncReadCompatExt,
 };
 
-use crate::internals::{
-    proto::AuthExtra,
-    raw_session::RawSession,
+use crate::{
+    internals::{
+        proto::{
+            AuthExtra,
+            BindOpts,
+        },
+        raw_session::RawSession,
+    },
+    Conn,
+    Tunnel,
 };
 
 const CERT_BYTES: &[u8] = include_bytes!("../assets/ngrok.ca.crt");
 
 pub struct Session {
-    raw: RawSession,
+    raw: Arc<Mutex<RawSession>>,
+    tunnels: Arc<RwLock<HashMap<String, Sender<anyhow::Result<Conn>>>>>,
 }
 
 #[derive(Clone)]
@@ -148,7 +173,39 @@ impl SessionBuilder {
             .await
             .map_err(ConnectError::Auth)?;
 
-        Ok(Session { raw })
+        let tunnels: Arc<RwLock<HashMap<String, Sender<Result<Conn, anyhow::Error>>>>> =
+            Arc::new(Default::default());
+        let raw = Arc::new(Mutex::new(raw));
+
+        tokio::spawn({
+            let tunnels = Arc::clone(&tunnels);
+            let raw = Arc::clone(&raw);
+            async move {
+                loop {
+					let mut raw = raw.lock().await;
+					let conn = raw.accept().await;
+
+                    match conn {
+                        Ok(conn) => {
+                            let id = conn.header.id.clone();
+                            let guard = RwLock::read(&tunnels).await;
+                            let res = if let Some(ch) = guard.get(&id) {
+                                ch.send(Ok(Conn { inner: conn })).await
+                            } else {
+                                Ok(())
+                            };
+                            drop(guard);
+                            if res.is_err() {
+                                RwLock::write(&tunnels).await.remove(&id);
+                            }
+                        }
+                        Err(_e) => break,
+                    }
+                }
+            }
+        });
+
+        Ok(Session { raw, tunnels })
     }
 }
 
@@ -156,17 +213,26 @@ impl Session {
     pub fn new() -> SessionBuilder {
         SessionBuilder::default()
     }
-}
 
-impl Deref for Session {
-    type Target = RawSession;
-    fn deref(&self) -> &Self::Target {
-        &self.raw
-    }
-}
+    pub async fn start_tunnel(&mut self) -> anyhow::Result<Tunnel> {
+        let resp = self
+            .raw
+            .lock()
+            .await
+            .listen(
+                "tcp",
+                BindOpts::TCPEndpoint(Default::default()),
+                Default::default(),
+                "",
+                "nothing",
+            )
+            .await?;
 
-impl DerefMut for Session {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.raw
+        let (tx, rx) = channel(64);
+
+        let mut tunnels = self.tunnels.write().await;
+        tunnels.insert(resp.client_id, tx);
+
+        Ok(Tunnel { incoming: rx })
     }
 }

@@ -60,25 +60,20 @@ async fn main() -> anyhow::Result<()> {
 
     let mut sess = Session::new().with_authtoken_from_env().connect().await?;
 
-    let resp = sess
-        .listen(
-            "tcp",
-            BindOpts::TCPEndpoint(Default::default()),
-            Default::default(),
-            "1234",
-            "nothing",
-        )
+    let mut tunnel = sess
+        .start_tunnel()
         .await?;
 
-    println!("{:#?}", resp);
-
     loop {
-        let mut stream = sess.accept().await?;
+        let stream = if let Some(stream) = tunnel.accept().await? {
+            stream
+        } else {
+            break;
+        };
 
         tokio::spawn(async move {
-            println!("accepted stream: {:?}", stream.header);
-
-            let (rx, mut tx) = io::split(&mut *stream.stream);
+            println!("accepted connection: {:?}", stream.header());
+            let (rx, mut tx) = io::split(stream);
 
             let mut lines = BufReader::new(rx);
 
@@ -88,8 +83,11 @@ async fn main() -> anyhow::Result<()> {
                 if len == 0 {
                     break;
                 }
+                println!("read line: {}", buf);
                 tx.write_all(buf.as_bytes()).await?;
+                println!("echoed line");
                 tx.flush().await?;
+                println!("flushed");
             }
 
             Result::<(), anyhow::Error>::Ok(())
