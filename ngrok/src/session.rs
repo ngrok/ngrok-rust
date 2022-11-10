@@ -34,6 +34,7 @@ use tokio::{
         Mutex,
         RwLock,
     },
+    time::timeout,
 };
 use tokio_util::compat::{
     FuturesAsyncReadCompatExt,
@@ -182,11 +183,11 @@ impl SessionBuilder {
             let raw = Arc::clone(&raw);
             async move {
                 loop {
-					let mut raw = raw.lock().await;
-					let conn = raw.accept().await;
+                    let mut raw = raw.lock().await;
+                    let conn = timeout(Duration::from_millis(10), raw.accept()).await;
 
                     match conn {
-                        Ok(conn) => {
+                        Ok(Ok(conn)) => {
                             let id = conn.header.id.clone();
                             let guard = RwLock::read(&tunnels).await;
                             let res = if let Some(ch) = guard.get(&id) {
@@ -199,7 +200,8 @@ impl SessionBuilder {
                                 RwLock::write(&tunnels).await.remove(&id);
                             }
                         }
-                        Err(_e) => break,
+                        Ok(Err(_e)) => break,
+                        _ => continue, // timeout, yield to rpcs
                     }
                 }
             }
@@ -214,7 +216,7 @@ impl Session {
         SessionBuilder::default()
     }
 
-    pub async fn start_tunnel(&mut self) -> anyhow::Result<Tunnel> {
+    pub async fn start_tunnel(&self) -> anyhow::Result<Tunnel> {
         let resp = self
             .raw
             .lock()
@@ -231,8 +233,19 @@ impl Session {
         let (tx, rx) = channel(64);
 
         let mut tunnels = self.tunnels.write().await;
-        tunnels.insert(resp.client_id, tx);
+        tunnels.insert(resp.client_id.clone(), tx);
 
-        Ok(Tunnel { incoming: rx })
+        Ok(Tunnel {
+            sess: self.raw.clone(),
+            info: resp,
+            incoming: rx,
+        })
+    }
+
+    pub async fn close_tunnel(&self, id: impl AsRef<str>) -> anyhow::Result<()> {
+        let id = id.as_ref();
+        self.raw.lock().await.unlisten(id).await?;
+        self.tunnels.write().await.remove(id);
+        Ok(())
     }
 }

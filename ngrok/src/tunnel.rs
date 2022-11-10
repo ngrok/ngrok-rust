@@ -1,5 +1,6 @@
 use std::{
     pin::Pin,
+    sync::Arc,
     task::{
         Context,
         Poll,
@@ -16,15 +17,32 @@ use tokio::{
         AsyncRead,
         AsyncWrite,
     },
-    sync::mpsc::{
-        channel,
-        Receiver,
+    sync::{
+        mpsc::{
+            channel,
+            Receiver,
+        },
+        Mutex,
     },
 };
 
-use crate::internals::{raw_session::TunnelStream, proto::ProxyHeader};
+use crate::{
+    internals::{
+        proto::{
+            BindResp,
+            ProxyHeader,
+        },
+        raw_session::{
+            RawSession,
+            TunnelStream,
+        },
+    },
+    Session,
+};
 
 pub struct Tunnel {
+    pub(crate) sess: Arc<Mutex<RawSession>>,
+    pub(crate) info: BindResp,
     pub(crate) incoming: Receiver<anyhow::Result<Conn>>,
 }
 
@@ -46,12 +64,25 @@ impl Tunnel {
         self.try_next().await
     }
 
+	pub fn id(&self) -> &str {
+		&self.info.client_id
+	}
+
+    pub fn url(&self) -> &str {
+        &self.info.url
+    }
+
+    pub async fn close(&mut self) -> anyhow::Result<()> {
+        self.sess.lock().await.unlisten(&self.info.client_id).await?;
+		self.incoming.close();
+		Ok(())
+    }
 }
 
 impl Conn {
-	pub fn header(&self) -> &ProxyHeader {
-		&self.inner.header
-	}
+    pub fn header(&self) -> &ProxyHeader {
+        &self.inner.header
+    }
 }
 
 impl AsyncRead for Conn {

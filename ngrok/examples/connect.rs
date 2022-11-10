@@ -12,6 +12,10 @@ use async_rustls::{
     },
     webpki,
 };
+use futures::{
+    Stream,
+    TryStreamExt,
+};
 use muxado::heartbeat::HeartbeatConfig;
 use ngrok::{
     internals::{
@@ -21,12 +25,16 @@ use ngrok::{
         },
         raw_session::RawSession,
     },
+    Conn,
     Session,
+    Tunnel,
 };
 use tokio::io::{
     self,
     AsyncBufReadExt,
+    AsyncRead,
     AsyncReadExt,
+    AsyncWrite,
     AsyncWriteExt,
     BufReader,
 };
@@ -58,41 +66,62 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(std::env::var("RUST_LOG").unwrap_or_default())
         .init();
 
-    let mut sess = Session::new().with_authtoken_from_env().connect().await?;
+    let sess = Arc::new(Session::new().with_authtoken_from_env().connect().await?);
 
-    let mut tunnel = sess
-        .start_tunnel()
-        .await?;
+    let tunnel = sess.start_tunnel().await?;
 
-    loop {
-        let stream = if let Some(stream) = tunnel.accept().await? {
-            stream
-        } else {
-            break;
-        };
+    handle_tunnel(tunnel, sess);
 
-        tokio::spawn(async move {
-            println!("accepted connection: {:?}", stream.header());
-            let (rx, mut tx) = io::split(stream);
+    futures::future::pending().await
+}
 
-            let mut lines = BufReader::new(rx);
+fn handle_tunnel(mut tunnel: Tunnel, sess: Arc<Session>) {
+    tokio::spawn(async move {
+        loop {
+            let stream = if let Some(stream) = tunnel.try_next().await? {
+                stream
+            } else {
+                break;
+            };
 
-            loop {
-                let mut buf = String::new();
-                let len = lines.read_line(&mut buf).await?;
-                if len == 0 {
-                    break;
+            let sess = sess.clone();
+            let id: String = tunnel.id().into();
+
+            tokio::spawn(async move {
+                println!("accepted connection: {:?}", stream.header());
+                let (rx, mut tx) = io::split(stream);
+
+                let mut lines = BufReader::new(rx);
+
+                loop {
+                    let mut buf = String::new();
+                    let len = lines.read_line(&mut buf).await?;
+                    if len == 0 {
+                        break;
+                    }
+
+                    if buf.contains("bye!") {
+                        println!("unbind requested");
+                        tx.write_all("later!".as_bytes()).await?;
+                        sess.close_tunnel(id).await?;
+                        return Ok(());
+                    } else if buf.contains("another!") {
+                        println!("another requested");
+                        let new_tunnel = sess.start_tunnel().await?;
+                        tx.write_all(new_tunnel.url().as_bytes()).await?;
+                        handle_tunnel(new_tunnel, sess.clone());
+                    } else {
+                        println!("read line: {}", buf);
+                        tx.write_all(buf.as_bytes()).await?;
+                        println!("echoed line");
+                    }
+                    tx.flush().await?;
+                    println!("flushed");
                 }
-                println!("read line: {}", buf);
-                tx.write_all(buf.as_bytes()).await?;
-                println!("echoed line");
-                tx.flush().await?;
-                println!("flushed");
-            }
 
-            Result::<(), anyhow::Error>::Ok(())
-        });
-    }
-
-    Ok(())
+                Result::<(), anyhow::Error>::Ok(())
+            });
+        }
+        anyhow::Result::<()>::Ok(())
+    });
 }
