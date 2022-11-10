@@ -11,7 +11,7 @@ pub trait RPCRequest: Serialize {
 
 macro_rules! rpc_req {
     ($req:ty, $resp:ty, $typ:expr) => {
-        impl $crate::rpc::RPCRequest for $req {
+        impl $crate::internals::rpc::RPCRequest for $req {
             type Response = $resp;
             const TYPE: StreamType = $typ;
         }

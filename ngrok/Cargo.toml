@@ -13,11 +13,11 @@ base64 = "0.13.0"
 anyhow = "1.0.65"
 tokio = "1.21.2"
 tracing = "0.1.29"
+async-rustls = { version = "0.2.0", features = ["dangerous_configuration"] }
+tokio-util = { version = "0.7.4", features = ["compat"] }
 
 [build-dependencies]
 prost-build = "0.11.1"
 
 [dev-dependencies]
-async-rustls = { version = "0.2.0", features = ["dangerous_configuration"] }
-tokio-util = { version = "0.7.4", features = ["compat"] }
 tracing-subscriber = "0.3.16"

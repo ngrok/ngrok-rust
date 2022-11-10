@@ -14,8 +14,14 @@ use async_rustls::{
 };
 use muxado::heartbeat::HeartbeatConfig;
 use ngrok::{
-    proto::AuthExtra,
-    raw_session::RawSession,
+    internals::{
+        proto::{
+            AuthExtra,
+            BindOpts,
+        },
+        raw_session::RawSession,
+    },
+    Session,
 };
 use tokio::io::{
     self,
@@ -52,28 +58,7 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(std::env::var("RUST_LOG").unwrap_or_default())
         .init();
 
-    let mut config = rustls::ClientConfig::new();
-
-    config
-        .dangerous()
-        .set_certificate_verifier(Arc::new(NoVerify));
-
-    let conn = tokio::net::TcpStream::connect("tunnel.ngrok.com:443")
-        .await?
-        .compat();
-
-    let tls_conn = async_rustls::TlsConnector::from(Arc::new(config))
-        .connect(
-            webpki::DNSNameRef::try_from_ascii("tunnel.ngrok.com".as_bytes()).unwrap(),
-            conn,
-        )
-        .await?;
-
-    let mut sess = RawSession::connect(
-        tls_conn.compat(),
-        HeartbeatConfig::<fn(Duration)>::default(),
-    )
-    .await?;
+    let mut sess = Session::new().connect().await?;
 
     let resp = sess
         .auth(
@@ -91,7 +76,7 @@ async fn main() -> anyhow::Result<()> {
     let resp = sess
         .listen(
             "tcp",
-            ngrok::proto::BindOpts::TCPEndpoint(Default::default()),
+            BindOpts::TCPEndpoint(Default::default()),
             Default::default(),
             "1234",
             "nothing",

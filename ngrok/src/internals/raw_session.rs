@@ -7,7 +7,10 @@ use anyhow::Error;
 use muxado::{
     heartbeat::HeartbeatConfig,
     session::SessionBuilder,
-    typed::{TypedSession, TypedStream},
+    typed::{
+        TypedSession,
+        TypedStream,
+    },
 };
 use tokio::io::{
     AsyncRead,
@@ -16,7 +19,7 @@ use tokio::io::{
     AsyncWriteExt,
 };
 
-use crate::{
+use super::{
     proto::{
         Auth,
         AuthExtra,
@@ -25,12 +28,15 @@ use crate::{
         BindExtra,
         BindOpts,
         BindResp,
+        ProxyHeader,
         StartTunnelWithLabel,
         StartTunnelWithLabelResp,
         Unbind,
         UnbindResp,
         RESTART_REQ,
-        VERSION, STOP_REQ, UPDATE_REQ, ProxyHeader,
+        STOP_REQ,
+        UPDATE_REQ,
+        VERSION,
     },
     rpc::RPCRequest,
 };
@@ -143,8 +149,8 @@ impl RawSession {
                 _ => {
                     let header = ProxyHeader::read_from_stream(&mut *stream).await?;
 
-                    break TunnelStream{header, stream}
-                },
+                    break TunnelStream { header, stream };
+                }
             }
         })
     }
