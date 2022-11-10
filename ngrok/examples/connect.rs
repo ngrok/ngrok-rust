@@ -1,9 +1,4 @@
-use std::{
-    env,
-    os,
-    sync::Arc,
-    time::Duration,
-};
+use std::sync::Arc;
 
 use async_rustls::{
     rustls::{
@@ -12,35 +7,16 @@ use async_rustls::{
     },
     webpki,
 };
-use futures::{
-    Stream,
-    TryStreamExt,
-};
-use muxado::heartbeat::HeartbeatConfig;
+use futures::TryStreamExt;
 use ngrok::{
-    internals::{
-        proto::{
-            AuthExtra,
-            BindOpts,
-        },
-        raw_session::RawSession,
-    },
-    Conn,
     Session,
     Tunnel,
 };
 use tokio::io::{
     self,
     AsyncBufReadExt,
-    AsyncRead,
-    AsyncReadExt,
-    AsyncWrite,
     AsyncWriteExt,
     BufReader,
-};
-use tokio_util::compat::{
-    FuturesAsyncReadCompatExt,
-    TokioAsyncReadCompatExt,
 };
 use tracing_subscriber::fmt::format::FmtSpan;
 

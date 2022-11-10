@@ -13,16 +13,8 @@ use tracing::{
     info,
     span,
     subscriber::Interest,
-    Callsite,
     Event,
     Metadata,
-    Subscriber,
-};
-use tracing_subscriber::{
-    self,
-    layer::Filter,
-    util::SubscriberInitExt,
-    Layer,
 };
 
 /// Subscriber that claims that it's always enabled, but does nothing.

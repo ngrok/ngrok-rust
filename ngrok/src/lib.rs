@@ -2,7 +2,7 @@ pub mod mw {
     include!(concat!(env!("OUT_DIR"), "/agent.rs"));
 }
 
-pub mod internals {
+mod internals {
     #[macro_use]
     pub mod rpc;
     pub mod proto;

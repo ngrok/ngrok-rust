@@ -9,7 +9,6 @@ use std::{
 
 use futures::{
     Stream,
-    StreamExt,
     TryStreamExt,
 };
 use tokio::{
@@ -18,26 +17,20 @@ use tokio::{
         AsyncWrite,
     },
     sync::{
-        mpsc::{
-            channel,
-            Receiver,
-        },
+        mpsc::Receiver,
         Mutex,
     },
 };
 
-use crate::{
-    internals::{
-        proto::{
-            BindResp,
-            ProxyHeader,
-        },
-        raw_session::{
-            RawSession,
-            TunnelStream,
-        },
+use crate::internals::{
+    proto::{
+        BindResp,
+        ProxyHeader,
     },
-    Session,
+    raw_session::{
+        RawSession,
+        TunnelStream,
+    },
 };
 
 pub struct Tunnel {
@@ -64,18 +57,22 @@ impl Tunnel {
         self.try_next().await
     }
 
-	pub fn id(&self) -> &str {
-		&self.info.client_id
-	}
+    pub fn id(&self) -> &str {
+        &self.info.client_id
+    }
 
     pub fn url(&self) -> &str {
         &self.info.url
     }
 
     pub async fn close(&mut self) -> anyhow::Result<()> {
-        self.sess.lock().await.unlisten(&self.info.client_id).await?;
-		self.incoming.close();
-		Ok(())
+        self.sess
+            .lock()
+            .await
+            .unlisten(&self.info.client_id)
+            .await?;
+        self.incoming.close();
+        Ok(())
     }
 }
 

@@ -1,25 +1,22 @@
 use std::sync::atomic::AtomicU64;
 
-use futures::prelude::*;
 use tracing::{
     debug,
     info,
     trace,
     warn,
-    Callsite,
     Event,
     Metadata,
     Subscriber,
 };
 use tracing_subscriber::{
     self,
-    layer::Filter,
     util::SubscriberInitExt,
     EnvFilter,
     Layer,
 };
 
-static ctr: AtomicU64 = AtomicU64::new(0);
+static CTR: AtomicU64 = AtomicU64::new(0);
 
 struct Tagged(&'static str);
 
@@ -46,7 +43,7 @@ impl Subscriber for Tagged {
     }
 
     fn new_span(&self, _span: &tracing_core::span::Attributes<'_>) -> tracing_core::span::Id {
-        tracing_core::span::Id::from_u64(ctr.fetch_add(1, std::sync::atomic::Ordering::SeqCst))
+        tracing_core::span::Id::from_u64(CTR.fetch_add(1, std::sync::atomic::Ordering::SeqCst))
     }
 
     fn record(&self, _span: &tracing_core::span::Id, _values: &tracing_core::span::Record<'_>) {}

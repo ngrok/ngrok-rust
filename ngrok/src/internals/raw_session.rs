@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::Error;
+use anyhow::{Error, bail};
 use muxado::{
     heartbeat::HeartbeatConfig,
     session::SessionBuilder,
@@ -36,7 +36,7 @@ use super::{
         RESTART_REQ,
         STOP_REQ,
         UPDATE_REQ,
-        VERSION,
+        VERSION, PROXY_REQ,
     },
     rpc::RPCRequest,
 };
@@ -116,6 +116,7 @@ impl RawSession {
         self.rpc(req).await
     }
 
+    #[allow(dead_code)]
     pub async fn listen_label(
         &mut self,
         labels: HashMap<String, String>,
@@ -146,11 +147,12 @@ impl RawSession {
                 RESTART_REQ => {}
                 STOP_REQ => {}
                 UPDATE_REQ => {}
-                _ => {
+                PROXY_REQ => {
                     let header = ProxyHeader::read_from_stream(&mut *stream).await?;
 
                     break TunnelStream { header, stream };
-                }
+                },
+                t => bail!("invalid stream type: {}", t),
             }
         })
     }

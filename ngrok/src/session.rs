@@ -2,12 +2,7 @@ use std::{
     collections::HashMap,
     env,
     io,
-    net::SocketAddr,
     num::ParseIntError,
-    ops::{
-        Deref,
-        DerefMut,
-    },
     sync::Arc,
     time::Duration,
 };
@@ -16,16 +11,9 @@ use async_rustls::{
     rustls,
     webpki,
 };
-use futures::{
-    future::poll_fn,
-    pin_mut,
-    Future,
-    FutureExt,
-};
 use muxado::heartbeat::HeartbeatConfig;
 use thiserror::Error;
 use tokio::{
-    net::ToSocketAddrs,
     sync::{
         mpsc::{
             channel,
@@ -45,6 +33,7 @@ use crate::{
     internals::{
         proto::{
             AuthExtra,
+            AuthResp,
             BindOpts,
         },
         raw_session::RawSession,
@@ -56,6 +45,8 @@ use crate::{
 const CERT_BYTES: &[u8] = include_bytes!("../assets/ngrok.ca.crt");
 
 pub struct Session {
+	#[allow(dead_code)]
+    authresp: AuthResp,
     raw: Arc<Mutex<RawSession>>,
     tunnels: Arc<RwLock<HashMap<String, Sender<anyhow::Result<Conn>>>>>,
 }
@@ -207,7 +198,11 @@ impl SessionBuilder {
             }
         });
 
-        Ok(Session { raw, tunnels })
+        Ok(Session {
+            authresp: resp,
+            raw,
+            tunnels,
+        })
     }
 }
 
