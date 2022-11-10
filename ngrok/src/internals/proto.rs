@@ -81,6 +81,8 @@ pub struct AuthExtra {
     pub custom_interface: bool,
     #[serde(rename = "CustomCAs")]
     pub custom_cas: bool,
+
+    pub client_type: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -1,4 +1,5 @@
 use std::{
+    env,
     io,
     net::SocketAddr,
     num::ParseIntError,
@@ -22,7 +23,10 @@ use tokio_util::compat::{
     TokioAsyncReadCompatExt,
 };
 
-use crate::internals::raw_session::RawSession;
+use crate::internals::{
+    proto::AuthExtra,
+    raw_session::RawSession,
+};
 
 const CERT_BYTES: &[u8] = include_bytes!("../assets/ngrok.ca.crt");
 
@@ -45,6 +49,8 @@ pub enum ConnectError {
     Tls(io::Error),
     #[error("error establishing ngrok session: {0}")]
     Session(anyhow::Error),
+    #[error("error authenticating ngrok session: {0}")]
+    Auth(anyhow::Error),
 }
 
 impl Default for SessionBuilder {
@@ -77,6 +83,13 @@ impl SessionBuilder {
         self
     }
 
+    /// Authenticate using the authtoken in the `NGROK_AUTHTOKEN` environment
+    /// variable.
+    pub fn with_authtoken_from_env(&mut self) -> &mut Self {
+        self.authtoken = env::var("NGROK_AUTHTOKEN").ok();
+        self
+    }
+
     /// Connect to the provided ngrok server address.
     pub fn with_server_addr(
         &mut self,
@@ -101,13 +114,13 @@ impl SessionBuilder {
     }
 
     /// Attempt to establish an ngrok session using the current configuration.
-    pub async fn connect(self) -> Result<Session, ConnectError> {
+    pub async fn connect(&self) -> Result<Session, ConnectError> {
         let conn = tokio::net::TcpStream::connect(&self.server_addr)
             .await
             .map_err(ConnectError::Connect)?
             .compat();
 
-        let tls_conn = async_rustls::TlsConnector::from(Arc::new(self.tls_config))
+        let tls_conn = async_rustls::TlsConnector::from(Arc::new(self.tls_config.clone()))
             .connect(
                 webpki::DNSNameRef::try_from_ascii(self.server_addr.0.as_bytes()).unwrap(),
                 conn,
@@ -115,12 +128,25 @@ impl SessionBuilder {
             .await
             .map_err(ConnectError::Tls)?;
 
-        let raw = RawSession::connect(
+        let mut raw = RawSession::connect(
             tls_conn.compat(),
             HeartbeatConfig::<fn(Duration)>::default(),
         )
         .await
         .map_err(ConnectError::Session)?;
+
+        let resp = raw
+            .auth(
+                "",
+                AuthExtra {
+                    version: env!("CARGO_PKG_VERSION").into(),
+                    auth_token: self.authtoken.clone().unwrap_or_default(),
+                    client_type: "library/official/rust".into(),
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(ConnectError::Auth)?;
 
         Ok(Session { raw })
     }

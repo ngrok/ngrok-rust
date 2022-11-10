@@ -58,20 +58,7 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(std::env::var("RUST_LOG").unwrap_or_default())
         .init();
 
-    let mut sess = Session::new().connect().await?;
-
-    let resp = sess
-        .auth(
-            "1234",
-            AuthExtra {
-                version: "3.0.0".into(),
-                auth_token: env::var("NGROK_AUTHTOKEN").unwrap_or_default(),
-                ..Default::default()
-            },
-        )
-        .await?;
-
-    println!("{:#?}", resp);
+    let mut sess = Session::new().with_authtoken_from_env().connect().await?;
 
     let resp = sess
         .listen(
