@@ -221,7 +221,7 @@ impl Session {
                 BindOpts::TCPEndpoint(Default::default()),
                 Default::default(),
                 "",
-                "nothing",
+                "rust",
             )
             .await?;
 
