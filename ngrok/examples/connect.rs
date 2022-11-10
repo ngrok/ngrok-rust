@@ -1,12 +1,5 @@
 use std::sync::Arc;
 
-use async_rustls::{
-    rustls::{
-        self,
-        ServerCertVerified,
-    },
-    webpki,
-};
 use futures::TryStreamExt;
 use ngrok::{
     Session,
@@ -19,20 +12,6 @@ use tokio::io::{
     BufReader,
 };
 use tracing_subscriber::fmt::format::FmtSpan;
-
-struct NoVerify;
-
-impl rustls::ServerCertVerifier for NoVerify {
-    fn verify_server_cert(
-        &self,
-        _roots: &rustls::RootCertStore,
-        _presented_certs: &[rustls::Certificate],
-        _dns_name: webpki::DNSNameRef<'_>,
-        _ocsp_response: &[u8],
-    ) -> Result<ServerCertVerified, rustls::TLSError> {
-        Ok(ServerCertVerified::assertion())
-    }
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -57,6 +36,7 @@ fn handle_tunnel(mut tunnel: Tunnel, sess: Arc<Session>) {
             let stream = if let Some(stream) = tunnel.try_next().await? {
                 stream
             } else {
+                println!("tunnel closed!");
                 break;
             };
 
