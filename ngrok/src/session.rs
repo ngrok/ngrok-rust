@@ -43,6 +43,7 @@ use crate::{
 };
 
 const CERT_BYTES: &[u8] = include_bytes!("../assets/ngrok.ca.crt");
+const NOT_IMPLEMENTED: &str = "the agent has not defined a callback for this operation";
 
 pub struct Session {
 	#[allow(dead_code)]
@@ -54,6 +55,9 @@ pub struct Session {
 #[derive(Clone)]
 pub struct SessionBuilder {
     authtoken: Option<String>,
+    metadata: Option<String>,
+    heartbeat_interval: Option<Duration>,
+    heartbeat_tolerance: Option<Duration>,
     server_addr: (String, u16),
     tls_config: rustls::ClientConfig,
 }
@@ -83,6 +87,9 @@ impl Default for SessionBuilder {
 
         SessionBuilder {
             authtoken: None,
+            metadata: None,
+            heartbeat_interval: None,
+            heartbeat_tolerance: None,
             server_addr: ("tunnel.ngrok.com".into(), 443),
             tls_config,
         }
@@ -104,6 +111,29 @@ impl SessionBuilder {
     /// variable.
     pub fn with_authtoken_from_env(&mut self) -> &mut Self {
         self.authtoken = env::var("NGROK_AUTHTOKEN").ok();
+        self
+    }
+
+    // Set the heartbeat interval for the session.
+    // This value determines how often we send application level
+    // heartbeats to the server go check connection liveness.
+    pub fn with_heartbeat_interval(&mut self, heartbeat_interval: Duration) -> &mut Self {
+        self.heartbeat_interval = Some(heartbeat_interval.into());
+        self
+    }
+
+    // Set the heartbeat tolerance for the session.
+    // If the session's heartbeats are outside of their interval by this duration,
+    // the server will assume the session is dead and close it.
+    pub fn with_heartbeat_tolerance(&mut self, heartbeat_tolerance: Duration) -> &mut Self {
+        self.heartbeat_tolerance = Some(heartbeat_tolerance.into());
+        self
+    }
+
+    // Use the provided opaque metadata string for this session.
+    // Viewable from the ngrok dashboard or API.
+    pub fn with_metadata(&mut self, metadata: impl Into<String>) -> &mut Self {
+        self.metadata = Some(metadata.into());
         self
     }
 
@@ -145,12 +175,25 @@ impl SessionBuilder {
             .await
             .map_err(ConnectError::Tls)?;
 
+        let mut heartbeat_config = HeartbeatConfig::<fn(Duration)>::default();
+        if self.heartbeat_interval.is_some() {heartbeat_config.interval = self.heartbeat_interval.unwrap()}
+        if self.heartbeat_tolerance.is_some() {heartbeat_config.tolerance = self.heartbeat_tolerance.unwrap()}
+        // convert these while we have ownership
+        let heartbeat_interval = i64::try_from(heartbeat_config.interval.as_nanos()).unwrap();
+        let heartbeat_tolerance = i64::try_from(heartbeat_config.tolerance.as_nanos()).unwrap();
+
         let mut raw = RawSession::connect(
             tls_conn.compat(),
-            HeartbeatConfig::<fn(Duration)>::default(),
+            heartbeat_config,
         )
         .await
         .map_err(ConnectError::Session)?;
+
+        // list of possibilities: https://doc.rust-lang.org/std/env/consts/constant.OS.html
+        let os = match env::consts::OS {
+            "macos" => "darwin",
+            _ => env::consts::OS
+        };
 
         let resp = raw
             .auth(
@@ -158,6 +201,14 @@ impl SessionBuilder {
                 AuthExtra {
                     version: env!("CARGO_PKG_VERSION").into(),
                     auth_token: self.authtoken.clone().unwrap_or_default(),
+                    metadata: self.metadata.clone().unwrap_or_default(),
+                    os: os.into(),
+                    arch: std::env::consts::ARCH.into(),
+                    heartbeat_interval: heartbeat_interval,
+                    heartbeat_tolerance: heartbeat_tolerance,
+                    restart_unsupported_error: Some(NOT_IMPLEMENTED.into()),
+                    stop_unsupported_error: Some(NOT_IMPLEMENTED.into()),
+                    update_unsupported_error: Some(NOT_IMPLEMENTED.into()),
                     client_type: "library/official/rust".into(),
                     ..Default::default()
                 },
