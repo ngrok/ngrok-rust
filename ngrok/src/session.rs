@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     env,
     io,
-    num::ParseIntError,
+    num::{ParseIntError, TryFromIntError},
     sync::Arc,
     time::Duration,
 };
@@ -70,6 +70,8 @@ pub enum ConnectError {
     Tls(io::Error),
     #[error("error establishing ngrok session: {0}")]
     Session(anyhow::Error),
+    #[error("error configuring ngrok session: {0}")]
+    SessionConfig(TryFromIntError),
     #[error("error authenticating ngrok session: {0}")]
     Auth(anyhow::Error),
 }
@@ -114,24 +116,24 @@ impl SessionBuilder {
         self
     }
 
-    // Set the heartbeat interval for the session.
-    // This value determines how often we send application level
-    // heartbeats to the server go check connection liveness.
+    /// Set the heartbeat interval for the session.
+    /// This value determines how often we send application level
+    /// heartbeats to the server go check connection liveness.
     pub fn with_heartbeat_interval(&mut self, heartbeat_interval: Duration) -> &mut Self {
         self.heartbeat_interval = Some(heartbeat_interval.into());
         self
     }
 
-    // Set the heartbeat tolerance for the session.
-    // If the session's heartbeats are outside of their interval by this duration,
-    // the server will assume the session is dead and close it.
+    /// Set the heartbeat tolerance for the session.
+    /// If the session's heartbeats are outside of their interval by this duration,
+    /// the server will assume the session is dead and close it.
     pub fn with_heartbeat_tolerance(&mut self, heartbeat_tolerance: Duration) -> &mut Self {
         self.heartbeat_tolerance = Some(heartbeat_tolerance.into());
         self
     }
 
-    // Use the provided opaque metadata string for this session.
-    // Viewable from the ngrok dashboard or API.
+    /// Use the provided opaque metadata string for this session.
+    /// Viewable from the ngrok dashboard or API.
     pub fn with_metadata(&mut self, metadata: impl Into<String>) -> &mut Self {
         self.metadata = Some(metadata.into());
         self
@@ -176,11 +178,17 @@ impl SessionBuilder {
             .map_err(ConnectError::Tls)?;
 
         let mut heartbeat_config = HeartbeatConfig::<fn(Duration)>::default();
-        if self.heartbeat_interval.is_some() {heartbeat_config.interval = self.heartbeat_interval.unwrap()}
-        if self.heartbeat_tolerance.is_some() {heartbeat_config.tolerance = self.heartbeat_tolerance.unwrap()}
+        if let Some(interval) = self.heartbeat_interval {
+            heartbeat_config.interval = interval;
+        }
+        if let Some(tolerance) = self.heartbeat_tolerance {
+            heartbeat_config.tolerance = tolerance;
+        }
         // convert these while we have ownership
-        let heartbeat_interval = i64::try_from(heartbeat_config.interval.as_nanos()).unwrap();
-        let heartbeat_tolerance = i64::try_from(heartbeat_config.tolerance.as_nanos()).unwrap();
+        let heartbeat_interval = i64::try_from(heartbeat_config.interval.as_nanos())
+        .map_err(ConnectError::SessionConfig)?;
+        let heartbeat_tolerance = i64::try_from(heartbeat_config.tolerance.as_nanos())
+        .map_err(ConnectError::SessionConfig)?;
 
         let mut raw = RawSession::connect(
             tls_conn.compat(),
