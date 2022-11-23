@@ -101,6 +101,7 @@ impl RawSession {
         Ok(sess)
     }
 
+    #[allow(dead_code)]
     pub async fn accept(&mut self) -> Result<TunnelStream, Error> {
         self.incoming.accept().await
     }

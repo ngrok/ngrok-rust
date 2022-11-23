@@ -1,15 +1,15 @@
 #[macro_use]
 mod constrained;
 
-pub mod codec;
+mod codec;
 pub mod errors;
-pub mod frame;
+mod frame;
 pub mod session;
 pub mod stream;
 pub mod stream_manager;
-pub mod stream_output;
+mod stream_output;
 pub mod typed;
-pub mod window;
+mod window;
 
 #[cfg(feature = "tokio_rt")]
 pub mod heartbeat;

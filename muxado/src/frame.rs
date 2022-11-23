@@ -1,3 +1,7 @@
+/// This module contains the definitions for muxado frames.
+///
+/// The [`codec`] module is responsible converting between their struct and wire
+/// format.
 use std::{
     cmp,
     fmt,

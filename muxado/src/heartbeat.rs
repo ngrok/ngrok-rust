@@ -37,19 +37,29 @@ use crate::{
 
 const HEARTBEAT_TYPE: StreamType = StreamType::clamp(0xFFFFFFFF);
 
+/// Wrapper for muxado streams that adds heartbeating over a dedicated typed
+/// stream.
 pub struct Heartbeat<S> {
     typ: StreamType,
     inner: S,
 }
 
+/// Controller for the heartbeat task.
+/// Allows owners to change the heartbeat timing at runtime and to explicitly
+/// request heartbeats.
 pub struct HeartbeatCtl {
     durations: Arc<(AtomicU64, AtomicU64)>,
     on_demand: mpsc::Sender<oneshot::Sender<Duration>>,
 }
 
+/// The heartbeat task configuration.
 pub struct HeartbeatConfig<F = fn(Duration)> {
+    /// The interval on which heartbeats will be sent.
     pub interval: Duration,
+    /// The amount of time past a missed heartbeat that the other side will be
+    /// considered dead.
     pub tolerance: Duration,
+    /// An optional callback to run when a heartbeat is received.
     pub callback: Option<F>,
 }
 
@@ -67,6 +77,8 @@ impl<S> Heartbeat<S>
 where
     S: TypedSession + 'static,
 {
+    /// Wrap a typed session and start the heartbeat task.
+    /// Returns an error if the stream can't be opened.
     pub async fn start<F>(
         sess: S,
         cfg: HeartbeatConfig<F>,
@@ -103,6 +115,7 @@ where
 }
 
 impl HeartbeatCtl {
+    /// Explicitly request a heartbeat and return the latency.
     pub async fn beat(&self) -> Result<Duration, io::Error> {
         let (tx, rx) = oneshot::channel();
         self.on_demand
@@ -112,12 +125,14 @@ impl HeartbeatCtl {
         rx.await.map_err(|_| io::ErrorKind::ConnectionReset.into())
     }
 
+    /// Change the heartbeat interval.
     pub fn set_interval(&self, interval: Duration) {
         self.durations
             .0
             .store(interval.as_nanos() as u64, Ordering::Relaxed);
     }
 
+    /// Change the heartbeat tolerance.
     pub fn set_tolerance(&self, tolerance: Duration) {
         self.durations
             .1

@@ -38,12 +38,17 @@ use crate::{
     window::Window,
 };
 
+/// A muxado stream.
+/// This is an AsyncRead/Write struct that's backed by a muxado session.
 #[pin_project(project = StreamProj, PinnedDrop)]
 pub struct Stream {
     window: Window,
 
     read_buf: BytesMut,
 
+    // These are the two channels that are used to shuttle data back and forth
+    // between the stream and the stream manager, which is responsible for
+    // routing frames to their proper stream.
     #[pin]
     fin: mpsc::Receiver<Frame>,
     #[pin]

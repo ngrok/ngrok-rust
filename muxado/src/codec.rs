@@ -16,8 +16,13 @@ use super::{
     frame::*,
 };
 
+/// Codec for muxado frames.
 #[derive(Default, Debug)]
 pub struct FrameCodec {
+    // the header has to be read to know how big a frame is.
+    // We'll decode it once when we have enough bytes, and then wait for the
+    // rest, keeping the already-decoded header around in the meantime to avoid
+    // decoding it repeatedly.
     input_header: Option<Header>,
 }
 

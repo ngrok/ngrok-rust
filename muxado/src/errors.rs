@@ -8,6 +8,7 @@ use crate::frame::{
     StreamID,
 };
 
+/// The muxado error type.
 #[repr(u32)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Error)]
 pub enum ErrorType {
