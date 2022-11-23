@@ -103,6 +103,15 @@ where
 }
 
 impl HeartbeatCtl {
+    pub async fn beat(&self) -> Result<Duration, io::Error> {
+        let (tx, rx) = oneshot::channel();
+        self.on_demand
+            .send(tx)
+            .await
+            .map_err(|_| io::ErrorKind::NotConnected)?;
+        rx.await.map_err(|_| io::ErrorKind::ConnectionReset.into())
+    }
+
     pub fn set_interval(&self, interval: Duration) {
         self.durations
             .0
