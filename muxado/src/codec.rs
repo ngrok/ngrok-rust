@@ -202,3 +202,28 @@ impl Encoder<Frame> for FrameCodec {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod test {
+    use bytes::Bytes;
+
+    use super::*;
+
+    #[test]
+    fn round_trip() {
+        let frame = Frame::data(StreamID::clamp(5), Bytes::from_static(b"Hello, world!"));
+        let mut buf = bytes::BytesMut::new();
+        let mut codec = FrameCodec::default();
+
+        codec
+            .encode(frame.clone(), &mut buf)
+            .expect("no encode error");
+
+        let decoded = codec
+            .decode(&mut buf)
+            .expect("no decode error")
+            .expect("decoded frame");
+
+        assert_eq!(frame, decoded);
+    }
+}

@@ -1,7 +1,4 @@
-use std::{
-    future::Future,
-    io,
-};
+use std::io;
 
 use async_trait::async_trait;
 use futures::{
@@ -22,7 +19,6 @@ use tokio_util::codec::Framed;
 use tracing::{
     debug,
     instrument,
-    trace,
 };
 
 use crate::{
@@ -47,27 +43,12 @@ const DEFAULT_WINDOW: usize = 0x40000; // 256KB
 const DEFAULT_ACCEPT: usize = 64;
 const DEFAULT_STREAMS: usize = 512;
 
-pub trait SessionTask: Future<Output = Result<(), ErrorType>> + Send + 'static {}
-impl<F> SessionTask for F where F: Future<Output = Result<(), ErrorType>> + Send + 'static {}
-
 pub struct SessionBuilder<S> {
-    io_stream: Option<S>,
+    io_stream: S,
     window: usize,
     accept_queue_size: usize,
     stream_limit: usize,
     client: bool,
-}
-
-impl<S> Default for SessionBuilder<S> {
-    fn default() -> Self {
-        SessionBuilder {
-            io_stream: None,
-            window: DEFAULT_WINDOW,
-            accept_queue_size: DEFAULT_ACCEPT,
-            stream_limit: DEFAULT_STREAMS,
-            client: true,
-        }
-    }
 }
 
 impl<S> SessionBuilder<S>
@@ -77,12 +58,15 @@ where
     pub fn new(io_stream: S) -> Self {
         SessionBuilder {
             io_stream: io_stream.into(),
-            ..Default::default()
+            window: DEFAULT_WINDOW,
+            accept_queue_size: DEFAULT_ACCEPT,
+            stream_limit: DEFAULT_STREAMS,
+            client: true,
         }
     }
 
     pub fn with_stream(mut self, io_stream: S) -> Self {
-        self.io_stream = Some(io_stream);
+        self.io_stream = io_stream;
         self
     }
 
@@ -111,7 +95,7 @@ where
         self
     }
 
-    pub fn build(self) -> (impl ReadTask, impl WriteTask, Muxado) {
+    pub fn start(self) -> Muxado {
         let SessionBuilder {
             io_stream,
             window,
@@ -122,13 +106,9 @@ where
         let (accept_tx, accept_rx) = mpsc::channel(accept_queue_size);
         let (open_tx, open_rx) = mpsc::channel(512);
         let manager = StreamManager::new(stream_limit, client);
-        let raw_output = manager.sys_sender();
+        let raw_tx = manager.sys_sender();
         let (m1, m2) = manager.split();
-        let (io_tx, io_rx) = Framed::new(
-            io_stream.expect("no io stream provided"),
-            FrameCodec::default(),
-        )
-        .split();
+        let (io_tx, io_rx) = Framed::new(io_stream, FrameCodec::default()).split();
 
         let read_task = Reader {
             io: io_rx,
@@ -136,47 +116,29 @@ where
             window,
             manager: m1,
             last_stream_processed: StreamID::clamp(0),
-            raw_output,
+            raw_tx,
         };
 
         let write_task = Writer {
+            window,
             io: io_tx,
             manager: m2,
             open_reqs: open_rx,
         };
 
-        (
-            read_task.run(),
-            write_task.run(),
-            Muxado {
-                window,
-                incoming: accept_rx,
-                outgoing: open_tx,
-            },
-        )
-    }
+        tokio::spawn(read_task.run());
+        tokio::spawn(write_task.run());
 
-    #[cfg(feature = "tokio_rt")]
-    pub fn start(self) -> Muxado {
-        let (read, write, sess) = self.build();
-        tokio::spawn(async move {
-            let res = read.await;
-            trace!(res = debug(res), "read task complete");
-        });
-        tokio::spawn(async move {
-            let res = write.await;
-            trace!(res = debug(res), "write task complete");
-        });
-        sess
+        Muxado {
+            incoming: MuxadoAccept(accept_rx),
+            outgoing: MuxadoOpen(open_tx),
+        }
     }
 }
 
-pub trait ReadTask: SessionTask {}
-impl<T> ReadTask for T where T: SessionTask {}
-
 struct Reader<R> {
     io: R,
-    raw_output: mpsc::Sender<Frame>,
+    raw_tx: mpsc::Sender<Frame>,
     accept_tx: mpsc::Sender<Stream>,
     window: usize,
     manager: SharedStreamManager,
@@ -222,7 +184,7 @@ where
                         error = display(error),
                         "error sending to stream, generating rst"
                     );
-                    self.raw_output
+                    self.raw_tx
                         .send(Frame::rst(stream_id, error))
                         .map_err(|_| ErrorType::SessionClosed)
                         .await?;
@@ -236,7 +198,7 @@ where
                 }
             }
             HeaderType::Invalid(_) => {
-                self.raw_output
+                self.raw_tx
                     .send(Frame::goaway(
                         self.last_stream_processed,
                         ErrorType::ProtocolError,
@@ -278,12 +240,10 @@ where
     }
 }
 
-pub trait WriteTask: SessionTask {}
-impl<T> WriteTask for T where T: SessionTask {}
-
 struct Writer<W> {
     manager: SharedStreamManager,
-    open_reqs: mpsc::Receiver<(usize, oneshot::Sender<Result<Stream, ErrorType>>)>,
+    window: usize,
+    open_reqs: mpsc::Receiver<oneshot::Sender<Result<Stream, ErrorType>>>,
     io: W,
 }
 
@@ -303,12 +263,12 @@ where
                     }
                 },
                 req = self.open_reqs.next() => {
-                    if let Some((window, resp)) = req {
-                        let (req, stream) = OpenReq::create(window, true);
+                    if let Some(resp_tx) = req {
+                        let (req, stream) = OpenReq::create(self.window, true);
 
                         let mut manager = self.manager.lock().await;
                         let res = manager.create_stream(None, req);
-                        let _ = resp.send(res.map(move |_| stream));
+                        let _ = resp_tx.send(res.map(move |_| stream));
                     }
                 },
                 complete => {
@@ -319,29 +279,39 @@ where
     }
 }
 
-#[async_trait]
-pub trait Session: Send {
-    async fn accept(&mut self) -> Option<Stream>;
+pub trait Session: AcceptStream + OpenStream {
+    type Open: OpenStream;
+    type Accept: AcceptStream;
+    fn split(self) -> (Self::Open, Self::Accept);
+}
 
+#[async_trait]
+pub trait AcceptStream {
+    async fn accept(&mut self) -> Option<Stream>;
+}
+
+#[async_trait]
+pub trait OpenStream {
     async fn open(&mut self) -> Result<Stream, ErrorType>;
 }
 
-pub struct Muxado {
-    window: usize,
-    incoming: mpsc::Receiver<Stream>,
-    outgoing: mpsc::Sender<(usize, oneshot::Sender<Result<Stream, ErrorType>>)>,
+pub struct MuxadoOpen(mpsc::Sender<oneshot::Sender<Result<Stream, ErrorType>>>);
+pub struct MuxadoAccept(mpsc::Receiver<Stream>);
+
+#[async_trait]
+impl AcceptStream for MuxadoAccept {
+    async fn accept(&mut self) -> Option<Stream> {
+        self.0.next().await
+    }
 }
 
-impl Muxado {
-    pub async fn accept(&mut self) -> Option<Stream> {
-        self.incoming.next().await
-    }
-
-    pub async fn open(&mut self) -> Result<Stream, ErrorType> {
+#[async_trait]
+impl OpenStream for MuxadoOpen {
+    async fn open(&mut self) -> Result<Stream, ErrorType> {
         let (resp_tx, resp_rx) = oneshot::channel();
 
-        self.outgoing
-            .send((self.window, resp_tx))
+        self.0
+            .send(resp_tx)
             .await
             .map_err(|_| ErrorType::SessionClosed)?;
 
@@ -352,13 +322,71 @@ impl Muxado {
     }
 }
 
-#[async_trait]
-impl Session for Muxado {
-    async fn accept(&mut self) -> Option<Stream> {
-        Muxado::accept(self).await
-    }
+pub struct Muxado {
+    incoming: MuxadoAccept,
+    outgoing: MuxadoOpen,
+}
 
+#[async_trait]
+impl AcceptStream for Muxado {
+    async fn accept(&mut self) -> Option<Stream> {
+        self.incoming.accept().await
+    }
+}
+
+#[async_trait]
+impl OpenStream for Muxado {
     async fn open(&mut self) -> Result<Stream, ErrorType> {
-        Muxado::open(self).await
+        self.outgoing.open().await
+    }
+}
+
+impl Session for Muxado {
+    type Accept = MuxadoAccept;
+    type Open = MuxadoOpen;
+    fn split(self) -> (Self::Open, Self::Accept) {
+        (self.outgoing, self.incoming)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tokio::io::{
+        self,
+        AsyncReadExt,
+        AsyncWriteExt,
+    };
+
+    use super::*;
+    #[tokio::test]
+    async fn test_session() {
+        let (left, right) = io::duplex(512);
+        let mut server = SessionBuilder::new(left).server().start();
+        let mut client = SessionBuilder::new(right).client().start();
+
+        tokio::spawn(async move {
+            let mut stream = server.accept().await.expect("accept stream");
+            let mut buf = Vec::new();
+            stream.read_to_end(&mut buf).await.expect("read stream");
+            drop(stream);
+            let mut stream = server.open().await.expect("open stream");
+            stream.write_all(&buf).await.expect("write to stream");
+        });
+
+        let mut stream = client.open().await.expect("open stream");
+        stream
+            .write_all(b"Hello, world!")
+            .await
+            .expect("write to stream");
+        drop(stream);
+
+        let mut stream = client.accept().await.expect("accept stream");
+        let mut buf = Vec::new();
+        stream
+            .read_to_end(&mut buf)
+            .await
+            .expect("read from stream");
+
+        assert_eq!(b"Hello, world!", &*buf,);
     }
 }
