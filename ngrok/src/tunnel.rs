@@ -1,10 +1,11 @@
 use std::{
+    collections::HashMap,
     pin::Pin,
     sync::Arc,
     task::{
         Context,
         Poll,
-    }, collections::HashMap,
+    },
 };
 
 use futures::{
@@ -24,7 +25,9 @@ use tokio::{
 
 use crate::internals::{
     proto::{
-        ProxyHeader, BindOpts, BindExtra,
+        BindExtra,
+        BindOpts,
+        ProxyHeader,
     },
     raw_session::{
         RawSession,
@@ -72,11 +75,7 @@ impl Tunnel {
     }
 
     pub async fn close(&mut self) -> anyhow::Result<()> {
-        self.sess
-            .lock()
-            .await
-            .unlisten(&self.id)
-            .await?;
+        self.sess.lock().await.unlisten(&self.id).await?;
         self.incoming.close();
         Ok(())
     }

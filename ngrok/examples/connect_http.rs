@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use futures::TryStreamExt;
 use ngrok::{
+    HTTPEndpoint,
     Session,
-    Tunnel, HTTPEndpoint,
+    Tunnel,
 };
 use tokio::io::{
     self,
@@ -22,15 +23,20 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(std::env::var("RUST_LOG").unwrap_or_default())
         .init();
 
-    let sess = Arc::new(Session::new()
-        .with_authtoken_from_env()
-        .with_metadata("Online in One Line")
-        .connect()
-        .await?);
+    let sess = Arc::new(
+        Session::new()
+            .with_authtoken_from_env()
+            .with_metadata("Online in One Line")
+            .connect()
+            .await?,
+    );
 
-    let tunnel = sess.start_tunnel(HTTPEndpoint::default()
-        .with_metadata("Understand it so thoroughly that you merge with it")
-        ).await?;
+    let tunnel = sess
+        .start_tunnel(
+            HTTPEndpoint::default()
+                .with_metadata("Understand it so thoroughly that you merge with it"),
+        )
+        .await?;
 
     handle_tunnel(tunnel, sess);
 
@@ -66,7 +72,11 @@ fn handle_tunnel(mut tunnel: Tunnel, sess: Arc<Session>) {
 
                     if buf.eq("\r\n".into()) {
                         info!("writing");
-                        tx.write_all("HTTP/1.1 200 OK\r\n\r\n<html><body>hi</body></html>\r\n\r\n".as_bytes()).await?;
+                        tx.write_all(
+                            "HTTP/1.1 200 OK\r\n\r\n<html><body>hi</body></html>\r\n\r\n"
+                                .as_bytes(),
+                        )
+                        .await?;
                         info!("done writing");
                         tx.flush().await?;
                         info!("connection shutdown");

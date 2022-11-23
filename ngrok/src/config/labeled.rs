@@ -1,6 +1,16 @@
 use std::collections::HashMap;
 
-use crate::{common::{CommonOpts, private, FORWARDS_TO}, internals::proto::{BindExtra, BindOpts}};
+use crate::{
+    common::{
+        private,
+        CommonOpts,
+        FORWARDS_TO,
+    },
+    internals::proto::{
+        BindExtra,
+        BindOpts,
+    },
+};
 
 pub struct LabeledTunnel {
     common_opts: CommonOpts,
@@ -16,7 +26,10 @@ impl Default for LabeledTunnel {
 
 impl private::TunnelConfigPrivate for LabeledTunnel {
     fn forwards_to(&self) -> String {
-        self.common_opts.forwards_to.clone().unwrap_or(FORWARDS_TO.into())
+        self.common_opts
+            .forwards_to
+            .clone()
+            .unwrap_or(FORWARDS_TO.into())
     }
     fn extra(&self) -> BindExtra {
         BindExtra {
@@ -25,11 +38,13 @@ impl private::TunnelConfigPrivate for LabeledTunnel {
             metadata: self.common_opts.metadata.clone().unwrap_or_default(),
         }
     }
-    fn proto(&self) -> String {"".into()}
+    fn proto(&self) -> String {
+        "".into()
+    }
     fn opts(&self) -> Option<BindOpts> {
         None
     }
-    fn labels(&self) -> HashMap<String,String> {
+    fn labels(&self) -> HashMap<String, String> {
         return HashMap::new();
     }
 }

@@ -1,6 +1,17 @@
 use std::collections::HashMap;
 
-use crate::{common::{CommonOpts, private, FORWARDS_TO}, internals::proto::{BindExtra, BindOpts, self}};
+use crate::{
+    common::{
+        private,
+        CommonOpts,
+        FORWARDS_TO,
+    },
+    internals::proto::{
+        self,
+        BindExtra,
+        BindOpts,
+    },
+};
 
 #[derive(Clone, Eq, PartialEq)]
 pub enum Scheme {
@@ -12,7 +23,7 @@ pub struct HTTPEndpoint {
     common_opts: CommonOpts,
     scheme: Scheme,
     hostname: Option<String>,
-    basic_auth: Option<(String, String)>
+    basic_auth: Option<(String, String)>,
 }
 
 impl Default for HTTPEndpoint {
@@ -28,7 +39,10 @@ impl Default for HTTPEndpoint {
 
 impl private::TunnelConfigPrivate for HTTPEndpoint {
     fn forwards_to(&self) -> String {
-        self.common_opts.forwards_to.clone().unwrap_or(FORWARDS_TO.into())
+        self.common_opts
+            .forwards_to
+            .clone()
+            .unwrap_or(FORWARDS_TO.into())
     }
     fn extra(&self) -> BindExtra {
         BindExtra {
@@ -53,7 +67,7 @@ impl private::TunnelConfigPrivate for HTTPEndpoint {
 
         Some(BindOpts::HTTPEndpoint(http_endpoint))
     }
-    fn labels(&self) -> HashMap<String,String> {
+    fn labels(&self) -> HashMap<String, String> {
         return HashMap::new();
     }
 }
@@ -63,14 +77,18 @@ impl HTTPEndpoint {
         self.common_opts.metadata = Some(metadata.into());
         self
     }
-	pub fn with_hostname(&mut self, hostname: impl Into<String>) -> &mut Self {
+    pub fn with_hostname(&mut self, hostname: impl Into<String>) -> &mut Self {
         self.hostname = Some(hostname.into());
         self
     }
-	pub fn with_basic_auth(&mut self, username: impl Into<String>, password: impl Into<String>) -> &mut Self {
+    pub fn with_basic_auth(
+        &mut self,
+        username: impl Into<String>,
+        password: impl Into<String>,
+    ) -> &mut Self {
         self.basic_auth = Some((username.into(), password.into()));
         self
     }
 
-	// todo
+    // todo
 }

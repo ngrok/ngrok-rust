@@ -18,7 +18,10 @@ impl<T> TunnelConfig for T where T: private::TunnelConfigPrivate {}
 pub(crate) mod private {
     use std::collections::HashMap;
 
-    use crate::{internals::proto::{BindExtra, BindOpts}};
+    use crate::internals::proto::{
+        BindExtra,
+        BindOpts,
+    };
 
     // This is the internal-only interface that all config.Tunnel implementations
     // *also* implement. This lets us pull the necessary bits out of it without
@@ -28,25 +31,51 @@ pub(crate) mod private {
         fn extra(&self) -> BindExtra;
         fn proto(&self) -> String;
         fn opts(&self) -> Option<BindOpts>;
-        fn labels(&self) -> HashMap<String,String>;
+        fn labels(&self) -> HashMap<String, String>;
     }
 
     // delegate references
-    impl<'a, T> TunnelConfigPrivate for &'a T where T: TunnelConfigPrivate {
-        fn forwards_to(&self) -> String { (**self).forwards_to() }
-        fn extra(&self) -> BindExtra { (**self).extra() }
-        fn proto(&self) -> String { (**self).proto() }
-        fn opts(&self) -> Option<BindOpts> { (**self).opts() }
-        fn labels(&self) -> HashMap<String,String> { (**self).labels() }
+    impl<'a, T> TunnelConfigPrivate for &'a T
+    where
+        T: TunnelConfigPrivate,
+    {
+        fn forwards_to(&self) -> String {
+            (**self).forwards_to()
+        }
+        fn extra(&self) -> BindExtra {
+            (**self).extra()
+        }
+        fn proto(&self) -> String {
+            (**self).proto()
+        }
+        fn opts(&self) -> Option<BindOpts> {
+            (**self).opts()
+        }
+        fn labels(&self) -> HashMap<String, String> {
+            (**self).labels()
+        }
     }
 
     // delegate mutable references
-    impl<'a, T> TunnelConfigPrivate for &'a mut T where T: TunnelConfigPrivate {
-        fn forwards_to(&self) -> String { (**self).forwards_to() }
-        fn extra(&self) -> BindExtra { (**self).extra() }
-        fn proto(&self) -> String { (**self).proto() }
-        fn opts(&self) -> Option<BindOpts> { (**self).opts() }
-        fn labels(&self) -> HashMap<String,String> { (**self).labels() }
+    impl<'a, T> TunnelConfigPrivate for &'a mut T
+    where
+        T: TunnelConfigPrivate,
+    {
+        fn forwards_to(&self) -> String {
+            (**self).forwards_to()
+        }
+        fn extra(&self) -> BindExtra {
+            (**self).extra()
+        }
+        fn proto(&self) -> String {
+            (**self).proto()
+        }
+        fn opts(&self) -> Option<BindOpts> {
+            (**self).opts()
+        }
+        fn labels(&self) -> HashMap<String, String> {
+            (**self).labels()
+        }
     }
 }
 
@@ -56,16 +85,16 @@ pub struct CidrRestrictions {
 
 // Common
 pub(crate) struct CommonOpts {
-	// Restrictions placed on the origin of incoming connections to the edge.
-	pub(crate) cidr_restrictions: Option<CidrRestrictions>,
-	// The version of PROXY protocol to use with this tunnel, zero if not
-	// using.
-	pub(crate) proxy_proto: Option<ProxyProto>,
-	// Tunnel-specific opaque metadata. Viewable via the API.
-	pub(crate) metadata: Option<String>,
-	// Tunnel backend metadata. Viewable via the dashboard and API, but has no
-	// bearing on tunnel behavior.
-	pub(crate) forwards_to: Option<String>,
+    // Restrictions placed on the origin of incoming connections to the edge.
+    pub(crate) cidr_restrictions: Option<CidrRestrictions>,
+    // The version of PROXY protocol to use with this tunnel, zero if not
+    // using.
+    pub(crate) proxy_proto: Option<ProxyProto>,
+    // Tunnel-specific opaque metadata. Viewable via the API.
+    pub(crate) metadata: Option<String>,
+    // Tunnel backend metadata. Viewable via the dashboard and API, but has no
+    // bearing on tunnel behavior.
+    pub(crate) forwards_to: Option<String>,
 }
 
 impl Default for CommonOpts {

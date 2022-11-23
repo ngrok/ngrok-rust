@@ -2,7 +2,10 @@ use std::{
     collections::HashMap,
     env,
     io,
-    num::{ParseIntError, TryFromIntError},
+    num::{
+        ParseIntError,
+        TryFromIntError,
+    },
     sync::Arc,
     time::Duration,
 };
@@ -28,7 +31,9 @@ use tokio_util::compat::{
     FuturesAsyncReadCompatExt,
     TokioAsyncReadCompatExt,
 };
+
 use crate::{
+    config::common::TunnelConfig,
     internals::{
         proto::{
             AuthExtra,
@@ -38,18 +43,13 @@ use crate::{
     },
     Conn,
     Tunnel,
-    config::{
-        common::{
-            TunnelConfig,
-        }
-    },
 };
 
 const CERT_BYTES: &[u8] = include_bytes!("../assets/ngrok.ca.crt");
 const NOT_IMPLEMENTED: &str = "the agent has not defined a callback for this operation";
 
 pub struct Session {
-	#[allow(dead_code)]
+    #[allow(dead_code)]
     authresp: AuthResp,
     raw: Arc<Mutex<RawSession>>,
     tunnels: Arc<RwLock<HashMap<String, Sender<anyhow::Result<Conn>>>>>,
@@ -189,21 +189,18 @@ impl SessionBuilder {
         }
         // convert these while we have ownership
         let heartbeat_interval = i64::try_from(heartbeat_config.interval.as_nanos())
-        .map_err(ConnectError::SessionConfig)?;
+            .map_err(ConnectError::SessionConfig)?;
         let heartbeat_tolerance = i64::try_from(heartbeat_config.tolerance.as_nanos())
-        .map_err(ConnectError::SessionConfig)?;
+            .map_err(ConnectError::SessionConfig)?;
 
-        let mut raw = RawSession::connect(
-            tls_conn.compat(),
-            heartbeat_config,
-        )
-        .await
-        .map_err(ConnectError::Session)?;
+        let mut raw = RawSession::connect(tls_conn.compat(), heartbeat_config)
+            .await
+            .map_err(ConnectError::Session)?;
 
         // list of possibilities: https://doc.rust-lang.org/std/env/consts/constant.OS.html
         let os = match env::consts::OS {
             "macos" => "darwin",
-            _ => env::consts::OS
+            _ => env::consts::OS,
         };
 
         let resp = raw
@@ -274,15 +271,13 @@ impl Session {
     }
 
     pub async fn start_tunnel<C>(&self, tunnel_cfg: C) -> anyhow::Result<Tunnel>
-        where C: TunnelConfig {
-
-        let mut raw = self
-            .raw
-            .lock()
-            .await;
+    where
+        C: TunnelConfig,
+    {
+        let mut raw = self.raw.lock().await;
 
         // let tunnelCfg: dyn TunnelConfig = TunnelConfig(opts);
-        let (tx, rx) = channel(64);        
+        let (tx, rx) = channel(64);
 
         // non-labeled tunnel
         if tunnel_cfg.proto() != "" {
@@ -295,7 +290,7 @@ impl Session {
                     tunnel_cfg.forwards_to(),
                 )
                 .await?;
-            
+
             let mut tunnels = self.tunnels.write().await;
             tunnels.insert(resp.client_id.clone(), tx);
 
@@ -310,7 +305,7 @@ impl Session {
                 forwards_to: tunnel_cfg.forwards_to().into(),
                 sess: self.raw.clone(),
                 incoming: rx,
-            })
+            });
         }
 
         // labeled tunnel
@@ -320,7 +315,7 @@ impl Session {
                 tunnel_cfg.extra().metadata,
                 tunnel_cfg.forwards_to(),
             )
-            .await?;                
+            .await?;
 
         let mut tunnels = self.tunnels.write().await;
         tunnels.insert(resp.id.clone(), tx);

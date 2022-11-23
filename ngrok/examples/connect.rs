@@ -3,7 +3,8 @@ use std::sync::Arc;
 use futures::TryStreamExt;
 use ngrok::{
     Session,
-    Tunnel, TCPEndpoint,
+    TCPEndpoint,
+    Tunnel,
 };
 use tokio::io::{
     self,
@@ -22,15 +23,20 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(std::env::var("RUST_LOG").unwrap_or_default())
         .init();
 
-    let sess = Arc::new(Session::new()
-        .with_authtoken_from_env()
-        .with_metadata("Online in One Line")
-        .connect()
-        .await?);
+    let sess = Arc::new(
+        Session::new()
+            .with_authtoken_from_env()
+            .with_metadata("Online in One Line")
+            .connect()
+            .await?,
+    );
 
-    let tunnel = sess.start_tunnel(TCPEndpoint::default()
-        .with_metadata("Understand it so thoroughly that you merge with it")
-        ).await?;
+    let tunnel = sess
+        .start_tunnel(
+            TCPEndpoint::default()
+                .with_metadata("Understand it so thoroughly that you merge with it"),
+        )
+        .await?;
 
     handle_tunnel(tunnel, sess);
 

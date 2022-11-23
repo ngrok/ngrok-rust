@@ -1,6 +1,17 @@
 use std::collections::HashMap;
 
-use crate::{common::{CommonOpts, FORWARDS_TO, private}, internals::proto::{BindExtra, BindOpts, self}};
+use crate::{
+    common::{
+        private,
+        CommonOpts,
+        FORWARDS_TO,
+    },
+    internals::proto::{
+        self,
+        BindExtra,
+        BindOpts,
+    },
+};
 
 pub struct TCPEndpoint {
     pub(crate) common_opts: CommonOpts,
@@ -16,7 +27,10 @@ impl Default for TCPEndpoint {
 
 impl private::TunnelConfigPrivate for TCPEndpoint {
     fn forwards_to(&self) -> String {
-        self.common_opts.forwards_to.clone().unwrap_or(FORWARDS_TO.into())
+        self.common_opts
+            .forwards_to
+            .clone()
+            .unwrap_or(FORWARDS_TO.into())
     }
     fn extra(&self) -> BindExtra {
         BindExtra {
@@ -25,7 +39,9 @@ impl private::TunnelConfigPrivate for TCPEndpoint {
             metadata: self.common_opts.metadata.clone().unwrap_or_default(),
         }
     }
-    fn proto(&self) -> String {"tcp".into()}
+    fn proto(&self) -> String {
+        "tcp".into()
+    }
     fn opts(&self) -> Option<BindOpts> {
         // fill out all the options here, translating to proto here
         let mut tcp_endpoint = proto::TCPEndpoint::default();
@@ -36,7 +52,7 @@ impl private::TunnelConfigPrivate for TCPEndpoint {
 
         Some(BindOpts::TCPEndpoint(tcp_endpoint))
     }
-    fn labels(&self) -> HashMap<String,String> {
+    fn labels(&self) -> HashMap<String, String> {
         return HashMap::new();
     }
 }

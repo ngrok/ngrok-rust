@@ -20,10 +20,12 @@ mod config {
 mod session;
 mod tunnel;
 
-pub use config::*;
-pub use config::http::*;
-pub use config::labeled::*;
-pub use config::tcp::*;
-pub use config::tls::*;
+pub use config::{
+    http::*,
+    labeled::*,
+    tcp::*,
+    tls::*,
+    *,
+};
 pub use session::*;
 pub use tunnel::*;
