@@ -3,7 +3,7 @@ use std::sync::Arc;
 use futures::TryStreamExt;
 use ngrok::{
     Session,
-    Tunnel, TCPEndpoint,
+    Tunnel, HTTPEndpoint,
 };
 use tokio::io::{
     self,
@@ -28,7 +28,7 @@ async fn main() -> anyhow::Result<()> {
         .connect()
         .await?);
 
-    let tunnel = sess.start_tunnel(TCPEndpoint::default()
+    let tunnel = sess.start_tunnel(HTTPEndpoint::default()
         .with_metadata("Understand it so thoroughly that you merge with it")
         ).await?;
 
@@ -48,8 +48,8 @@ fn handle_tunnel(mut tunnel: Tunnel, sess: Arc<Session>) {
                 break;
             };
 
-            let sess = sess.clone();
-            let id: String = tunnel.id().into();
+            let _sess = sess.clone();
+            let _id: String = tunnel.id().into();
 
             tokio::spawn(async move {
                 info!("accepted connection: {:?}", stream.header());
@@ -64,23 +64,15 @@ fn handle_tunnel(mut tunnel: Tunnel, sess: Arc<Session>) {
                         break;
                     }
 
-                    if buf.contains("bye!") {
-                        info!("unbind requested");
-                        tx.write_all("later!".as_bytes()).await?;
-                        sess.close_tunnel(id).await?;
-                        return Ok(());
-                    } else if buf.contains("another!") {
-                        info!("another requested");
-                        let new_tunnel = sess.start_tunnel(&mut TCPEndpoint::default()).await?;
-                        tx.write_all(new_tunnel.url().as_bytes()).await?;
-                        handle_tunnel(new_tunnel, sess.clone());
-                    } else {
-                        info!("read line: {}", buf);
-                        tx.write_all(buf.as_bytes()).await?;
-                        info!("echoed line");
+                    if buf.eq("\r\n".into()) {
+                        info!("writing");
+                        tx.write_all("HTTP/1.1 200 OK\r\n\r\n<html><body>hi</body></html>\r\n\r\n".as_bytes()).await?;
+                        info!("done writing");
+                        tx.flush().await?;
+                        info!("connection shutdown");
+                        tx.shutdown().await?;
+                        break;
                     }
-                    tx.flush().await?;
-                    info!("flushed");
                 }
 
                 Result::<(), anyhow::Error>::Ok(())

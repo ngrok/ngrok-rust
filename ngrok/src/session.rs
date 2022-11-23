@@ -28,18 +28,21 @@ use tokio_util::compat::{
     FuturesAsyncReadCompatExt,
     TokioAsyncReadCompatExt,
 };
-
 use crate::{
     internals::{
         proto::{
             AuthExtra,
             AuthResp,
-            BindOpts,
         },
         raw_session::RawSession,
     },
     Conn,
     Tunnel,
+    config::{
+        common::{
+            TunnelConfig,
+        }
+    },
 };
 
 const CERT_BYTES: &[u8] = include_bytes!("../assets/ngrok.ca.crt");
@@ -270,28 +273,68 @@ impl Session {
         SessionBuilder::default()
     }
 
-    pub async fn start_tunnel(&self) -> anyhow::Result<Tunnel> {
-        let resp = self
+    pub async fn start_tunnel<C>(&self, tunnel_cfg: &mut C) -> anyhow::Result<Tunnel>
+        where C: TunnelConfig {
+
+        let mut raw_session_mutex = self
             .raw
             .lock()
-            .await
-            .listen(
-                "tcp",
-                BindOpts::TCPEndpoint(Default::default()),
-                Default::default(),
-                "",
-                "rust",
-            )
-            .await?;
+            .await;
 
-        let (tx, rx) = channel(64);
+        // let tunnelCfg: dyn TunnelConfig = TunnelConfig(opts);
+        let (tx, rx) = channel(64);        
+
+        // non-labeled tunnel
+        if tunnel_cfg.proto() != "" {
+            let resp = raw_session_mutex
+                .listen(
+                    tunnel_cfg.proto(),
+                    tunnel_cfg.opts().unwrap(), // this is crate-defined, and must exist if proto is non-empty
+                    tunnel_cfg.extra(),
+                    "",
+                    tunnel_cfg.forwards_to(),
+                )
+                .await?;
+            
+            let mut tunnels = self.tunnels.write().await;
+            tunnels.insert(resp.client_id.clone(), tx);
+
+            return Ok(Tunnel {
+                id: resp.client_id,
+                config_proto: resp.proto,
+                url: resp.url,
+                opts: resp.bind_opts,
+                token: resp.extra.token,
+                bind_extra: tunnel_cfg.extra(),
+                labels: HashMap::new(),
+                forwards_to: tunnel_cfg.forwards_to().into(),
+                sess: self.raw.clone(),
+                incoming: rx,
+            })
+        }
+
+        // labeled tunnel
+        let resp = raw_session_mutex
+            .listen_label(
+                tunnel_cfg.labels(),
+                tunnel_cfg.extra().metadata,
+                tunnel_cfg.forwards_to(),
+            )
+            .await?;                
 
         let mut tunnels = self.tunnels.write().await;
-        tunnels.insert(resp.client_id.clone(), tx);
+        tunnels.insert(resp.id.clone(), tx);
 
         Ok(Tunnel {
+            id: resp.id,
+            config_proto: Default::default(),
+            url: Default::default(),
+            opts: Default::default(),
+            token: Default::default(),
+            bind_extra: tunnel_cfg.extra(),
+            labels: tunnel_cfg.labels(),
+            forwards_to: tunnel_cfg.forwards_to().into(),
             sess: self.raw.clone(),
-            info: resp,
             incoming: rx,
         })
     }
