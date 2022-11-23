@@ -71,7 +71,7 @@ fn handle_tunnel(mut tunnel: Tunnel, sess: Arc<Session>) {
                         return Ok(());
                     } else if buf.contains("another!") {
                         info!("another requested");
-                        let new_tunnel = sess.start_tunnel(&mut TCPEndpoint::default()).await?;
+                        let new_tunnel = sess.start_tunnel(TCPEndpoint::default()).await?;
                         tx.write_all(new_tunnel.url().as_bytes()).await?;
                         handle_tunnel(new_tunnel, sess.clone());
                     } else {

@@ -273,10 +273,10 @@ impl Session {
         SessionBuilder::default()
     }
 
-    pub async fn start_tunnel<C>(&self, tunnel_cfg: &mut C) -> anyhow::Result<Tunnel>
+    pub async fn start_tunnel<C>(&self, tunnel_cfg: C) -> anyhow::Result<Tunnel>
         where C: TunnelConfig {
 
-        let mut raw_session_mutex = self
+        let mut raw = self
             .raw
             .lock()
             .await;
@@ -286,7 +286,7 @@ impl Session {
 
         // non-labeled tunnel
         if tunnel_cfg.proto() != "" {
-            let resp = raw_session_mutex
+            let resp = raw
                 .listen(
                     tunnel_cfg.proto(),
                     tunnel_cfg.opts().unwrap(), // this is crate-defined, and must exist if proto is non-empty
@@ -314,7 +314,7 @@ impl Session {
         }
 
         // labeled tunnel
-        let resp = raw_session_mutex
+        let resp = raw
             .listen_label(
                 tunnel_cfg.labels(),
                 tunnel_cfg.extra().metadata,

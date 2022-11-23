@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{common::{CommonOpts, TunnelConfig, private, FORWARDS_TO}, internals::proto::{BindExtra, BindOpts, self}};
+use crate::{common::{CommonOpts, private, FORWARDS_TO}, internals::proto::{BindExtra, BindOpts, self}};
 
 #[derive(Clone, Eq, PartialEq)]
 pub enum Scheme {
@@ -10,18 +10,16 @@ pub enum Scheme {
 
 pub struct HTTPEndpoint {
     common_opts: CommonOpts,
-    scheme: Option<Scheme>,
+    scheme: Scheme,
     hostname: Option<String>,
     basic_auth: Option<(String, String)>
 }
-
-impl TunnelConfig for HTTPEndpoint {}
 
 impl Default for HTTPEndpoint {
     fn default() -> Self {
         HTTPEndpoint {
             common_opts: CommonOpts::default(),
-            scheme: None,
+            scheme: Scheme::HTTPS,
             hostname: None,
             basic_auth: None,
         }
@@ -40,15 +38,19 @@ impl private::TunnelConfigPrivate for HTTPEndpoint {
         }
     }
     fn proto(&self) -> String {
-        let scheme = self.scheme.clone().unwrap_or(Scheme::HTTPS);
-        if scheme == Scheme::HTTP {
+        if self.scheme == Scheme::HTTP {
             return "http".into();
         }
         "https".into()
     }
     fn opts(&self) -> Option<BindOpts> {
-        let http_endpoint = proto::HTTPEndpoint::default();
-        // todo: fill out all the options here? or use the proto as our storage?
+        // fill out all the options here, translating to proto here
+        let mut http_endpoint = proto::HTTPEndpoint::default();
+
+        if let Some(proxy_proto) = self.common_opts.proxy_proto {
+            http_endpoint.proxy_proto = proxy_proto;
+        }
+
         Some(BindOpts::HTTPEndpoint(http_endpoint))
     }
     fn labels(&self) -> HashMap<String,String> {

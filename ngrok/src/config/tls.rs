@@ -1,12 +1,10 @@
 use std::collections::HashMap;
 
-use crate::{common::{CommonOpts, TunnelConfig, private, FORWARDS_TO}, internals::proto::{BindExtra, BindOpts, self}};
+use crate::{common::{CommonOpts, private, FORWARDS_TO}, internals::proto::{BindExtra, BindOpts, self}};
 
 pub struct TLSEndpoint {
     common_opts: CommonOpts,
 }
-
-impl TunnelConfig for TLSEndpoint {}
 
 impl Default for TLSEndpoint {
     fn default() -> Self {
@@ -29,8 +27,13 @@ impl private::TunnelConfigPrivate for TLSEndpoint {
     }
     fn proto(&self) -> String {"tls".into()}
     fn opts(&self) -> Option<BindOpts> {
-        let tls_endpoint = proto::TLSEndpoint::default();
-        // todo: fill out all the options here? or use the proto as our storage?
+        // fill out all the options here, translating to proto here
+        let mut tls_endpoint = proto::TLSEndpoint::default();
+
+        if let Some(proxy_proto) = self.common_opts.proxy_proto {
+            tls_endpoint.proxy_proto = proxy_proto;
+        }
+
         Some(BindOpts::TLSEndpoint(tls_endpoint))
     }
     fn labels(&self) -> HashMap<String,String> {

@@ -1,12 +1,10 @@
 use std::collections::HashMap;
 
-use crate::{common::{CommonOpts, TunnelConfig, private, FORWARDS_TO}, internals::proto::{BindExtra, BindOpts}};
+use crate::{common::{CommonOpts, private, FORWARDS_TO}, internals::proto::{BindExtra, BindOpts}};
 
 pub struct LabeledTunnel {
     common_opts: CommonOpts,
 }
-
-impl TunnelConfig for LabeledTunnel {}
 
 impl Default for LabeledTunnel {
     fn default() -> Self {

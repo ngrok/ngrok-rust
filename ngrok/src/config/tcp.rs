@@ -1,12 +1,10 @@
 use std::collections::HashMap;
 
-use crate::{internals::proto::{BindExtra, BindOpts, self}, common::{CommonOpts, TunnelConfig, FORWARDS_TO, private}};
+use crate::{common::{CommonOpts, FORWARDS_TO, private}, internals::proto::{BindExtra, BindOpts, self}};
 
 pub struct TCPEndpoint {
     pub(crate) common_opts: CommonOpts,
 }
-
-impl TunnelConfig for TCPEndpoint {}
 
 impl Default for TCPEndpoint {
     fn default() -> Self {
@@ -29,8 +27,13 @@ impl private::TunnelConfigPrivate for TCPEndpoint {
     }
     fn proto(&self) -> String {"tcp".into()}
     fn opts(&self) -> Option<BindOpts> {
-        let tcp_endpoint = proto::TCPEndpoint::default();
-        // todo: fill out all the options here? or use the proto as our storage?
+        // fill out all the options here, translating to proto here
+        let mut tcp_endpoint = proto::TCPEndpoint::default();
+
+        if let Some(proxy_proto) = self.common_opts.proxy_proto {
+            tcp_endpoint.proxy_proto = proxy_proto;
+        }
+
         Some(BindOpts::TCPEndpoint(tcp_endpoint))
     }
     fn labels(&self) -> HashMap<String,String> {
