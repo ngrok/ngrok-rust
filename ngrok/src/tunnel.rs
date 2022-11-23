@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     pin::Pin,
     sync::Arc,
     task::{
@@ -24,7 +25,8 @@ use tokio::{
 
 use crate::internals::{
     proto::{
-        BindResp,
+        BindExtra,
+        BindOpts,
         ProxyHeader,
     },
     raw_session::{
@@ -34,8 +36,15 @@ use crate::internals::{
 };
 
 pub struct Tunnel {
+    pub(crate) id: String,
+    pub(crate) config_proto: String,
+    pub(crate) url: String,
+    pub(crate) opts: Option<BindOpts>,
+    pub(crate) token: String,
+    pub(crate) bind_extra: BindExtra,
+    pub(crate) labels: HashMap<String, String>,
+    pub(crate) forwards_to: String,
     pub(crate) sess: Arc<Mutex<RawSession>>,
-    pub(crate) info: BindResp,
     pub(crate) incoming: Receiver<anyhow::Result<Conn>>,
 }
 
@@ -58,19 +67,15 @@ impl Tunnel {
     }
 
     pub fn id(&self) -> &str {
-        &self.info.client_id
+        &self.id
     }
 
     pub fn url(&self) -> &str {
-        &self.info.url
+        &self.url
     }
 
     pub async fn close(&mut self) -> anyhow::Result<()> {
-        self.sess
-            .lock()
-            .await
-            .unlisten(&self.info.client_id)
-            .await?;
+        self.sess.lock().await.unlisten(&self.id).await?;
         self.incoming.close();
         Ok(())
     }

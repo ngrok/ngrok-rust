@@ -2,7 +2,10 @@ use std::{
     collections::HashMap,
     env,
     io,
-    num::{ParseIntError, TryFromIntError},
+    num::{
+        ParseIntError,
+        TryFromIntError,
+    },
     sync::Arc,
     time::Duration,
 };
@@ -30,11 +33,11 @@ use tokio_util::compat::{
 };
 
 use crate::{
+    config::common::TunnelConfig,
     internals::{
         proto::{
             AuthExtra,
             AuthResp,
-            BindOpts,
         },
         raw_session::RawSession,
     },
@@ -46,7 +49,7 @@ const CERT_BYTES: &[u8] = include_bytes!("../assets/ngrok.ca.crt");
 const NOT_IMPLEMENTED: &str = "the agent has not defined a callback for this operation";
 
 pub struct Session {
-	#[allow(dead_code)]
+    #[allow(dead_code)]
     authresp: AuthResp,
     raw: Arc<Mutex<RawSession>>,
     tunnels: Arc<RwLock<HashMap<String, Sender<anyhow::Result<Conn>>>>>,
@@ -186,21 +189,18 @@ impl SessionBuilder {
         }
         // convert these while we have ownership
         let heartbeat_interval = i64::try_from(heartbeat_config.interval.as_nanos())
-        .map_err(ConnectError::SessionConfig)?;
+            .map_err(ConnectError::SessionConfig)?;
         let heartbeat_tolerance = i64::try_from(heartbeat_config.tolerance.as_nanos())
-        .map_err(ConnectError::SessionConfig)?;
+            .map_err(ConnectError::SessionConfig)?;
 
-        let mut raw = RawSession::connect(
-            tls_conn.compat(),
-            heartbeat_config,
-        )
-        .await
-        .map_err(ConnectError::Session)?;
+        let mut raw = RawSession::connect(tls_conn.compat(), heartbeat_config)
+            .await
+            .map_err(ConnectError::Session)?;
 
         // list of possibilities: https://doc.rust-lang.org/std/env/consts/constant.OS.html
         let os = match env::consts::OS {
             "macos" => "darwin",
-            _ => env::consts::OS
+            _ => env::consts::OS,
         };
 
         let resp = raw
@@ -270,28 +270,66 @@ impl Session {
         SessionBuilder::default()
     }
 
-    pub async fn start_tunnel(&self) -> anyhow::Result<Tunnel> {
-        let resp = self
-            .raw
-            .lock()
-            .await
-            .listen(
-                "tcp",
-                BindOpts::TCPEndpoint(Default::default()),
-                Default::default(),
-                "",
-                "rust",
+    pub async fn start_tunnel<C>(&self, tunnel_cfg: C) -> anyhow::Result<Tunnel>
+    where
+        C: TunnelConfig,
+    {
+        let mut raw = self.raw.lock().await;
+
+        // let tunnelCfg: dyn TunnelConfig = TunnelConfig(opts);
+        let (tx, rx) = channel(64);
+
+        // non-labeled tunnel
+        if tunnel_cfg.proto() != "" {
+            let resp = raw
+                .listen(
+                    tunnel_cfg.proto(),
+                    tunnel_cfg.opts().unwrap(), // this is crate-defined, and must exist if proto is non-empty
+                    tunnel_cfg.extra(),
+                    "",
+                    tunnel_cfg.forwards_to(),
+                )
+                .await?;
+
+            let mut tunnels = self.tunnels.write().await;
+            tunnels.insert(resp.client_id.clone(), tx);
+
+            return Ok(Tunnel {
+                id: resp.client_id,
+                config_proto: resp.proto,
+                url: resp.url,
+                opts: resp.bind_opts,
+                token: resp.extra.token,
+                bind_extra: tunnel_cfg.extra(),
+                labels: HashMap::new(),
+                forwards_to: tunnel_cfg.forwards_to().into(),
+                sess: self.raw.clone(),
+                incoming: rx,
+            });
+        }
+
+        // labeled tunnel
+        let resp = raw
+            .listen_label(
+                tunnel_cfg.labels(),
+                tunnel_cfg.extra().metadata,
+                tunnel_cfg.forwards_to(),
             )
             .await?;
 
-        let (tx, rx) = channel(64);
-
         let mut tunnels = self.tunnels.write().await;
-        tunnels.insert(resp.client_id.clone(), tx);
+        tunnels.insert(resp.id.clone(), tx);
 
         Ok(Tunnel {
+            id: resp.id,
+            config_proto: Default::default(),
+            url: Default::default(),
+            opts: Default::default(),
+            token: Default::default(),
+            bind_extra: tunnel_cfg.extra(),
+            labels: tunnel_cfg.labels(),
+            forwards_to: tunnel_cfg.forwards_to().into(),
             sess: self.raw.clone(),
-            info: resp,
             incoming: rx,
         })
     }

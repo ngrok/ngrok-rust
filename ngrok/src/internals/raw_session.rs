@@ -3,7 +3,10 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Error, bail};
+use anyhow::{
+    bail,
+    Error,
+};
 use muxado::{
     heartbeat::HeartbeatConfig,
     session::SessionBuilder,
@@ -33,10 +36,11 @@ use super::{
         StartTunnelWithLabelResp,
         Unbind,
         UnbindResp,
+        PROXY_REQ,
         RESTART_REQ,
         STOP_REQ,
         UPDATE_REQ,
-        VERSION, PROXY_REQ,
+        VERSION,
     },
     rpc::RPCRequest,
 };
@@ -150,7 +154,7 @@ impl RawSession {
                     let header = ProxyHeader::read_from_stream(&mut *stream).await?;
 
                     break TunnelStream { header, stream };
-                },
+                }
                 t => bail!("invalid stream type: {}", t),
             }
         })
