@@ -16,16 +16,13 @@ use async_rustls::{
 };
 use muxado::heartbeat::HeartbeatConfig;
 use thiserror::Error;
-use tokio::{
-    sync::{
-        mpsc::{
-            channel,
-            Sender,
-        },
-        Mutex,
-        RwLock,
+use tokio::sync::{
+    mpsc::{
+        channel,
+        Sender,
     },
-    time::timeout,
+    Mutex,
+    RwLock,
 };
 use tokio_util::compat::{
     FuturesAsyncReadCompatExt,
@@ -39,7 +36,10 @@ use crate::{
             AuthExtra,
             AuthResp,
         },
-        raw_session::RawSession,
+        raw_session::{
+            RawSession,
+            RpcClient,
+        },
     },
     Conn,
     Tunnel,
@@ -51,7 +51,7 @@ const NOT_IMPLEMENTED: &str = "the agent has not defined a callback for this ope
 pub struct Session {
     #[allow(dead_code)]
     authresp: AuthResp,
-    raw: Arc<Mutex<RawSession>>,
+    client: Arc<Mutex<RpcClient>>,
     tunnels: Arc<RwLock<HashMap<String, Sender<anyhow::Result<Conn>>>>>,
 }
 
@@ -224,20 +224,17 @@ impl SessionBuilder {
             .await
             .map_err(ConnectError::Auth)?;
 
+        let (client, mut incoming) = raw.split();
+
         let tunnels: Arc<RwLock<HashMap<String, Sender<Result<Conn, anyhow::Error>>>>> =
             Arc::new(Default::default());
-        let raw = Arc::new(Mutex::new(raw));
 
         tokio::spawn({
             let tunnels = Arc::clone(&tunnels);
-            let raw = Arc::clone(&raw);
             async move {
                 loop {
-                    let mut raw = raw.lock().await;
-                    let conn = timeout(Duration::from_millis(10), raw.accept()).await;
-
-                    match conn {
-                        Ok(Ok(conn)) => {
+                    match incoming.accept().await {
+                        Ok(conn) => {
                             let id = conn.header.id.clone();
                             let guard = RwLock::read(&tunnels).await;
                             let res = if let Some(ch) = guard.get(&id) {
@@ -250,8 +247,7 @@ impl SessionBuilder {
                                 RwLock::write(&tunnels).await.remove(&id);
                             }
                         }
-                        Ok(Err(_e)) => break,
-                        _ => continue, // timeout, yield to rpcs
+                        Err(_e) => break,
                     }
                 }
             }
@@ -259,7 +255,7 @@ impl SessionBuilder {
 
         Ok(Session {
             authresp: resp,
-            raw,
+            client: Arc::new(Mutex::new(client)),
             tunnels,
         })
     }
@@ -274,14 +270,14 @@ impl Session {
     where
         C: TunnelConfig,
     {
-        let mut raw = self.raw.lock().await;
+        let mut client = self.client.lock().await;
 
         // let tunnelCfg: dyn TunnelConfig = TunnelConfig(opts);
         let (tx, rx) = channel(64);
 
         // non-labeled tunnel
         if tunnel_cfg.proto() != "" {
-            let resp = raw
+            let resp = client
                 .listen(
                     tunnel_cfg.proto(),
                     tunnel_cfg.opts().unwrap(), // this is crate-defined, and must exist if proto is non-empty
@@ -303,13 +299,13 @@ impl Session {
                 bind_extra: tunnel_cfg.extra(),
                 labels: HashMap::new(),
                 forwards_to: tunnel_cfg.forwards_to().into(),
-                sess: self.raw.clone(),
+                client: self.client.clone(),
                 incoming: rx,
             });
         }
 
         // labeled tunnel
-        let resp = raw
+        let resp = client
             .listen_label(
                 tunnel_cfg.labels(),
                 tunnel_cfg.extra().metadata,
@@ -329,14 +325,14 @@ impl Session {
             bind_extra: tunnel_cfg.extra(),
             labels: tunnel_cfg.labels(),
             forwards_to: tunnel_cfg.forwards_to().into(),
-            sess: self.raw.clone(),
+            client: self.client.clone(),
             incoming: rx,
         })
     }
 
     pub async fn close_tunnel(&self, id: impl AsRef<str>) -> anyhow::Result<()> {
         let id = id.as_ref();
-        self.raw.lock().await.unlisten(id).await?;
+        self.client.lock().await.unlisten(id).await?;
         self.tunnels.write().await.remove(id);
         Ok(())
     }
