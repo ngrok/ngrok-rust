@@ -5,7 +5,6 @@ pub mod codec;
 pub mod errors;
 pub mod frame;
 pub mod session;
-pub mod shared;
 pub mod stream;
 pub mod stream_manager;
 pub mod stream_output;

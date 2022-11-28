@@ -44,7 +44,7 @@ pub struct Header {
     pub stream_id: StreamID,
 }
 
-#[derive(Default, Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Frame {
     pub header: Header,
     pub body: Body,

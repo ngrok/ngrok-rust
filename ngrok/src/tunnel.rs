@@ -30,7 +30,7 @@ use crate::internals::{
         ProxyHeader,
     },
     raw_session::{
-        RawSession,
+        RpcClient,
         TunnelStream,
     },
 };
@@ -44,7 +44,7 @@ pub struct Tunnel {
     pub(crate) bind_extra: BindExtra,
     pub(crate) labels: HashMap<String, String>,
     pub(crate) forwards_to: String,
-    pub(crate) sess: Arc<Mutex<RawSession>>,
+    pub(crate) client: Arc<Mutex<RpcClient>>,
     pub(crate) incoming: Receiver<anyhow::Result<Conn>>,
 }
 
@@ -75,7 +75,7 @@ impl Tunnel {
     }
 
     pub async fn close(&mut self) -> anyhow::Result<()> {
-        self.sess.lock().await.unlisten(&self.id).await?;
+        self.client.lock().await.unlisten(&self.id).await?;
         self.incoming.close();
         Ok(())
     }

@@ -26,7 +26,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let sess = SessionBuilder::new(conn).start();
     let typed = Typed::new(sess);
-    let mut heartbeat = Heartbeat::new(
+    let (_heartbeat, _heartbeat_ctl) = Heartbeat::start(
         typed,
         HeartbeatConfig {
             callback: Some(|d| {
@@ -34,9 +34,8 @@ async fn main() -> Result<(), anyhow::Error> {
             }),
             ..Default::default()
         },
-    );
-
-    heartbeat.start().await?;
+    )
+    .await?;
 
     let _: () = futures::future::pending().await;
     Ok(())

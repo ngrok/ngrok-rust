@@ -1,5 +1,9 @@
 use std::{
     collections::HashMap,
+    ops::{
+        Deref,
+        DerefMut,
+    },
     time::Duration,
 };
 
@@ -11,6 +15,8 @@ use muxado::{
     heartbeat::HeartbeatConfig,
     session::SessionBuilder,
     typed::{
+        AcceptTypedStream,
+        OpenTypedStream,
         TypedSession,
         TypedStream,
     },
@@ -45,9 +51,30 @@ use super::{
     rpc::RPCRequest,
 };
 
+pub struct RpcClient {
+    open: Box<dyn OpenTypedStream + Send>,
+}
+
+pub struct IncomingStreams {
+    accept: Box<dyn AcceptTypedStream + Send>,
+}
+
 pub struct RawSession {
-    id: String,
-    inner: Box<dyn TypedSession>,
+    client: RpcClient,
+    incoming: IncomingStreams,
+}
+
+impl Deref for RawSession {
+    type Target = RpcClient;
+    fn deref(&self) -> &Self::Target {
+        &self.client
+    }
+}
+
+impl DerefMut for RawSession {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.client
+    }
 }
 
 impl RawSession {
@@ -59,19 +86,33 @@ impl RawSession {
         let mux_sess = SessionBuilder::new(io_stream).start();
 
         let typed = muxado::typed::Typed::new(mux_sess);
-        let mut heartbeat = muxado::heartbeat::Heartbeat::new(typed, heartbeat);
-        heartbeat.start().await?;
+        let (heartbeat, _) = muxado::heartbeat::Heartbeat::start(typed, heartbeat).await?;
+        let (open, accept) = heartbeat.split_typed();
 
         let sess = RawSession {
-            id: String::new(),
-            inner: Box::new(heartbeat),
+            client: RpcClient {
+                open: Box::new(open),
+            },
+            incoming: IncomingStreams {
+                accept: Box::new(accept),
+            },
         };
 
         Ok(sess)
     }
 
+    pub async fn accept(&mut self) -> Result<TunnelStream, Error> {
+        self.incoming.accept().await
+    }
+
+    pub fn split(self) -> (RpcClient, IncomingStreams) {
+        (self.client, self.incoming)
+    }
+}
+
+impl RpcClient {
     async fn rpc<R: RPCRequest>(&mut self, req: R) -> Result<R::Response, Error> {
-        let mut stream = self.inner.open_typed(R::TYPE).await?;
+        let mut stream = self.open.open_typed(R::TYPE).await?;
         let s = serde_json::to_vec(&req)?;
         stream.write_all(&*s).await?;
         let mut buf = Vec::new();
@@ -93,9 +134,6 @@ impl RawSession {
         };
 
         let resp = self.rpc(req).await?;
-        if resp.client_id.is_some() && resp.client_id != Some(id) {
-            self.id = resp.client_id.as_ref().unwrap().clone();
-        }
 
         Ok(resp)
     }
@@ -141,10 +179,12 @@ impl RawSession {
         })
         .await
     }
+}
 
+impl IncomingStreams {
     pub async fn accept(&mut self) -> Result<TunnelStream, Error> {
         Ok(loop {
-            let mut stream = self.inner.accept_typed().await?;
+            let mut stream = self.accept.accept_typed().await?;
 
             match stream.typ() {
                 RESTART_REQ => {}

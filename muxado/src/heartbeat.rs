@@ -27,6 +27,8 @@ use tokio::{
 use crate::{
     errors::ErrorType,
     typed::{
+        AcceptTypedStream,
+        OpenTypedStream,
         StreamType,
         TypedSession,
         TypedStream,
@@ -35,15 +37,14 @@ use crate::{
 
 const HEARTBEAT_TYPE: StreamType = StreamType::clamp(0xFFFFFFFF);
 
-pub struct Heartbeat<S, F> {
+pub struct Heartbeat<S> {
     typ: StreamType,
     inner: S,
+}
 
+pub struct HeartbeatCtl {
     durations: Arc<(AtomicU64, AtomicU64)>,
-
-    callback: Option<Option<F>>,
-
-    on_demand: Option<mpsc::Sender<oneshot::Sender<Duration>>>,
+    on_demand: mpsc::Sender<oneshot::Sender<Duration>>,
 }
 
 pub struct HeartbeatConfig<F = fn(Duration)> {
@@ -62,22 +63,53 @@ impl<F> Default for HeartbeatConfig<F> {
     }
 }
 
-impl<S, F> Heartbeat<S, F>
+impl<S> Heartbeat<S>
 where
     S: TypedSession + 'static,
-    F: FnMut(Duration) + Send + 'static,
 {
-    pub fn new(sess: S, cfg: HeartbeatConfig<F>) -> Self {
-        Heartbeat {
+    pub async fn start<F>(
+        sess: S,
+        cfg: HeartbeatConfig<F>,
+    ) -> Result<(Self, HeartbeatCtl), io::Error>
+    where
+        F: FnMut(Duration) + Send + 'static,
+    {
+        let mut hb = Heartbeat {
             typ: HEARTBEAT_TYPE,
             inner: sess,
+        };
+
+        let (dtx, drx) = mpsc::channel(1);
+        let (mtx, mrx) = mpsc::channel(1);
+        let mut ctl = HeartbeatCtl {
             durations: Arc::new((
                 (cfg.interval.as_nanos() as u64).into(),
                 (cfg.tolerance.as_nanos() as u64).into(),
             )),
-            callback: Some(cfg.callback),
-            on_demand: None,
-        }
+            on_demand: dtx,
+        };
+
+        let stream = hb
+            .inner
+            .open_typed(hb.typ)
+            .await
+            .map_err(|_| io::ErrorKind::ConnectionReset)?;
+
+        ctl.start_requester(stream, drx, mtx).await?;
+        ctl.start_check(mrx, cfg.callback)?;
+
+        Ok((hb, ctl))
+    }
+}
+
+impl HeartbeatCtl {
+    pub async fn beat(&self) -> Result<Duration, io::Error> {
+        let (tx, rx) = oneshot::channel();
+        self.on_demand
+            .send(tx)
+            .await
+            .map_err(|_| io::ErrorKind::NotConnected)?;
+        rx.await.map_err(|_| io::ErrorKind::ConnectionReset.into())
     }
 
     pub fn set_interval(&self, interval: Duration) {
@@ -92,23 +124,16 @@ where
             .store(tolerance.as_nanos() as u64, Ordering::Relaxed);
     }
 
-    pub async fn start(&mut self) -> Result<(), io::Error> {
-        let (dtx, drx) = mpsc::channel(1);
-        self.on_demand = Some(dtx);
-        let (mtx, mrx) = mpsc::channel(1);
-        self.start_requester(drx, mtx).await?;
-        self.start_check(mrx)?;
-
-        Ok(())
-    }
-
-    fn start_check(&mut self, mut mark: mpsc::Receiver<Duration>) -> Result<(), io::Error> {
+    fn start_check<F>(
+        &mut self,
+        mut mark: mpsc::Receiver<Duration>,
+        mut cb: Option<F>,
+    ) -> Result<(), io::Error>
+    where
+        F: FnMut(Duration) + Send + 'static,
+    {
         let (mut interval, mut tolerance) = self.get_durations();
         let durations = self.durations.clone();
-
-        let mut cb = self.callback.take().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::AlreadyExists, "heartbeat already started")
-        })?;
 
         tokio::spawn(
             async move {
@@ -146,15 +171,10 @@ where
 
     async fn start_requester(
         &mut self,
+        mut stream: TypedStream,
         mut on_demand: mpsc::Receiver<oneshot::Sender<Duration>>,
         mark: mpsc::Sender<Duration>,
     ) -> Result<(), io::Error> {
-        let mut stream = self
-            .inner
-            .open_typed(self.typ)
-            .await
-            .map_err(|_| io::ErrorKind::ConnectionReset)?;
-
         let (interval, _) = self.get_durations();
         let mut ticker = tokio::time::interval(interval);
 
@@ -220,29 +240,28 @@ where
     fn get_durations(&self) -> (Duration, Duration) {
         get_durations(&self.durations)
     }
+}
 
-    fn start_responder(&mut self, mut stream: TypedStream) {
-        tokio::spawn(async move {
-            loop {
-                let mut buf = [0u8; 4];
-                if let Err(e) = stream.read(&mut buf[..]).await {
-                    tracing::debug!(?e, "heartbeat responder exiting");
-                    return;
-                }
-                if let Err(e) = stream.write_all(&buf[..]).await {
-                    tracing::debug!(?e, "heartbeat responder exiting");
-                    return;
-                }
+fn start_responder(mut stream: TypedStream) {
+    tokio::spawn(async move {
+        loop {
+            let mut buf = [0u8; 4];
+            if let Err(e) = stream.read(&mut buf[..]).await {
+                tracing::debug!(?e, "heartbeat responder exiting");
+                return;
             }
-        });
-    }
+            if let Err(e) = stream.write_all(&buf[..]).await {
+                tracing::debug!(?e, "heartbeat responder exiting");
+                return;
+            }
+        }
+    });
 }
 
 #[async_trait]
-impl<S, F> TypedSession for Heartbeat<S, F>
+impl<S> AcceptTypedStream for Heartbeat<S>
 where
-    S: TypedSession + 'static,
-    F: FnMut(Duration) + Send + 'static,
+    S: AcceptTypedStream + Send,
 {
     async fn accept_typed(&mut self) -> Result<TypedStream, ErrorType> {
         loop {
@@ -250,14 +269,20 @@ where
             let typ = stream.typ();
 
             if typ == self.typ {
-                self.start_responder(stream);
+                start_responder(stream);
                 continue;
             }
 
             return Ok(stream);
         }
     }
+}
 
+#[async_trait]
+impl<S> OpenTypedStream for Heartbeat<S>
+where
+    S: OpenTypedStream + Send,
+{
     async fn open_typed(&mut self, typ: StreamType) -> Result<TypedStream, ErrorType> {
         // Don't open a heartbeat stream manually
         if typ == self.typ {
@@ -265,6 +290,25 @@ where
         }
 
         self.inner.open_typed(typ).await
+    }
+}
+
+impl<S> TypedSession for Heartbeat<S>
+where
+    S: TypedSession + Send,
+    S::AcceptTyped: Send,
+    S::OpenTyped: Send,
+{
+    type AcceptTyped = Heartbeat<S::AcceptTyped>;
+    type OpenTyped = Heartbeat<S::OpenTyped>;
+
+    fn split_typed(self) -> (Self::OpenTyped, Self::AcceptTyped) {
+        let typ = self.typ;
+        let (open, accept) = self.inner.split_typed();
+        (
+            Heartbeat { typ, inner: open },
+            Heartbeat { typ, inner: accept },
+        )
     }
 }
 
