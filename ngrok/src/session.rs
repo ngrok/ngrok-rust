@@ -48,11 +48,13 @@ use crate::{
 const CERT_BYTES: &[u8] = include_bytes!("../assets/ngrok.ca.crt");
 const NOT_IMPLEMENTED: &str = "the agent has not defined a callback for this operation";
 
+type TunnelConns = HashMap<String, Sender<anyhow::Result<Conn>>>;
+
 pub struct Session {
     #[allow(dead_code)]
     authresp: AuthResp,
     client: Arc<Mutex<RpcClient>>,
-    tunnels: Arc<RwLock<HashMap<String, Sender<anyhow::Result<Conn>>>>>,
+    tunnels: Arc<RwLock<TunnelConns>>,
 }
 
 #[derive(Clone)]
@@ -226,28 +228,22 @@ impl SessionBuilder {
 
         let (client, mut incoming) = raw.split();
 
-        let tunnels: Arc<RwLock<HashMap<String, Sender<Result<Conn, anyhow::Error>>>>> =
-            Arc::new(Default::default());
+        let tunnels: Arc<RwLock<TunnelConns>> = Default::default();
 
         tokio::spawn({
-            let tunnels = Arc::clone(&tunnels);
+            let tunnels = tunnels.clone();
             async move {
-                loop {
-                    match incoming.accept().await {
-                        Ok(conn) => {
-                            let id = conn.header.id.clone();
-                            let guard = RwLock::read(&tunnels).await;
-                            let res = if let Some(ch) = guard.get(&id) {
-                                ch.send(Ok(Conn { inner: conn })).await
-                            } else {
-                                Ok(())
-                            };
-                            drop(guard);
-                            if res.is_err() {
-                                RwLock::write(&tunnels).await.remove(&id);
-                            }
-                        }
-                        Err(_e) => break,
+                while let Ok(conn) = incoming.accept().await {
+                    let id = conn.header.id.clone();
+                    let guard = tunnels.read().await;
+                    let res = if let Some(ch) = guard.get(&id) {
+                        ch.send(Ok(Conn { inner: conn })).await
+                    } else {
+                        Ok(())
+                    };
+                    drop(guard);
+                    if res.is_err() {
+                        RwLock::write(&tunnels).await.remove(&id);
                     }
                 }
             }
@@ -262,7 +258,7 @@ impl SessionBuilder {
 }
 
 impl Session {
-    pub fn new() -> SessionBuilder {
+    pub fn builder() -> SessionBuilder {
         SessionBuilder::default()
     }
 

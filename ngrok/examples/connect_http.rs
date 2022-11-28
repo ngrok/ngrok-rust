@@ -24,7 +24,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let sess = Arc::new(
-        Session::new()
+        Session::builder()
             .with_authtoken_from_env()
             .with_metadata("Online in One Line")
             .connect()

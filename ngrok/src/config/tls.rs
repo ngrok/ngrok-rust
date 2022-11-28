@@ -37,13 +37,13 @@ impl private::TunnelConfigPrivate for TLSEndpoint {
     }
     fn opts(&self) -> Option<BindOpts> {
         // fill out all the options here, translating to proto here
-        let mut tls_endpoint = proto::TLSEndpoint::default();
+        let mut tls_endpoint = proto::TlsEndpoint::default();
 
         if let Some(proxy_proto) = self.common_opts.proxy_proto {
             tls_endpoint.proxy_proto = proxy_proto;
         }
 
-        Some(BindOpts::TLSEndpoint(tls_endpoint))
+        Some(BindOpts::Tls(tls_endpoint))
     }
     fn labels(&self) -> HashMap<String, String> {
         HashMap::new()

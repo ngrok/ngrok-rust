@@ -1,3 +1,6 @@
+// TODO: remove this once the Tunnel type is fully fleshed out.
+#![allow(dead_code)]
+
 use std::{
     collections::HashMap,
     pin::Pin,
