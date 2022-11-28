@@ -161,7 +161,7 @@ impl Stream {
         }
         match frame.body {
             Body::Data(bs) => {
-                self.read_buf.extend_from_slice(&*bs);
+                self.read_buf.extend_from_slice(&bs);
                 self.maybe_wake_read(cx);
             }
             Body::WndInc(by) => {
@@ -207,7 +207,7 @@ impl AsyncRead for Stream {
     ) -> Poll<io::Result<()>> {
         loop {
             // If we have data, return it
-            if self.read_buf.len() != 0 {
+            if !self.read_buf.is_empty() {
                 let max = cmp::min(self.read_buf.len(), buf.remaining());
                 let clamped = WndInc::clamp(max as u32);
                 let n = *clamped as usize;

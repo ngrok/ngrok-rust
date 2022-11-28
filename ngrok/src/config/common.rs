@@ -84,6 +84,7 @@ pub struct CidrRestrictions {
 }
 
 // Common
+#[derive(Default)]
 pub(crate) struct CommonOpts {
     // Restrictions placed on the origin of incoming connections to the edge.
     pub(crate) cidr_restrictions: Option<CidrRestrictions>,
@@ -95,15 +96,4 @@ pub(crate) struct CommonOpts {
     // Tunnel backend metadata. Viewable via the dashboard and API, but has no
     // bearing on tunnel behavior.
     pub(crate) forwards_to: Option<String>,
-}
-
-impl Default for CommonOpts {
-    fn default() -> Self {
-        CommonOpts {
-            cidr_restrictions: None,
-            proxy_proto: None,
-            metadata: None,
-            forwards_to: None,
-        }
-    }
 }

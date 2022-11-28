@@ -32,19 +32,17 @@ fn decode_header(mut bs: BytesMut) -> Header {
     let length = ((length_type_flags & 0xFFFFFF00) >> 8).try_into().unwrap();
     let type_flags = length_type_flags as u8;
 
-    let header = Header {
+    Header {
         length,
         typ: ((type_flags & 0xF0) >> 4).into(),
         flags: Flags::from_bits_truncate(type_flags & 0x0F),
         stream_id: StreamID::mask(bs.get_u32()),
-    };
-
-    header
+    }
 }
 
 fn expect_zero_stream_id(header: Header) -> Result<(), InvalidHeader> {
     if header.stream_id != StreamID::clamp(0) {
-        return Err(InvalidHeader::NonZeroStreamID(header.stream_id));
+        Err(InvalidHeader::NonZeroStreamID(header.stream_id))
     } else {
         Ok(())
     }
@@ -52,7 +50,7 @@ fn expect_zero_stream_id(header: Header) -> Result<(), InvalidHeader> {
 
 fn expect_non_zero_stream_id(header: Header) -> Result<(), InvalidHeader> {
     if header.stream_id == StreamID::clamp(0) {
-        return Err(InvalidHeader::ZeroStreamID);
+        Err(InvalidHeader::ZeroStreamID)
     } else {
         Ok(())
     }
@@ -60,10 +58,10 @@ fn expect_non_zero_stream_id(header: Header) -> Result<(), InvalidHeader> {
 
 fn expect_length(header: Header, length: Length) -> Result<(), InvalidHeader> {
     if header.length != length {
-        return Err(InvalidHeader::Length {
+        Err(InvalidHeader::Length {
             expected: length,
             actual: header.length,
-        });
+        })
     } else {
         Ok(())
     }
@@ -71,10 +69,10 @@ fn expect_length(header: Header, length: Length) -> Result<(), InvalidHeader> {
 
 fn expect_min_length(header: Header, length: Length) -> Result<(), InvalidHeader> {
     if header.length < length {
-        return Err(InvalidHeader::MinLength {
+        Err(InvalidHeader::MinLength {
             expected: length,
             actual: header.length,
-        });
+        })
     } else {
         Ok(())
     }
@@ -181,7 +179,7 @@ fn encode_header(header: Header, buf: &mut BytesMut) {
 fn encode_body(body: Body, buf: &mut BytesMut) {
     match body {
         Body::Rst(err) => buf.put_u32(*ErrorCode::from(err)),
-        Body::Data(data) => buf.writer().write_all(&*data).unwrap(),
+        Body::Data(data) => buf.writer().write_all(&data).unwrap(),
         Body::WndInc(inc) => buf.put_u32(*inc),
         Body::GoAway {
             last_stream_id,
@@ -190,9 +188,9 @@ fn encode_body(body: Body, buf: &mut BytesMut) {
         } => {
             buf.put_u32(*last_stream_id);
             buf.put_u32(*ErrorCode::from(error));
-            buf.writer().write_all(&*message).unwrap();
+            buf.writer().write_all(&message).unwrap();
         }
-        Body::Invalid { body, .. } => buf.writer().write_all(&*body).unwrap(),
+        Body::Invalid { body, .. } => buf.writer().write_all(&body).unwrap(),
     }
 }
 

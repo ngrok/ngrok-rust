@@ -538,8 +538,8 @@ mod base64proto {
         d: D,
     ) -> Result<M, D::Error> {
         let base64 = String::deserialize(d)?;
-        let bytes = base64::decode(base64.as_bytes()).map_err(|e| serde::de::Error::custom(e))?;
-        M::decode(bytes.as_slice()).map_err(|e| serde::de::Error::custom(e))
+        let bytes = base64::decode(base64.as_bytes()).map_err(serde::de::Error::custom)?;
+        M::decode(bytes.as_slice()).map_err(serde::de::Error::custom)
     }
 }
 

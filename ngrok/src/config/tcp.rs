@@ -13,16 +13,9 @@ use crate::{
     },
 };
 
+#[derive(Default)]
 pub struct TCPEndpoint {
     pub(crate) common_opts: CommonOpts,
-}
-
-impl Default for TCPEndpoint {
-    fn default() -> Self {
-        TCPEndpoint {
-            common_opts: CommonOpts::default(),
-        }
-    }
 }
 
 impl private::TunnelConfigPrivate for TCPEndpoint {
@@ -53,7 +46,7 @@ impl private::TunnelConfigPrivate for TCPEndpoint {
         Some(BindOpts::TCPEndpoint(tcp_endpoint))
     }
     fn labels(&self) -> HashMap<String, String> {
-        return HashMap::new();
+        HashMap::new()
     }
 }
 

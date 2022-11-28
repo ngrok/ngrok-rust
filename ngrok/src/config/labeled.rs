@@ -12,16 +12,9 @@ use crate::{
     },
 };
 
+#[derive(Default)]
 pub struct LabeledTunnel {
     common_opts: CommonOpts,
-}
-
-impl Default for LabeledTunnel {
-    fn default() -> Self {
-        LabeledTunnel {
-            common_opts: CommonOpts::default(),
-        }
-    }
 }
 
 impl private::TunnelConfigPrivate for LabeledTunnel {
@@ -45,7 +38,7 @@ impl private::TunnelConfigPrivate for LabeledTunnel {
         None
     }
     fn labels(&self) -> HashMap<String, String> {
-        return HashMap::new();
+        HashMap::new()
     }
 }
 

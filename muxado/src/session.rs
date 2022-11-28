@@ -61,7 +61,7 @@ where
     /// Start building a new muxado session using the provided IO stream.
     pub fn new(io_stream: S) -> Self {
         SessionBuilder {
-            io_stream: io_stream.into(),
+            io_stream,
             window: DEFAULT_WINDOW,
             accept_queue_size: DEFAULT_ACCEPT,
             stream_limit: DEFAULT_STREAMS,
@@ -259,7 +259,7 @@ where
 
         self.manager.close_senders().await;
 
-        return Err(ErrorType::SessionClosed);
+        Err(ErrorType::SessionClosed)
     }
 }
 

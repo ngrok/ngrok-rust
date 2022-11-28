@@ -123,7 +123,7 @@ impl SessionBuilder {
     /// This value determines how often we send application level
     /// heartbeats to the server go check connection liveness.
     pub fn with_heartbeat_interval(&mut self, heartbeat_interval: Duration) -> &mut Self {
-        self.heartbeat_interval = Some(heartbeat_interval.into());
+        self.heartbeat_interval = Some(heartbeat_interval);
         self
     }
 
@@ -131,7 +131,7 @@ impl SessionBuilder {
     /// If the session's heartbeats are outside of their interval by this duration,
     /// the server will assume the session is dead and close it.
     pub fn with_heartbeat_tolerance(&mut self, heartbeat_tolerance: Duration) -> &mut Self {
-        self.heartbeat_tolerance = Some(heartbeat_tolerance.into());
+        self.heartbeat_tolerance = Some(heartbeat_tolerance);
         self
     }
 
@@ -212,8 +212,8 @@ impl SessionBuilder {
                     metadata: self.metadata.clone().unwrap_or_default(),
                     os: os.into(),
                     arch: std::env::consts::ARCH.into(),
-                    heartbeat_interval: heartbeat_interval,
-                    heartbeat_tolerance: heartbeat_tolerance,
+                    heartbeat_interval,
+                    heartbeat_tolerance,
                     restart_unsupported_error: Some(NOT_IMPLEMENTED.into()),
                     stop_unsupported_error: Some(NOT_IMPLEMENTED.into()),
                     update_unsupported_error: Some(NOT_IMPLEMENTED.into()),
@@ -298,7 +298,7 @@ impl Session {
                 token: resp.extra.token,
                 bind_extra: tunnel_cfg.extra(),
                 labels: HashMap::new(),
-                forwards_to: tunnel_cfg.forwards_to().into(),
+                forwards_to: tunnel_cfg.forwards_to(),
                 client: self.client.clone(),
                 incoming: rx,
             });
@@ -324,7 +324,7 @@ impl Session {
             token: Default::default(),
             bind_extra: tunnel_cfg.extra(),
             labels: tunnel_cfg.labels(),
-            forwards_to: tunnel_cfg.forwards_to().into(),
+            forwards_to: tunnel_cfg.forwards_to(),
             client: self.client.clone(),
             incoming: rx,
         })

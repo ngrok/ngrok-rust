@@ -13,16 +13,9 @@ use crate::{
     },
 };
 
+#[derive(Default)]
 pub struct TLSEndpoint {
     common_opts: CommonOpts,
-}
-
-impl Default for TLSEndpoint {
-    fn default() -> Self {
-        TLSEndpoint {
-            common_opts: CommonOpts::default(),
-        }
-    }
 }
 
 impl private::TunnelConfigPrivate for TLSEndpoint {
@@ -53,7 +46,7 @@ impl private::TunnelConfigPrivate for TLSEndpoint {
         Some(BindOpts::TLSEndpoint(tls_endpoint))
     }
     fn labels(&self) -> HashMap<String, String> {
-        return HashMap::new();
+        HashMap::new()
     }
 }
 

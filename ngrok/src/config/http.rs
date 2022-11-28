@@ -68,7 +68,7 @@ impl private::TunnelConfigPrivate for HTTPEndpoint {
         Some(BindOpts::HTTPEndpoint(http_endpoint))
     }
     fn labels(&self) -> HashMap<String, String> {
-        return HashMap::new();
+        HashMap::new()
     }
 }
 

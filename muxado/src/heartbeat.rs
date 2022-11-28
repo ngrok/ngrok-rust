@@ -156,10 +156,14 @@ impl HeartbeatCtl {
                 loop {
                     match tokio::time::timeout_at(deadline, mark.recv()).await {
                         Err(_e) => {
-                            cb.as_mut().map(|cb| cb(Duration::from_secs(0)));
+                            if let Some(cb) = cb.as_mut() {
+                                cb(Duration::from_secs(0))
+                            }
                         }
                         Ok(Some(lat)) => {
-                            cb.as_mut().map(|cb| cb(lat));
+                            if let Some(cb) = cb.as_mut() {
+                                cb(lat)
+                            }
                         }
                         Ok(None) => {
                             return;
