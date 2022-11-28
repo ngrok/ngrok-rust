@@ -38,12 +38,17 @@ use crate::{
     window::Window,
 };
 
+/// A muxado stream.
+/// This is an AsyncRead/Write struct that's backed by a muxado session.
 #[pin_project(project = StreamProj, PinnedDrop)]
 pub struct Stream {
     window: Window,
 
     read_buf: BytesMut,
 
+    // These are the two channels that are used to shuttle data back and forth
+    // between the stream and the stream manager, which is responsible for
+    // routing frames to their proper stream.
     #[pin]
     fin: mpsc::Receiver<Frame>,
     #[pin]
@@ -156,7 +161,7 @@ impl Stream {
         }
         match frame.body {
             Body::Data(bs) => {
-                self.read_buf.extend_from_slice(&*bs);
+                self.read_buf.extend_from_slice(&bs);
                 self.maybe_wake_read(cx);
             }
             Body::WndInc(by) => {
@@ -202,7 +207,7 @@ impl AsyncRead for Stream {
     ) -> Poll<io::Result<()>> {
         loop {
             // If we have data, return it
-            if self.read_buf.len() != 0 {
+            if !self.read_buf.is_empty() {
                 let max = cmp::min(self.read_buf.len(), buf.remaining());
                 let clamped = WndInc::clamp(max as u32);
                 let n = *clamped as usize;

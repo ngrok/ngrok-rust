@@ -10,6 +10,10 @@ mod internals {
 }
 
 mod config {
+    // TODO: remove this once all of the config structs are fully fleshed out
+    //       and tested.
+    #![allow(dead_code)]
+
     pub mod common;
     pub mod http;
     pub mod labeled;

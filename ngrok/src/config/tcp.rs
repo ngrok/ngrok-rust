@@ -13,16 +13,9 @@ use crate::{
     },
 };
 
+#[derive(Default)]
 pub struct TCPEndpoint {
     pub(crate) common_opts: CommonOpts,
-}
-
-impl Default for TCPEndpoint {
-    fn default() -> Self {
-        TCPEndpoint {
-            common_opts: CommonOpts::default(),
-        }
-    }
 }
 
 impl private::TunnelConfigPrivate for TCPEndpoint {
@@ -44,16 +37,16 @@ impl private::TunnelConfigPrivate for TCPEndpoint {
     }
     fn opts(&self) -> Option<BindOpts> {
         // fill out all the options here, translating to proto here
-        let mut tcp_endpoint = proto::TCPEndpoint::default();
+        let mut tcp_endpoint = proto::TcpEndpoint::default();
 
         if let Some(proxy_proto) = self.common_opts.proxy_proto {
             tcp_endpoint.proxy_proto = proxy_proto;
         }
 
-        Some(BindOpts::TCPEndpoint(tcp_endpoint))
+        Some(BindOpts::Tcp(tcp_endpoint))
     }
     fn labels(&self) -> HashMap<String, String> {
-        return HashMap::new();
+        HashMap::new()
     }
 }
 

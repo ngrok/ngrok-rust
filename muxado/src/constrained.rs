@@ -1,3 +1,6 @@
+/// This module contains types and a macro for defining ergonomic newtype
+/// wrappers that ensure that the numeric type they wrap falls within specific
+/// bounds.
 use std::{
     fmt,
     ops::RangeInclusive,

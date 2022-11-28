@@ -30,6 +30,8 @@ use crate::{
 
 constrained_num!(StreamType, u32, 0..=u32::MAX);
 
+/// Wrapper for a session capable of opening streams prefixed with a `u32` type
+/// id.
 #[derive(Clone)]
 pub struct Typed<S> {
     inner: S,
@@ -52,11 +54,13 @@ impl<S> Typed<S>
 where
     S: Session,
 {
+    /// Wrap a session for use with typed streams.
     pub fn new(inner: S) -> Self {
         Typed { inner }
     }
 }
 
+/// A typed muxado stream.
 pub struct TypedStream {
     typ: StreamType,
     inner: Stream,
@@ -76,25 +80,33 @@ impl Deref for TypedStream {
 }
 
 impl TypedStream {
+    /// Get the type ID for this stream.
     pub fn typ(&self) -> StreamType {
         self.typ
     }
 }
 
+/// Typed analogue to the [`Session`] trait.
 pub trait TypedSession: AcceptTypedStream + OpenTypedStream {
     type AcceptTyped: AcceptTypedStream;
     type OpenTyped: OpenTypedStream;
 
+    /// Split the typed session into open/accept components.
     fn split_typed(self) -> (Self::OpenTyped, Self::AcceptTyped);
 }
 
 #[async_trait]
 pub trait AcceptTypedStream {
+    /// Accept a typed stream.
+    /// Because typed streams are indistinguishable from untyped streams, if the
+    /// remote isn't sending a type, then the first 4 bytes of data will be
+    /// misinterpreted as the stream type.
     async fn accept_typed(&mut self) -> Result<TypedStream, ErrorType>;
 }
 
 #[async_trait]
 pub trait OpenTypedStream {
+    /// Open a typed stream with the given type.
     async fn open_typed(&mut self, typ: StreamType) -> Result<TypedStream, ErrorType>;
 }
 

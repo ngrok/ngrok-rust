@@ -48,11 +48,13 @@ use crate::{
 const CERT_BYTES: &[u8] = include_bytes!("../assets/ngrok.ca.crt");
 const NOT_IMPLEMENTED: &str = "the agent has not defined a callback for this operation";
 
+type TunnelConns = HashMap<String, Sender<anyhow::Result<Conn>>>;
+
 pub struct Session {
     #[allow(dead_code)]
     authresp: AuthResp,
     client: Arc<Mutex<RpcClient>>,
-    tunnels: Arc<RwLock<HashMap<String, Sender<anyhow::Result<Conn>>>>>,
+    tunnels: Arc<RwLock<TunnelConns>>,
 }
 
 #[derive(Clone)]
@@ -123,7 +125,7 @@ impl SessionBuilder {
     /// This value determines how often we send application level
     /// heartbeats to the server go check connection liveness.
     pub fn with_heartbeat_interval(&mut self, heartbeat_interval: Duration) -> &mut Self {
-        self.heartbeat_interval = Some(heartbeat_interval.into());
+        self.heartbeat_interval = Some(heartbeat_interval);
         self
     }
 
@@ -131,7 +133,7 @@ impl SessionBuilder {
     /// If the session's heartbeats are outside of their interval by this duration,
     /// the server will assume the session is dead and close it.
     pub fn with_heartbeat_tolerance(&mut self, heartbeat_tolerance: Duration) -> &mut Self {
-        self.heartbeat_tolerance = Some(heartbeat_tolerance.into());
+        self.heartbeat_tolerance = Some(heartbeat_tolerance);
         self
     }
 
@@ -212,8 +214,8 @@ impl SessionBuilder {
                     metadata: self.metadata.clone().unwrap_or_default(),
                     os: os.into(),
                     arch: std::env::consts::ARCH.into(),
-                    heartbeat_interval: heartbeat_interval,
-                    heartbeat_tolerance: heartbeat_tolerance,
+                    heartbeat_interval,
+                    heartbeat_tolerance,
                     restart_unsupported_error: Some(NOT_IMPLEMENTED.into()),
                     stop_unsupported_error: Some(NOT_IMPLEMENTED.into()),
                     update_unsupported_error: Some(NOT_IMPLEMENTED.into()),
@@ -226,28 +228,22 @@ impl SessionBuilder {
 
         let (client, mut incoming) = raw.split();
 
-        let tunnels: Arc<RwLock<HashMap<String, Sender<Result<Conn, anyhow::Error>>>>> =
-            Arc::new(Default::default());
+        let tunnels: Arc<RwLock<TunnelConns>> = Default::default();
 
         tokio::spawn({
-            let tunnels = Arc::clone(&tunnels);
+            let tunnels = tunnels.clone();
             async move {
-                loop {
-                    match incoming.accept().await {
-                        Ok(conn) => {
-                            let id = conn.header.id.clone();
-                            let guard = RwLock::read(&tunnels).await;
-                            let res = if let Some(ch) = guard.get(&id) {
-                                ch.send(Ok(Conn { inner: conn })).await
-                            } else {
-                                Ok(())
-                            };
-                            drop(guard);
-                            if res.is_err() {
-                                RwLock::write(&tunnels).await.remove(&id);
-                            }
-                        }
-                        Err(_e) => break,
+                while let Ok(conn) = incoming.accept().await {
+                    let id = conn.header.id.clone();
+                    let guard = tunnels.read().await;
+                    let res = if let Some(ch) = guard.get(&id) {
+                        ch.send(Ok(Conn { inner: conn })).await
+                    } else {
+                        Ok(())
+                    };
+                    drop(guard);
+                    if res.is_err() {
+                        RwLock::write(&tunnels).await.remove(&id);
                     }
                 }
             }
@@ -262,7 +258,7 @@ impl SessionBuilder {
 }
 
 impl Session {
-    pub fn new() -> SessionBuilder {
+    pub fn builder() -> SessionBuilder {
         SessionBuilder::default()
     }
 
@@ -298,7 +294,7 @@ impl Session {
                 token: resp.extra.token,
                 bind_extra: tunnel_cfg.extra(),
                 labels: HashMap::new(),
-                forwards_to: tunnel_cfg.forwards_to().into(),
+                forwards_to: tunnel_cfg.forwards_to(),
                 client: self.client.clone(),
                 incoming: rx,
             });
@@ -324,7 +320,7 @@ impl Session {
             token: Default::default(),
             bind_extra: tunnel_cfg.extra(),
             labels: tunnel_cfg.labels(),
-            forwards_to: tunnel_cfg.forwards_to().into(),
+            forwards_to: tunnel_cfg.forwards_to(),
             client: self.client.clone(),
             incoming: rx,
         })

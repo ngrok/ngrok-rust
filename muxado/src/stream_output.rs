@@ -44,7 +44,7 @@ impl StreamSender {
         let code = Arc::new(AtomicU32::new(0));
         StreamSender {
             sink,
-            closer: SinkCloser { code: code.clone() },
+            closer: SinkCloser { code },
         }
     }
 

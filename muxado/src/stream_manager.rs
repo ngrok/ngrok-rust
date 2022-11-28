@@ -459,7 +459,9 @@ impl StreamManager {
         );
         self.push_task(id, from_stream);
         // wake up the main stream if it put itself to sleep.
-        self.new_streams.take().map(|w| w.wake());
+        if let Some(w) = self.new_streams.take() {
+            w.wake()
+        }
         Ok(id)
     }
 

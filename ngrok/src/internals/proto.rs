@@ -122,10 +122,12 @@ pub struct Bind {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
 #[serde(untagged)]
+// allowing this since these aren't persistent values.
+#[allow(clippy::large_enum_variant)]
 pub enum BindOpts {
-    HTTPEndpoint(HTTPEndpoint),
-    TCPEndpoint(TCPEndpoint),
-    TLSEndpoint(TLSEndpoint),
+    Http(HttpEndpoint),
+    Tcp(TcpEndpoint),
+    Tls(TlsEndpoint),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -225,18 +227,18 @@ impl ProxyHeader {
 #[derive(Copy, Clone, Debug)]
 pub enum EdgeType {
     Undefined,
-    TCP,
-    TLS,
-    HTTPS,
+    Tcp,
+    Tls,
+    Https,
 }
 
 impl FromStr for EdgeType {
     type Err = ();
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s {
-            "1" => EdgeType::TCP,
-            "2" => EdgeType::TLS,
-            "3" => EdgeType::HTTPS,
+            "1" => EdgeType::Tcp,
+            "2" => EdgeType::Tls,
+            "3" => EdgeType::Https,
             _ => EdgeType::Undefined,
         })
     }
@@ -246,9 +248,9 @@ impl EdgeType {
     pub fn as_str(self) -> &'static str {
         match self {
             EdgeType::Undefined => "0",
-            EdgeType::TCP => "1",
-            EdgeType::TLS => "2",
-            EdgeType::HTTPS => "3",
+            EdgeType::Tcp => "1",
+            EdgeType::Tls => "2",
+            EdgeType::Https => "3",
         }
     }
 }
@@ -427,7 +429,7 @@ impl<'de> Deserialize<'de> for ProxyProto {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
-pub struct HTTPEndpoint {
+pub struct HttpEndpoint {
     pub hostname: String,
     pub auth: String,
     pub subdomain: String,
@@ -444,9 +446,9 @@ pub struct HTTPEndpoint {
     pub middleware: HttpMiddleware,
 }
 
-impl Default for HTTPEndpoint {
+impl Default for HttpEndpoint {
     fn default() -> Self {
-        HTTPEndpoint {
+        HttpEndpoint {
             hostname: Default::default(),
             auth: Default::default(),
             subdomain: Default::default(),
@@ -461,7 +463,7 @@ impl Default for HTTPEndpoint {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
-pub struct TCPEndpoint {
+pub struct TcpEndpoint {
     pub addr: String,
     pub proxy_proto: ProxyProto,
 
@@ -472,9 +474,9 @@ pub struct TCPEndpoint {
     pub middleware: TcpMiddleware,
 }
 
-impl Default for TCPEndpoint {
+impl Default for TcpEndpoint {
     fn default() -> Self {
-        TCPEndpoint {
+        TcpEndpoint {
             addr: Default::default(),
             proxy_proto: ProxyProto::None,
             proto_middleware: true,
@@ -485,7 +487,7 @@ impl Default for TCPEndpoint {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
-pub struct TLSEndpoint {
+pub struct TlsEndpoint {
     pub hostname: String,
     pub subdomain: String,
     pub proxy_proto: ProxyProto,
@@ -498,9 +500,9 @@ pub struct TLSEndpoint {
     pub middleware: TlsMiddleware,
 }
 
-impl Default for TLSEndpoint {
+impl Default for TlsEndpoint {
     fn default() -> Self {
-        TLSEndpoint {
+        TlsEndpoint {
             hostname: Default::default(),
             subdomain: Default::default(),
             proxy_proto: ProxyProto::None,
@@ -538,8 +540,8 @@ mod base64proto {
         d: D,
     ) -> Result<M, D::Error> {
         let base64 = String::deserialize(d)?;
-        let bytes = base64::decode(base64.as_bytes()).map_err(|e| serde::de::Error::custom(e))?;
-        M::decode(bytes.as_slice()).map_err(|e| serde::de::Error::custom(e))
+        let bytes = base64::decode(base64.as_bytes()).map_err(serde::de::Error::custom)?;
+        M::decode(bytes.as_slice()).map_err(serde::de::Error::custom)
     }
 }
 

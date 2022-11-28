@@ -24,7 +24,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let sess = Arc::new(
-        Session::new()
+        Session::builder()
             .with_authtoken_from_env()
             .with_metadata("Online in One Line")
             .connect()
@@ -70,7 +70,7 @@ fn handle_tunnel(mut tunnel: Tunnel, sess: Arc<Session>) {
                         break;
                     }
 
-                    if buf.eq("\r\n".into()) {
+                    if buf.eq("\r\n") {
                         info!("writing");
                         tx.write_all(
                             "HTTP/1.1 200 OK\r\n\r\n<html><body>hi</body></html>\r\n\r\n"

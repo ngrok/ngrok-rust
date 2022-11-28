@@ -37,6 +37,6 @@ async fn main() -> Result<(), anyhow::Error> {
     )
     .await?;
 
-    let _: () = futures::future::pending().await;
+    futures::future::pending::<()>().await;
     Ok(())
 }

@@ -101,6 +101,7 @@ impl RawSession {
         Ok(sess)
     }
 
+    #[allow(dead_code)]
     pub async fn accept(&mut self) -> Result<TunnelStream, Error> {
         self.incoming.accept().await
     }
@@ -114,11 +115,11 @@ impl RpcClient {
     async fn rpc<R: RPCRequest>(&mut self, req: R) -> Result<R::Response, Error> {
         let mut stream = self.open.open_typed(R::TYPE).await?;
         let s = serde_json::to_vec(&req)?;
-        stream.write_all(&*s).await?;
+        stream.write_all(&s).await?;
         let mut buf = Vec::new();
         stream.read_to_end(&mut buf).await?;
 
-        Ok(serde_json::from_slice(&*buf)?)
+        Ok(serde_json::from_slice(&buf)?)
     }
 
     pub async fn auth(

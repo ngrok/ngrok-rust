@@ -9,7 +9,6 @@ use tokio::{
     net::TcpStream,
 };
 use tracing::info;
-use tracing_subscriber;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
