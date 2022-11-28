@@ -1,0 +1,19 @@
+on: push
+name: Clippy
+jobs:
+  clippy_check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - name: install protoc
+        run: sudo apt-get install -y protobuf-compiler
+      - name: install clippy
+        run: rustup component add clippy
+      - name: run clippy
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-features
