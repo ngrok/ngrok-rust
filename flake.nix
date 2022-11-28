@@ -23,7 +23,7 @@
         pkgs = import nixpkgs {
           inherit system;
           overlays = [
-            fenix-flake.overlay
+            fenix-flake.overlays.default
           ];
         };
       in
