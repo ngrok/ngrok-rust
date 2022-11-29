@@ -28,6 +28,7 @@ use tokio_util::compat::{
     FuturesAsyncReadCompatExt,
     TokioAsyncReadCompatExt,
 };
+use tracing::warn;
 
 use crate::{
     config::common::TunnelConfig,
@@ -37,10 +38,13 @@ use crate::{
             AuthResp,
         },
         raw_session::{
+            IncomingStreams,
             RawSession,
             RpcClient,
+            RpcError,
         },
     },
+    AcceptError,
     Conn,
     Tunnel,
 };
@@ -48,8 +52,9 @@ use crate::{
 const CERT_BYTES: &[u8] = include_bytes!("../assets/ngrok.ca.crt");
 const NOT_IMPLEMENTED: &str = "the agent has not defined a callback for this operation";
 
-type TunnelConns = HashMap<String, Sender<anyhow::Result<Conn>>>;
+type TunnelConns = HashMap<String, Sender<Result<Conn, AcceptError>>>;
 
+#[derive(Clone)]
 pub struct Session {
     #[allow(dead_code)]
     authresp: AuthResp,
@@ -226,28 +231,11 @@ impl SessionBuilder {
             .await
             .map_err(ConnectError::Auth)?;
 
-        let (client, mut incoming) = raw.split();
+        let (client, incoming) = raw.split();
 
         let tunnels: Arc<RwLock<TunnelConns>> = Default::default();
 
-        tokio::spawn({
-            let tunnels = tunnels.clone();
-            async move {
-                while let Ok(conn) = incoming.accept().await {
-                    let id = conn.header.id.clone();
-                    let guard = tunnels.read().await;
-                    let res = if let Some(ch) = guard.get(&id) {
-                        ch.send(Ok(Conn { inner: conn })).await
-                    } else {
-                        Ok(())
-                    };
-                    drop(guard);
-                    if res.is_err() {
-                        RwLock::write(&tunnels).await.remove(&id);
-                    }
-                }
-            }
-        });
+        tokio::spawn(accept_incoming(incoming, tunnels.clone()));
 
         Ok(Session {
             authresp: resp,
@@ -262,7 +250,7 @@ impl Session {
         SessionBuilder::default()
     }
 
-    pub async fn start_tunnel<C>(&self, tunnel_cfg: C) -> anyhow::Result<Tunnel>
+    pub async fn start_tunnel<C>(&self, tunnel_cfg: C) -> Result<Tunnel, RpcError>
     where
         C: TunnelConfig,
     {
@@ -288,14 +276,14 @@ impl Session {
 
             return Ok(Tunnel {
                 id: resp.client_id,
-                config_proto: resp.proto,
+                proto: resp.proto,
                 url: resp.url,
                 opts: resp.bind_opts,
                 token: resp.extra.token,
                 bind_extra: tunnel_cfg.extra(),
                 labels: HashMap::new(),
                 forwards_to: tunnel_cfg.forwards_to(),
-                client: self.client.clone(),
+                session: self.clone(),
                 incoming: rx,
             });
         }
@@ -314,22 +302,53 @@ impl Session {
 
         Ok(Tunnel {
             id: resp.id,
-            config_proto: Default::default(),
+            proto: Default::default(),
             url: Default::default(),
             opts: Default::default(),
             token: Default::default(),
             bind_extra: tunnel_cfg.extra(),
             labels: tunnel_cfg.labels(),
             forwards_to: tunnel_cfg.forwards_to(),
-            client: self.client.clone(),
+            session: self.clone(),
             incoming: rx,
         })
     }
 
-    pub async fn close_tunnel(&self, id: impl AsRef<str>) -> anyhow::Result<()> {
+    pub async fn close_tunnel(&self, id: impl AsRef<str>) -> Result<(), RpcError> {
         let id = id.as_ref();
         self.client.lock().await.unlisten(id).await?;
         self.tunnels.write().await.remove(id);
         Ok(())
+    }
+}
+
+async fn accept_incoming(mut incoming: IncomingStreams, tunnels: Arc<RwLock<TunnelConns>>) {
+    while let Ok(conn) = incoming.accept().await {
+        let id = conn.header.id.clone();
+        let remote_addr = conn.header.client_addr.parse().unwrap_or_else(|error| {
+            warn!(
+                client_addr = conn.header.client_addr,
+                %error,
+                "invalid remote addr for tunnel connection",
+            );
+            "0.0.0.0:0".parse().unwrap()
+        });
+        let guard = tunnels.read().await;
+        let res = if let Some(ch) = guard.get(&id) {
+            ch.send(Ok(Conn {
+                remote_addr,
+                stream: conn.stream,
+            }))
+            .await
+        } else {
+            Ok(())
+        };
+        drop(guard);
+        if res.is_err() {
+            RwLock::write(&tunnels).await.remove(&id);
+        }
+    }
+    for (_id, ch) in tunnels.write().await.drain() {
+        let _ = ch.send(Err(anyhow::format_err!("session closed"))).await;
     }
 }
