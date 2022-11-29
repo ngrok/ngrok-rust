@@ -27,6 +27,7 @@ use tokio::io::{
     AsyncWrite,
     AsyncWriteExt,
 };
+use tracing::error;
 
 use super::{
     proto::{
@@ -118,8 +119,12 @@ impl RpcClient {
         stream.write_all(&s).await?;
         let mut buf = Vec::new();
         stream.read_to_end(&mut buf).await?;
-
-        Ok(serde_json::from_slice(&buf)?)
+        let result: Result<R::Response, serde_json::Error> = serde_json::from_slice(&buf);
+        if result.as_ref().err().is_some() {
+            // todo: remove this once errors are propagated back to user
+            error!("error result: {}", String::from_utf8_lossy(&buf));
+        }
+        Ok(result?)
     }
 
     pub async fn auth(

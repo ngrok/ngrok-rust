@@ -15,10 +15,14 @@ mod config {
     #![allow(dead_code)]
 
     pub mod common;
+    pub mod headers;
     pub mod http;
     pub mod labeled;
+    pub mod oauth;
+    pub mod oidc;
     pub mod tcp;
     pub mod tls;
+    pub mod webhook_verification;
 }
 
 mod session;

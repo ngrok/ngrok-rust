@@ -2,10 +2,7 @@ use std::sync::Arc;
 
 use futures::TryStreamExt;
 use ngrok::{
-    common::ProxyProtocol,
-    oauth::OauthOptions,
-    oidc::OidcOptions,
-    HTTPEndpoint,
+    LabeledTunnel,
     Session,
     Tunnel,
 };
@@ -15,10 +12,7 @@ use tokio::io::{
     AsyncWriteExt,
     BufReader,
 };
-use tracing::{
-    debug,
-    info,
-};
+use tracing::info;
 use tracing_subscriber::fmt::format::FmtSpan;
 
 #[tokio::main]
@@ -37,45 +31,11 @@ async fn main() -> anyhow::Result<()> {
             .await?,
     );
 
-    let mut oidc_options = OidcOptions::new(
-        "https://accounts.google.com",
-        "<some-client-id>",
-        "<some-client-secret>",
-    );
-    oidc_options // how to chain 'new' to 'with_*'?
-        .with_allow_oidc_email("<user>@ngrok.com")
-        .with_allow_oidc_domain("ngrok.com")
-        .with_oidc_scope("<scope>");
-
-    let mut oauth_options = OauthOptions::new("google");
-    oauth_options // how to chain 'new' to 'with_*'?
-        .with_allow_oauth_email("<user>@ngrok.com")
-        .with_allow_oauth_domain("ngrok.com")
-        .with_oauth_scope("<scope>");
-
     let tunnel = sess
         .start_tunnel(
-            HTTPEndpoint::default()
-                .with_allow_cidr_string("0.0.0.0/0")
-                .with_deny_cidr_string("10.1.1.1/32")
-                .with_proxy_proto(ProxyProtocol::None)
+            LabeledTunnel::default()
                 .with_metadata("Understand it so thoroughly that you merge with it")
-                .with_scheme(ngrok::Scheme::HTTPS)
-                // .with_domain("<somedomain>.ngrok.io")
-                .with_mutual_tlsca(Vec::new()) // todo
-                .with_compression()
-                // .with_websocket_tcp_conversion()
-                .with_circuit_breaker(0.5)
-                .with_request_header("X-Req-Yup", "true")
-                .with_response_header("X-Res-Yup", "true")
-                .with_remove_request_header("X-Req-Nope")
-                .with_remove_response_header("X-Res-Nope")
-                // .with_oauth(OauthOptions::new("p"))
-                // .with_oauth(oauth_options)
-                // .with_oidc(OidcOptions::new("a", "b", "c"))
-                // .with_oidc(oidc_options)
-                // .with_webhook_verification("twilio", "asdf"),
-                .with_basic_auth("ngrok", "online1line"),
+                .with_label("edge", "edghts_2IC6RJ6CQnuh7wRciWywGK05ONt"),
         )
         .await?;
 
@@ -110,8 +70,6 @@ fn handle_tunnel(mut tunnel: Tunnel, sess: Arc<Session>) {
                     if len == 0 {
                         break;
                     }
-
-                    debug!("received: {}", buf);
 
                     if buf.eq("\r\n") {
                         info!("writing");
