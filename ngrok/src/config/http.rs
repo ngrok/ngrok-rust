@@ -221,8 +221,8 @@ impl HTTPEndpoint {
         self.domain = Some(domain.into());
         self
     }
-    pub fn with_mutual_tlsca(&mut self, mutual_tlsca: Vec<Vec<u8>>) -> &mut Self {
-        self.mutual_tlsca = mutual_tlsca;
+    pub fn with_mutual_tlsca(&mut self, mutual_tlsca: Vec<u8>) -> &mut Self {
+        self.mutual_tlsca.push(mutual_tlsca);
         self
     }
     pub fn with_compression(&mut self) -> &mut Self {

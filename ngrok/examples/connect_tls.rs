@@ -16,6 +16,10 @@ use tokio::io::{
 use tracing::info;
 use tracing_subscriber::fmt::format::FmtSpan;
 
+// const CA_CERT: &[u8] = include_bytes!("ca.crt");
+// const CERT: &[u8] = include_bytes!("domain.crt");
+// const KEY: &[u8] = include_bytes!("domain.key");
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -40,9 +44,9 @@ async fn main() -> anyhow::Result<()> {
                 .with_proxy_proto(ProxyProtocol::None)
                 .with_metadata("Understand it so thoroughly that you merge with it")
                 // .with_domain("<somedomain>.ngrok.io")
-                // .with_mutual_tlsca(Vec::new()) // todo
-                // .with_key_pem(Vec::new()) // todo
-                // .with_cert_pem(Vec::new()), // todo
+                // .with_mutual_tlsca(CA_CERT.to_vec())
+                // .with_key_pem(KEY.to_vec())
+                // .with_cert_pem(CERT.to_vec())
                 .with_forwards_to("moo"),
         )
         .await?;

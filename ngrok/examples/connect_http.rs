@@ -21,6 +21,8 @@ use tracing::{
 };
 use tracing_subscriber::fmt::format::FmtSpan;
 
+// const CA_CERT: &[u8] = include_bytes!("ca.crt");
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -62,7 +64,7 @@ async fn main() -> anyhow::Result<()> {
                 .with_metadata("Understand it so thoroughly that you merge with it")
                 .with_scheme(ngrok::Scheme::HTTPS)
                 // .with_domain("<somedomain>.ngrok.io")
-                .with_mutual_tlsca(Vec::new()) // todo
+                // .with_mutual_tlsca(CA_CERT.to_vec())
                 .with_compression()
                 // .with_websocket_tcp_conversion()
                 .with_circuit_breaker(0.5)
