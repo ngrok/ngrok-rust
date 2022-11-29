@@ -7,10 +7,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{
-    bail,
-    Error,
-};
+use anyhow::bail;
 use muxado::{
     heartbeat::HeartbeatConfig,
     session::SessionBuilder,
@@ -48,8 +45,10 @@ use super::{
         UPDATE_REQ,
         VERSION,
     },
-    rpc::RPCRequest,
+    rpc::RpcRequest,
 };
+
+pub type RpcError = anyhow::Error;
 
 pub struct RpcClient {
     open: Box<dyn OpenTypedStream + Send>,
@@ -78,7 +77,10 @@ impl DerefMut for RawSession {
 }
 
 impl RawSession {
-    pub async fn connect<S, F>(io_stream: S, heartbeat: HeartbeatConfig<F>) -> Result<Self, Error>
+    pub async fn connect<S, F>(
+        io_stream: S,
+        heartbeat: HeartbeatConfig<F>,
+    ) -> Result<Self, RpcError>
     where
         S: AsyncRead + AsyncWrite + Send + 'static,
         F: FnMut(Duration) + Send + 'static,
@@ -102,7 +104,7 @@ impl RawSession {
     }
 
     #[allow(dead_code)]
-    pub async fn accept(&mut self) -> Result<TunnelStream, Error> {
+    pub async fn accept(&mut self) -> Result<TunnelStream, RpcError> {
         self.incoming.accept().await
     }
 
@@ -112,7 +114,7 @@ impl RawSession {
 }
 
 impl RpcClient {
-    async fn rpc<R: RPCRequest>(&mut self, req: R) -> Result<R::Response, Error> {
+    async fn rpc<R: RpcRequest>(&mut self, req: R) -> Result<R::Response, RpcError> {
         let mut stream = self.open.open_typed(R::TYPE).await?;
         let s = serde_json::to_vec(&req)?;
         stream.write_all(&s).await?;
@@ -126,7 +128,7 @@ impl RpcClient {
         &mut self,
         id: impl Into<String>,
         extra: AuthExtra,
-    ) -> Result<AuthResp, Error> {
+    ) -> Result<AuthResp, RpcError> {
         let id = id.into();
         let req = Auth {
             client_id: id.clone(),
@@ -146,7 +148,7 @@ impl RpcClient {
         extra: BindExtra,
         id: impl Into<String>,
         forwards_to: impl Into<String>,
-    ) -> Result<BindResp, Error> {
+    ) -> Result<BindResp, RpcError> {
         let req = Bind {
             client_id: id.into(),
             proto: protocol.into(),
@@ -164,7 +166,7 @@ impl RpcClient {
         labels: HashMap<String, String>,
         metadata: impl Into<String>,
         forwards_to: impl Into<String>,
-    ) -> Result<StartTunnelWithLabelResp, Error> {
+    ) -> Result<StartTunnelWithLabelResp, RpcError> {
         let req = StartTunnelWithLabel {
             labels,
             metadata: metadata.into(),
@@ -174,7 +176,7 @@ impl RpcClient {
         self.rpc(req).await
     }
 
-    pub async fn unlisten(&mut self, id: impl Into<String>) -> Result<UnbindResp, Error> {
+    pub async fn unlisten(&mut self, id: impl Into<String>) -> Result<UnbindResp, RpcError> {
         self.rpc(Unbind {
             client_id: id.into(),
         })
@@ -183,7 +185,7 @@ impl RpcClient {
 }
 
 impl IncomingStreams {
-    pub async fn accept(&mut self) -> Result<TunnelStream, Error> {
+    pub async fn accept(&mut self) -> Result<TunnelStream, RpcError> {
         Ok(loop {
             let mut stream = self.accept.accept_typed().await?;
 
