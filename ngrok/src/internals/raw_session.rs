@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    io,
     ops::{
         Deref,
         DerefMut,
@@ -7,17 +8,19 @@ use std::{
     time::Duration,
 };
 
-use anyhow::bail;
 use muxado::{
+    errors::Error as MuxadoError,
     heartbeat::HeartbeatConfig,
     session::SessionBuilder,
     typed::{
         AcceptTypedStream,
         OpenTypedStream,
+        StreamType,
         TypedSession,
         TypedStream,
     },
 };
+use thiserror::Error;
 use tokio::io::{
     AsyncRead,
     AsyncReadExt,
@@ -35,6 +38,7 @@ use super::{
         BindOpts,
         BindResp,
         ProxyHeader,
+        ReadHeaderError,
         StartTunnelWithLabel,
         StartTunnelWithLabelResp,
         Unbind,
@@ -48,7 +52,33 @@ use super::{
     rpc::RpcRequest,
 };
 
-pub type RpcError = anyhow::Error;
+#[derive(Error, Debug)]
+pub enum RpcError {
+    #[error("failed to open muxado stream")]
+    Open(#[from] MuxadoError),
+    #[error("error reading rpc response")]
+    Send(#[source] io::Error),
+    #[error("error sending rpc request")]
+    Receive(#[source] io::Error),
+    #[error("failed to deserialize rpc response")]
+    InvalidResponse(#[from] serde_json::Error),
+}
+
+#[derive(Error, Debug)]
+pub enum StartSessionError {
+    #[error("failed to start heartbeat task")]
+    StartHeartbeat(#[from] io::Error),
+}
+
+#[derive(Error, Debug)]
+pub enum AcceptError {
+    #[error("transport error when accepting connection")]
+    Transport(#[from] MuxadoError),
+    #[error(transparent)]
+    Header(#[from] ReadHeaderError),
+    #[error("invalid stream type: {0}")]
+    InvalidType(StreamType),
+}
 
 pub struct RpcClient {
     open: Box<dyn OpenTypedStream + Send>,
@@ -77,10 +107,10 @@ impl DerefMut for RawSession {
 }
 
 impl RawSession {
-    pub async fn connect<S, F>(
+    pub async fn start<S, F>(
         io_stream: S,
         heartbeat: HeartbeatConfig<F>,
-    ) -> Result<Self, RpcError>
+    ) -> Result<Self, StartSessionError>
     where
         S: AsyncRead + AsyncWrite + Send + 'static,
         F: FnMut(Duration) + Send + 'static,
@@ -104,7 +134,7 @@ impl RawSession {
     }
 
     #[allow(dead_code)]
-    pub async fn accept(&mut self) -> Result<TunnelStream, RpcError> {
+    pub async fn accept(&mut self) -> Result<TunnelStream, AcceptError> {
         self.incoming.accept().await
     }
 
@@ -116,10 +146,18 @@ impl RawSession {
 impl RpcClient {
     async fn rpc<R: RpcRequest>(&mut self, req: R) -> Result<R::Response, RpcError> {
         let mut stream = self.open.open_typed(R::TYPE).await?;
-        let s = serde_json::to_vec(&req)?;
-        stream.write_all(&s).await?;
+        let s = serde_json::to_vec(&req)
+            // This should never happen, since we control the request types and
+            // know that they will always serialize correctly. Just in case
+            // though, call them "Send" errors.
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+            .map_err(RpcError::Send)?;
+        stream.write_all(&s).await.map_err(RpcError::Send)?;
         let mut buf = Vec::new();
-        stream.read_to_end(&mut buf).await?;
+        stream
+            .read_to_end(&mut buf)
+            .await
+            .map_err(RpcError::Receive)?;
 
         Ok(serde_json::from_slice(&buf)?)
     }
@@ -185,7 +223,7 @@ impl RpcClient {
 }
 
 impl IncomingStreams {
-    pub async fn accept(&mut self) -> Result<TunnelStream, RpcError> {
+    pub async fn accept(&mut self) -> Result<TunnelStream, AcceptError> {
         Ok(loop {
             let mut stream = self.accept.accept_typed().await?;
 
@@ -198,7 +236,7 @@ impl IncomingStreams {
 
                     break TunnelStream { header, stream };
                 }
-                t => bail!("invalid stream type: {}", t),
+                t => return Err(AcceptError::InvalidType(t)),
             }
         })
     }

@@ -1,9 +1,10 @@
 use std::{
     collections::HashMap,
+    io,
     str::FromStr,
+    string::FromUtf8Error,
 };
 
-use anyhow::Error;
 use muxado::typed::StreamType;
 use serde::{
     de::Visitor,
@@ -209,14 +210,26 @@ pub struct ProxyHeader {
     pub passthrough_tls: bool,
 }
 
+#[derive(Error, Debug)]
+pub enum ReadHeaderError {
+    #[error("error reading proxy header")]
+    Io(#[from] io::Error),
+    #[error("invalid utf-8 in proxy header")]
+    InvalidUtf8(#[from] FromUtf8Error),
+    #[error("invalid proxy header json")]
+    InvalidHeader(#[from] serde_json::Error),
+}
+
 impl ProxyHeader {
-    pub async fn read_from_stream(mut stream: impl AsyncRead + Unpin) -> Result<Self, Error> {
+    pub async fn read_from_stream(
+        mut stream: impl AsyncRead + Unpin,
+    ) -> Result<Self, ReadHeaderError> {
         let size = stream.read_i64_le().await?;
         let mut buf = vec![0u8; size as usize];
 
         stream.read_exact(&mut buf).await?;
 
-        let header = String::from_utf8_lossy(&buf);
+        let header = String::from_utf8(buf)?;
 
         debug!(?header, "read header");
 

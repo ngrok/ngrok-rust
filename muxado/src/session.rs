@@ -23,7 +23,7 @@ use tracing::{
 
 use crate::{
     codec::FrameCodec,
-    errors::ErrorType,
+    errors::Error,
     frame::{
         Body,
         Frame,
@@ -168,7 +168,7 @@ where
     R: futures::stream::Stream<Item = Result<Frame, io::Error>> + Unpin,
 {
     #[instrument(level = "trace", skip(self))]
-    async fn handle_frame(&mut self, frame: Frame) -> Result<(), ErrorType> {
+    async fn handle_frame(&mut self, frame: Frame) -> Result<(), Error> {
         // If the remote sent a syn, create a new stream and add it to the accept channel.
         if frame.is_syn() {
             let (req, stream) = OpenReq::create(self.window, false);
@@ -178,7 +178,7 @@ where
                 .create_stream(frame.header.stream_id.into(), req)?;
             self.accept_tx
                 .send(stream)
-                .map_err(|_| ErrorType::SessionClosed)
+                .map_err(|_| Error::SessionClosed)
                 .await?;
         }
 
@@ -206,7 +206,7 @@ where
                     );
                     self.sys_tx
                         .send(Frame::rst(stream_id, error))
-                        .map_err(|_| ErrorType::SessionClosed)
+                        .map_err(|_| Error::SessionClosed)
                         .await?;
                 } else {
                     self.last_stream_processed = stream_id;
@@ -223,7 +223,7 @@ where
             HeaderType::GoAway => {
                 if let Body::GoAway { error, .. } = frame.body {
                     self.manager.go_away(error).await;
-                    return Err(ErrorType::RemoteGoneAway);
+                    return Err(Error::RemoteGoneAway);
                 }
 
                 unreachable!()
@@ -232,10 +232,10 @@ where
                 self.sys_tx
                     .send(Frame::goaway(
                         self.last_stream_processed,
-                        ErrorType::ProtocolError,
+                        Error::ProtocolError,
                         "invalid frame".into(),
                     ))
-                    .map_err(|_| ErrorType::StreamClosed)
+                    .map_err(|_| Error::StreamClosed)
                     .await?
             }
         }
@@ -244,13 +244,13 @@ where
 
     // The actual read/process loop
     #[instrument(level = "trace", skip(self))]
-    async fn run(mut self) -> Result<(), ErrorType> {
+    async fn run(mut self) -> Result<(), Error> {
         let _e: Result<(), _> = async {
             loop {
                 match self.io.try_next().await {
                     Ok(Some(frame)) => self.handle_frame(frame).await?,
                     Ok(None) | Err(_) => {
-                        return Err(ErrorType::SessionClosed);
+                        return Err(Error::SessionClosed);
                     }
                 }
             }
@@ -259,7 +259,7 @@ where
 
         self.manager.close_senders().await;
 
-        Err(ErrorType::SessionClosed)
+        Err(Error::SessionClosed)
     }
 }
 
@@ -268,7 +268,7 @@ where
 struct Writer<W> {
     manager: SharedStreamManager,
     window: usize,
-    open_reqs: mpsc::Receiver<oneshot::Sender<Result<Stream, ErrorType>>>,
+    open_reqs: mpsc::Receiver<oneshot::Sender<Result<Stream, Error>>>,
     io: W,
 }
 
@@ -277,13 +277,13 @@ where
     W: Sink<Frame, Error = io::Error> + Unpin + Send + 'static,
 {
     #[instrument(level = "trace", skip(self))]
-    async fn run(mut self) -> Result<(), ErrorType> {
+    async fn run(mut self) -> Result<(), Error> {
         loop {
             select! {
                 frame = self.manager.next() => {
                     if let Some(frame) = frame {
                         if let Err(_e) = self.io.send(frame).await {
-                            return Err(ErrorType::SessionClosed);
+                            return Err(Error::SessionClosed);
                         }
                     }
                 },
@@ -329,11 +329,11 @@ pub trait AcceptStream {
 #[async_trait]
 pub trait OpenStream {
     /// Open a new stream.
-    async fn open(&mut self) -> Result<Stream, ErrorType>;
+    async fn open(&mut self) -> Result<Stream, Error>;
 }
 
 /// The [`OpenStream`] half of a muxado session.
-pub struct MuxadoOpen(mpsc::Sender<oneshot::Sender<Result<Stream, ErrorType>>>);
+pub struct MuxadoOpen(mpsc::Sender<oneshot::Sender<Result<Stream, Error>>>);
 /// The [`AcceptStream`] half of a muxado session.
 pub struct MuxadoAccept(mpsc::Receiver<Stream>);
 
@@ -346,17 +346,17 @@ impl AcceptStream for MuxadoAccept {
 
 #[async_trait]
 impl OpenStream for MuxadoOpen {
-    async fn open(&mut self) -> Result<Stream, ErrorType> {
+    async fn open(&mut self) -> Result<Stream, Error> {
         let (resp_tx, resp_rx) = oneshot::channel();
 
         self.0
             .send(resp_tx)
             .await
-            .map_err(|_| ErrorType::SessionClosed)?;
+            .map_err(|_| Error::SessionClosed)?;
 
         resp_rx
             .await
-            .map_err(|_| ErrorType::SessionClosed)
+            .map_err(|_| Error::SessionClosed)
             .and_then(|r| r)
     }
 }
@@ -375,7 +375,7 @@ impl AcceptStream for Muxado {
 
 #[async_trait]
 impl OpenStream for Muxado {
-    async fn open(&mut self) -> Result<Stream, ErrorType> {
+    async fn open(&mut self) -> Result<Stream, Error> {
         self.outgoing.open().await
     }
 }

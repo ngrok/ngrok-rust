@@ -2,10 +2,7 @@ use std::{
     collections::HashMap,
     env,
     io,
-    num::{
-        ParseIntError,
-        TryFromIntError,
-    },
+    num::ParseIntError,
     sync::Arc,
     time::Duration,
 };
@@ -38,10 +35,12 @@ use crate::{
             AuthResp,
         },
         raw_session::{
+            AcceptError as RawAcceptError,
             IncomingStreams,
             RawSession,
             RpcClient,
             RpcError,
+            StartSessionError,
         },
     },
     AcceptError,
@@ -74,16 +73,18 @@ pub struct SessionBuilder {
 
 #[derive(Error, Debug)]
 pub enum ConnectError {
-    #[error("error establishing tcp connection: {0}")]
-    Connect(io::Error),
-    #[error("tls handshake error: {0}")]
+    #[error("invalid heartbeat interval: {0}")]
+    InvalidHeartbeatInterval(u128),
+    #[error("invalid heartbeat tolerance: {0}")]
+    InvalidHeartbeatTolerance(u128),
+    #[error("failed to establish tcp connection")]
+    Tcp(io::Error),
+    #[error("tls handshake error")]
     Tls(io::Error),
-    #[error("error establishing ngrok session: {0}")]
-    Session(anyhow::Error),
-    #[error("error configuring ngrok session: {0}")]
-    SessionConfig(TryFromIntError),
-    #[error("error authenticating ngrok session: {0}")]
-    Auth(anyhow::Error),
+    #[error("failed to start ngrok session")]
+    Start(StartSessionError),
+    #[error("authentication failure")]
+    Auth(RpcError),
 }
 
 impl Default for SessionBuilder {
@@ -176,7 +177,7 @@ impl SessionBuilder {
     pub async fn connect(&self) -> Result<Session, ConnectError> {
         let conn = tokio::net::TcpStream::connect(&self.server_addr)
             .await
-            .map_err(ConnectError::Connect)?
+            .map_err(ConnectError::Tcp)?
             .compat();
 
         let tls_conn = async_rustls::TlsConnector::from(Arc::new(self.tls_config.clone()))
@@ -195,14 +196,16 @@ impl SessionBuilder {
             heartbeat_config.tolerance = tolerance;
         }
         // convert these while we have ownership
-        let heartbeat_interval = i64::try_from(heartbeat_config.interval.as_nanos())
-            .map_err(ConnectError::SessionConfig)?;
-        let heartbeat_tolerance = i64::try_from(heartbeat_config.tolerance.as_nanos())
-            .map_err(ConnectError::SessionConfig)?;
+        let interval_nanos = heartbeat_config.interval.as_nanos();
+        let heartbeat_interval = i64::try_from(interval_nanos)
+            .map_err(|_| ConnectError::InvalidHeartbeatInterval(interval_nanos))?;
+        let tolerance_nanos = heartbeat_config.interval.as_nanos();
+        let heartbeat_tolerance = i64::try_from(tolerance_nanos)
+            .map_err(|_| ConnectError::InvalidHeartbeatTolerance(tolerance_nanos))?;
 
-        let mut raw = RawSession::connect(tls_conn.compat(), heartbeat_config)
+        let mut raw = RawSession::start(tls_conn.compat(), heartbeat_config)
             .await
-            .map_err(ConnectError::Session)?;
+            .map_err(ConnectError::Start)?;
 
         // list of possibilities: https://doc.rust-lang.org/std/env/consts/constant.OS.html
         let os = match env::consts::OS {
@@ -323,7 +326,20 @@ impl Session {
 }
 
 async fn accept_incoming(mut incoming: IncomingStreams, tunnels: Arc<RwLock<TunnelConns>>) {
-    while let Ok(conn) = incoming.accept().await {
+    let error: AcceptError = loop {
+        let conn = match incoming.accept().await {
+            Ok(conn) => conn,
+            // Assume if we got a muxado error, the session is borked. Break and
+            // propagate the error to all of the tunnels out in the wild.
+            Err(RawAcceptError::Transport(error)) => break error,
+            // The other errors are either a bad header or an unrecognized
+            // stream type. They're non-fatal, but could signal a protocol
+            // mismatch.
+            Err(error) => {
+                warn!(?error, "protocol error when accepting tunnel connection");
+                continue;
+            }
+        };
         let id = conn.header.id.clone();
         let remote_addr = conn.header.client_addr.parse().unwrap_or_else(|error| {
             warn!(
@@ -348,7 +364,8 @@ async fn accept_incoming(mut incoming: IncomingStreams, tunnels: Arc<RwLock<Tunn
             RwLock::write(&tunnels).await.remove(&id);
         }
     }
+    .into();
     for (_id, ch) in tunnels.write().await.drain() {
-        let _ = ch.send(Err(anyhow::format_err!("session closed"))).await;
+        let _ = ch.send(Err(error)).await;
     }
 }

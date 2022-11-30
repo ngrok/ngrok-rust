@@ -19,7 +19,7 @@ use tokio::io::{
 
 use crate::{
     constrained::*,
-    errors::ErrorType,
+    errors::Error,
     session::{
         AcceptStream,
         OpenStream,
@@ -101,13 +101,13 @@ pub trait AcceptTypedStream {
     /// Because typed streams are indistinguishable from untyped streams, if the
     /// remote isn't sending a type, then the first 4 bytes of data will be
     /// misinterpreted as the stream type.
-    async fn accept_typed(&mut self) -> Result<TypedStream, ErrorType>;
+    async fn accept_typed(&mut self) -> Result<TypedStream, Error>;
 }
 
 #[async_trait]
 pub trait OpenTypedStream {
     /// Open a typed stream with the given type.
-    async fn open_typed(&mut self, typ: StreamType) -> Result<TypedStream, ErrorType>;
+    async fn open_typed(&mut self, typ: StreamType) -> Result<TypedStream, Error>;
 }
 
 #[async_trait]
@@ -115,15 +115,15 @@ impl<S> AcceptTypedStream for Typed<S>
 where
     S: AcceptStream + Send,
 {
-    async fn accept_typed(&mut self) -> Result<TypedStream, ErrorType> {
-        let mut stream = self.accept().await.ok_or(ErrorType::SessionClosed)?;
+    async fn accept_typed(&mut self) -> Result<TypedStream, Error> {
+        let mut stream = self.accept().await.ok_or(Error::SessionClosed)?;
 
         let mut buf = [0u8; 4];
 
         stream
             .read_exact(&mut buf[..])
             .await
-            .map_err(|_| ErrorType::StreamClosed)?;
+            .map_err(|_| Error::StreamClosed)?;
 
         let typ = StreamType::clamp((&buf[..]).get_u32());
 
@@ -135,7 +135,7 @@ impl<S> OpenTypedStream for Typed<S>
 where
     S: OpenStream + Send,
 {
-    async fn open_typed(&mut self, typ: StreamType) -> Result<TypedStream, ErrorType> {
+    async fn open_typed(&mut self, typ: StreamType) -> Result<TypedStream, Error> {
         let mut stream = self.open().await?;
 
         let mut bytes = [0u8; 4];
@@ -144,7 +144,7 @@ where
         stream
             .write(&bytes[..])
             .await
-            .map_err(|_| ErrorType::StreamReset)?;
+            .map_err(|_| Error::StreamReset)?;
 
         Ok(TypedStream { inner: stream, typ })
     }

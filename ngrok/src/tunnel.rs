@@ -14,7 +14,11 @@ use futures::{
     TryStreamExt,
 };
 use hyper::server::accept::Accept;
-use muxado::typed::TypedStream;
+use muxado::{
+    errors::Error as MuxadoError,
+    typed::TypedStream,
+};
+use thiserror::Error;
 use tokio::{
     io::{
         AsyncRead,
@@ -24,9 +28,12 @@ use tokio::{
 };
 
 use crate::{
-    internals::proto::{
-        BindExtra,
-        BindOpts,
+    internals::{
+        proto::{
+            BindExtra,
+            BindOpts,
+        },
+        raw_session::RpcError,
     },
     Session,
 };
@@ -38,7 +45,7 @@ pub struct Tunnel {
     pub(crate) labels: HashMap<String, String>,
     pub(crate) forwards_to: String,
     pub(crate) session: Session,
-    pub(crate) incoming: Receiver<anyhow::Result<Conn>>,
+    pub(crate) incoming: Receiver<Result<Conn, AcceptError>>,
 
     // TODO: remove these allows once we start using these, or the fields if we
     //       decide we don't need them.
@@ -55,9 +62,11 @@ pub struct Conn {
     pub(crate) stream: TypedStream,
 }
 
-// TODO: real error type
-pub type AcceptError = anyhow::Error;
-pub type CloseError = anyhow::Error;
+#[derive(Error, Debug, Clone, Copy)]
+pub enum AcceptError {
+    #[error("transport error")]
+    Transport(#[from] MuxadoError),
+}
 
 impl Stream for Tunnel {
     type Item = Result<Conn, AcceptError>;
@@ -98,7 +107,7 @@ impl Tunnel {
 
     /// Close the tunnel.
     /// This is an RPC call and needs to be `.await`ed.
-    pub async fn close(&mut self) -> Result<(), CloseError> {
+    pub async fn close(&mut self) -> Result<(), RpcError> {
         self.session.close_tunnel(&self.id).await?;
         self.incoming.close();
         Ok(())
