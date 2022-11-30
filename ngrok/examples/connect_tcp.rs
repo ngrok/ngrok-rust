@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use futures::TryStreamExt;
 use ngrok::{
-    common::ProxyProtocol,
+    common::ProxyProto,
     Session,
     TCPEndpoint,
     Tunnel,
@@ -37,7 +37,7 @@ async fn main() -> anyhow::Result<()> {
             TCPEndpoint::default()
                 .with_allow_cidr_string("0.0.0.0/0")
                 .with_deny_cidr_string("10.1.1.1/32")
-                .with_proxy_proto(ProxyProtocol::None)
+                .with_proxy_proto(ProxyProto::None)
                 .with_metadata("Understand it so thoroughly that you merge with it")
                 // .with_remote_addr("<n>.tcp.ngrok.io:<p>")
                 .with_forwards_to("moo"),

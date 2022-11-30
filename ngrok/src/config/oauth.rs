@@ -98,9 +98,9 @@ where
 pub(crate) fn to_proto_config(oauth: &Option<Box<dyn OauthOptionsTrait>>) -> Option<OAuth> {
     oauth.as_ref().map(|o| OAuth {
         provider: o.provider(),
-        client_id: Default::default(),            // appears unused
-        client_secret: Default::default(),        // appears unused
-        sealed_client_secret: Default::default(), // appears unused
+        client_id: Default::default(),     // unused in this context
+        client_secret: Default::default(), // unused in this context
+        sealed_client_secret: Default::default(), // unused in this context
         allow_emails: o.allow_emails(),
         allow_domains: o.allow_domains(),
         scopes: o.scopes(),

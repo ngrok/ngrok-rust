@@ -1,11 +1,16 @@
 use std::collections::HashMap;
 
+use prost::bytes::{
+    self,
+    Bytes,
+};
+
+use super::common::ProxyProto;
 use crate::{
     common::{
         self,
         private,
         CommonOpts,
-        ProxyProtocol,
         FORWARDS_TO,
     },
     headers::Headers,
@@ -38,76 +43,29 @@ use crate::{
     },
 };
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Default, Eq, PartialEq)]
 pub enum Scheme {
     HTTP,
+    #[default]
     HTTPS,
 }
 
 /// The options for a HTTP edge.
+#[derive(Default)]
 pub struct HTTPEndpoint {
-    /// Common tunnel configuration options.
     pub(crate) common_opts: CommonOpts,
-
-    /// The scheme that this edge should use.
-    /// Defaults to [HTTPS].
     pub(crate) scheme: Scheme,
-
-    /// The domain to request for this edge
     pub(crate) domain: Option<String>,
-
-    /// If non-nil, start a goroutine which runs this http server
-    /// accepting connections from the http tunnel
-    pub(crate) http_server: Option<String>, // todo
-
-    /// Certificates to use for client authentication at the ngrok edge.
-    pub(crate) mutual_tlsca: Vec<Vec<u8>>, // something more idiomatic here?
-    /// Enable gzip compression for HTTP responses.
+    pub(crate) mutual_tlsca: Vec<bytes::Bytes>,
     pub(crate) compression: bool,
-    /// Convert incoming websocket connections to TCP-like streams.
     pub(crate) websocket_tcp_conversion: bool,
-    /// Reject requests when 5XX responses exceed this ratio.
-    /// Disabled when 0.
     pub(crate) circuit_breaker: f64,
-
-    // Headers to be added to or removed from all requests at the ngrok edge.
     pub(crate) request_headers: Headers,
-    /// Headers to be added to or removed from all responses at the ngrok edge.
     pub(crate) response_headers: Headers,
-
-    /// Credentials for basic authentication.
-    /// If empty, basic authentication is disabled.
     pub(crate) basic_auth: Vec<(String, String)>,
-    /// OAuth configuration.
-    /// If nil, OAuth is disabled.
     pub(crate) oauth: Option<Box<dyn OauthOptionsTrait>>,
-    /// OIDC configuration.
-    /// If nil, OIDC is disabled.
     pub(crate) oidc: Option<Box<dyn OidcOptionsTrait>>,
-    /// WebhookVerification configuration.
-    /// If nil, WebhookVerification is disabled.
     pub(crate) webhook_verification: Option<WebhookVerification>,
-}
-
-impl Default for HTTPEndpoint {
-    fn default() -> Self {
-        HTTPEndpoint {
-            common_opts: CommonOpts::default(),
-            scheme: Scheme::HTTPS,
-            domain: None,
-            http_server: None,
-            mutual_tlsca: Vec::new(),
-            compression: false,
-            websocket_tcp_conversion: false,
-            circuit_breaker: 0f64,
-            request_headers: Headers::default(),
-            response_headers: Headers::default(),
-            basic_auth: Vec::new(),
-            oauth: None,
-            oidc: None,
-            webhook_verification: None,
-        }
-    }
 }
 
 impl private::TunnelConfigPrivate for HTTPEndpoint {
@@ -135,52 +93,39 @@ impl private::TunnelConfigPrivate for HTTPEndpoint {
         let mut http_endpoint = proto::HttpEndpoint::default();
 
         if let Some(domain) = self.domain.as_ref() {
+            // note: hostname and subdomain are going away in favor of just domain
             http_endpoint.hostname = domain.clone();
-            // todo: ngrok-rs has "hostname" and "subdomain", ngrok-go has just "domain"?
         }
-        http_endpoint.proxy_proto = self.common_opts.as_proxy_proto();
+        http_endpoint.proxy_proto = self.common_opts.proxy_proto;
 
-        let basic_auth: Option<BasicAuth> = match self.basic_auth.is_empty() {
-            true => None,
-            false => {
-                Some(BasicAuth {
-                    credentials: self
-                        .basic_auth
-                        .clone()
-                        .into_iter()
-                        .map(|b| BasicAuthCredential {
-                            username: b.0,
-                            cleartext_password: b.1,
-                            hashed_password: Vec::new(), // appears unused
-                        })
-                        .collect(),
+        let basic_auth: Option<BasicAuth> = (!self.basic_auth.is_empty()).then_some(BasicAuth {
+            credentials: self
+                .basic_auth
+                .iter()
+                .map(|b| BasicAuthCredential {
+                    username: b.0.clone(),
+                    cleartext_password: b.1.clone(),
+                    hashed_password: Vec::new(), // unused in this context
                 })
-            }
-        };
+                .collect(),
+        });
 
         http_endpoint.middleware = HttpMiddleware {
-            compression: match self.compression {
-                true => Some(Compression {}),
-                false => None,
-            },
-            circuit_breaker: match self.circuit_breaker != 0f64 {
-                true => Some(CircuitBreaker {
-                    error_threshold: self.circuit_breaker,
-                }),
-                false => None,
-            },
-            ip_restriction: self.common_opts.cidr_to_proto_config(),
+            compression: self.compression.then_some(Compression {}),
+            circuit_breaker: (self.circuit_breaker != 0f64).then_some(CircuitBreaker {
+                error_threshold: self.circuit_breaker,
+            }),
+            ip_restriction: self.common_opts.ip_restriction(),
             basic_auth,
             oauth: oauth::to_proto_config(&self.oauth),
             oidc: oidc::to_proto_config(&self.oidc),
             webhook_verification: webhook_verification::to_proto_config(&self.webhook_verification),
-            mutual_tls: common::mutual_tls_to_proto_config(&self.mutual_tlsca),
+            mutual_tls: common::mutual_tls(&self.mutual_tlsca),
             request_headers: self.request_headers.to_proto_config(),
             response_headers: self.response_headers.to_proto_config(),
-            websocket_tcp_converter: match self.websocket_tcp_conversion {
-                true => Some(WebsocketTcpConverter {}),
-                false => None,
-            },
+            websocket_tcp_converter: self
+                .websocket_tcp_conversion
+                .then_some(WebsocketTcpConverter {}),
         };
 
         Some(BindOpts::Http(http_endpoint))
@@ -191,48 +136,62 @@ impl private::TunnelConfigPrivate for HTTPEndpoint {
 }
 
 impl HTTPEndpoint {
-    // common
+    /// Restriction placed on the origin of incoming connections to the edge to only allow these CIDR ranges.
+    /// Call multiple times to add additional CIDR ranges.
     pub fn with_allow_cidr_string(&mut self, cidr: impl Into<String>) -> &mut Self {
         self.common_opts.cidr_restrictions.allow(cidr);
         self
     }
+    /// Restriction placed on the origin of incoming connections to the edge to deny these CIDR ranges.
+    /// Call multiple times to add additional CIDR ranges.
     pub fn with_deny_cidr_string(&mut self, cidr: impl Into<String>) -> &mut Self {
         self.common_opts.cidr_restrictions.deny(cidr);
         self
     }
-    pub fn with_proxy_proto(&mut self, proxy_proto: ProxyProtocol) -> &mut Self {
-        self.common_opts.proxy_proto = Some(proxy_proto);
+    /// The version of PROXY protocol to use with this tunnel, None if not using.
+    pub fn with_proxy_proto(&mut self, proxy_proto: ProxyProto) -> &mut Self {
+        self.common_opts.proxy_proto = proxy_proto;
         self
     }
+    /// Tunnel-specific opaque metadata. Viewable via the API.
     pub fn with_metadata(&mut self, metadata: impl Into<String>) -> &mut Self {
         self.common_opts.metadata = Some(metadata.into());
         self
     }
+    /// Tunnel backend metadata. Viewable via the dashboard and API, but has no
+    /// bearing on tunnel behavior.
     pub fn with_forwards_to(&mut self, forwards_to: impl Into<String>) -> &mut Self {
         self.common_opts.forwards_to = Some(forwards_to.into());
         self
     }
-    // self
+    /// The scheme that this edge should use.
+    /// Defaults to [HTTPS].
     pub fn with_scheme(&mut self, scheme: Scheme) -> &mut Self {
         self.scheme = scheme;
         self
     }
+    /// The domain to request for this edge
     pub fn with_domain(&mut self, domain: impl Into<String>) -> &mut Self {
         self.domain = Some(domain.into());
         self
     }
-    pub fn with_mutual_tlsca(&mut self, mutual_tlsca: Vec<u8>) -> &mut Self {
+    /// Certificates to use for client authentication at the ngrok edge.
+    pub fn with_mutual_tlsca(&mut self, mutual_tlsca: Bytes) -> &mut Self {
         self.mutual_tlsca.push(mutual_tlsca);
         self
     }
+    /// Enable gzip compression for HTTP responses.
     pub fn with_compression(&mut self) -> &mut Self {
         self.compression = true;
         self
     }
+    /// Convert incoming websocket connections to TCP-like streams.
     pub fn with_websocket_tcp_conversion(&mut self) -> &mut Self {
         self.websocket_tcp_conversion = true;
         self
     }
+    /// Reject requests when 5XX responses exceed this ratio.
+    /// Disabled when 0.
     pub fn with_circuit_breaker(&mut self, circuit_breaker: f64) -> &mut Self {
         self.circuit_breaker = circuit_breaker;
         self
@@ -267,6 +226,8 @@ impl HTTPEndpoint {
         self
     }
 
+    /// Credentials for basic authentication.
+    /// If not called, basic authentication is disabled.
     pub fn with_basic_auth(
         &mut self,
         username: impl Into<String>,
@@ -275,6 +236,9 @@ impl HTTPEndpoint {
         self.basic_auth.push((username.into(), password.into()));
         self
     }
+
+    /// OAuth configuration.
+    /// If not called, OAuth is disabled.
     pub fn with_oauth<O>(&mut self, oauth: O) -> &mut Self
     where
         O: OauthOptionsTrait + 'static,
@@ -282,6 +246,9 @@ impl HTTPEndpoint {
         self.oauth = Some(Box::new(oauth));
         self
     }
+
+    /// OIDC configuration.
+    /// If not called, OIDC is disabled.
     pub fn with_oidc<O>(&mut self, oidc: O) -> &mut Self
     where
         O: OidcOptionsTrait + 'static,
@@ -289,6 +256,9 @@ impl HTTPEndpoint {
         self.oidc = Some(Box::new(oidc));
         self
     }
+
+    /// WebhookVerification configuration.
+    /// If not called, WebhookVerification is disabled.
     pub fn with_webhook_verification(
         &mut self,
         provider: impl Into<String>,

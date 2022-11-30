@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use futures::TryStreamExt;
 use ngrok::{
-    common::ProxyProtocol,
+    common::ProxyProto,
     oauth::OauthOptions,
     oidc::OidcOptions,
     HTTPEndpoint,
@@ -60,11 +60,11 @@ async fn main() -> anyhow::Result<()> {
             HTTPEndpoint::default()
                 .with_allow_cidr_string("0.0.0.0/0")
                 .with_deny_cidr_string("10.1.1.1/32")
-                .with_proxy_proto(ProxyProtocol::None)
+                .with_proxy_proto(ProxyProto::None)
                 .with_metadata("Understand it so thoroughly that you merge with it")
                 .with_scheme(ngrok::Scheme::HTTPS)
                 // .with_domain("<somedomain>.ngrok.io")
-                // .with_mutual_tlsca(CA_CERT.to_vec())
+                // .with_mutual_tlsca(CA_CERT.into())
                 .with_compression()
                 // .with_websocket_tcp_conversion()
                 .with_circuit_breaker(0.5)

@@ -1,9 +1,9 @@
-use crate::{
-    internals::proto::ProxyProto,
-    mw::middleware_configuration::{
-        IpRestriction,
-        MutualTls,
-    },
+use prost::bytes;
+
+pub use crate::internals::proto::ProxyProto;
+use crate::mw::middleware_configuration::{
+    IpRestriction,
+    MutualTls,
 };
 
 pub(crate) const FORWARDS_TO: &str = "rust";
@@ -103,13 +103,6 @@ impl CidrRestrictions {
     }
 }
 
-#[derive(Copy, Clone)]
-pub enum ProxyProtocol {
-    None,
-    V1,
-    V2,
-}
-
 // Common
 #[derive(Default)]
 pub(crate) struct CommonOpts {
@@ -117,7 +110,7 @@ pub(crate) struct CommonOpts {
     pub(crate) cidr_restrictions: CidrRestrictions,
     // The version of PROXY protocol to use with this tunnel, zero if not
     // using.
-    pub(crate) proxy_proto: Option<ProxyProtocol>,
+    pub(crate) proxy_proto: ProxyProto,
     // Tunnel-specific opaque metadata. Viewable via the API.
     pub(crate) metadata: Option<String>,
     // Tunnel backend metadata. Viewable via the dashboard and API, but has no
@@ -126,19 +119,8 @@ pub(crate) struct CommonOpts {
 }
 
 impl CommonOpts {
-    pub(crate) fn as_proxy_proto(&self) -> ProxyProto {
-        if self.proxy_proto.is_some() {
-            match self.proxy_proto.unwrap() {
-                ProxyProtocol::V1 => return ProxyProto::V1,
-                ProxyProtocol::V2 => return ProxyProto::V2,
-                _ => {}
-            }
-        }
-        ProxyProto::None
-    }
-
     // Get the proto version of cidr restrictions
-    pub(crate) fn cidr_to_proto_config(&self) -> Option<IpRestriction> {
+    pub(crate) fn ip_restriction(&self) -> Option<IpRestriction> {
         if self.cidr_restrictions.allowed.is_empty() && self.cidr_restrictions.denied.is_empty() {
             return None;
         }
@@ -149,7 +131,7 @@ impl CommonOpts {
     }
 }
 
-pub(crate) fn mutual_tls_to_proto_config(certs: &[Vec<u8>]) -> Option<MutualTls> {
+pub(crate) fn mutual_tls(certs: &[bytes::Bytes]) -> Option<MutualTls> {
     if certs.is_empty() {
         return None;
     }

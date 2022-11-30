@@ -340,8 +340,9 @@ pub struct SrvInfoResp {
 
 rpc_req!(SrvInfo, SrvInfoResp, SRV_INFO_REQ);
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Default)]
 pub enum ProxyProto {
+    #[default]
     None,
     V1,
     V2,

@@ -123,7 +123,7 @@ pub(crate) fn to_proto_config(oauth: &Option<Box<dyn OidcOptionsTrait>>) -> Opti
         issuer_url: o.issuer_url(),
         client_id: o.client_id(),
         client_secret: o.client_secret(),
-        sealed_client_secret: Default::default(), // appears unused
+        sealed_client_secret: Default::default(), // unused in this context
         allow_emails: o.allow_emails(),
         allow_domains: o.allow_domains(),
         scopes: o.scopes(),

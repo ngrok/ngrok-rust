@@ -15,14 +15,8 @@ use crate::{
 /// Options for labeled tunnels.
 #[derive(Default)]
 pub struct LabeledTunnel {
-    /// Common tunnel configuration options.
     pub(crate) common_opts: CommonOpts,
-
-    /// A map of label, value pairs for this tunnel.
     pub(crate) labels: HashMap<String, String>,
-
-    // An HTTP Server to run traffic on
-    pub(crate) http_server: Option<String>, // todo
 }
 
 impl private::TunnelConfigPrivate for LabeledTunnel {
@@ -50,13 +44,15 @@ impl private::TunnelConfigPrivate for LabeledTunnel {
     }
 }
 
+/// Options for labeled tunnels.
 impl LabeledTunnel {
-    // common
+    /// Tunnel-specific opaque metadata. Viewable via the API.
     pub fn with_metadata(&mut self, metadata: impl Into<String>) -> &mut Self {
         self.common_opts.metadata = Some(metadata.into());
         self
     }
-    // self
+
+    /// Add a label, value pair for this tunnel.
     pub fn with_label(&mut self, label: impl Into<String>, value: impl Into<String>) -> &mut Self {
         self.labels.insert(label.into(), value.into());
         self

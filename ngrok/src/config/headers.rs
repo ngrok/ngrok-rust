@@ -32,7 +32,7 @@ impl Headers {
                 .map(|a| format!("{}:{}", a.0, a.1))
                 .collect(),
             remove: self.removed.clone(),
-            add_parsed: HashMap::new(), // appears unused
+            add_parsed: HashMap::new(), // unused in this context
         })
     }
 }
