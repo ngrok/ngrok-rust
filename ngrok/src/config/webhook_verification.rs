@@ -10,12 +10,13 @@ pub(crate) struct WebhookVerification {
 
 impl WebhookVerification {}
 
-pub(crate) fn to_proto_config(
-    webhook_verification: &Option<WebhookVerification>,
-) -> Option<WebhookProto> {
-    webhook_verification.as_ref().map(|w| WebhookProto {
-        provider: w.provider.clone(),
-        secret: w.secret.clone(),
-        sealed_secret: Vec::new(),
-    })
+// transform into the wire protocol format
+impl From<&WebhookVerification> for WebhookProto {
+    fn from(wv: &WebhookVerification) -> Self {
+        WebhookProto {
+            provider: wv.provider.clone(),
+            secret: wv.secret.clone(),
+            sealed_secret: Vec::new(), // unused in this context
+        }
+    }
 }

@@ -8,7 +8,6 @@ use prost::bytes::{
 use super::common::ProxyProto;
 use crate::{
     common::{
-        self,
         private,
         CommonOpts,
         FORWARDS_TO,
@@ -29,18 +28,9 @@ use crate::{
         },
         HttpMiddleware,
     },
-    oauth::{
-        self,
-        OauthOptionsTrait,
-    },
-    oidc::{
-        self,
-        OidcOptionsTrait,
-    },
-    webhook_verification::{
-        self,
-        WebhookVerification,
-    },
+    oauth::OauthOptionsTrait,
+    oidc::OidcOptionsTrait,
+    webhook_verification::WebhookVerification,
 };
 
 #[derive(Clone, Default, Eq, PartialEq)]
@@ -98,31 +88,25 @@ impl private::TunnelConfigPrivate for HTTPEndpoint {
         }
         http_endpoint.proxy_proto = self.common_opts.proxy_proto;
 
-        let basic_auth: Option<BasicAuth> = (!self.basic_auth.is_empty()).then_some(BasicAuth {
-            credentials: self
-                .basic_auth
-                .iter()
-                .map(|b| BasicAuthCredential {
-                    username: b.0.clone(),
-                    cleartext_password: b.1.clone(),
-                    hashed_password: Vec::new(), // unused in this context
-                })
-                .collect(),
-        });
-
         http_endpoint.middleware = HttpMiddleware {
             compression: self.compression.then_some(Compression {}),
             circuit_breaker: (self.circuit_breaker != 0f64).then_some(CircuitBreaker {
                 error_threshold: self.circuit_breaker,
             }),
             ip_restriction: self.common_opts.ip_restriction(),
-            basic_auth,
-            oauth: oauth::to_proto_config(&self.oauth),
-            oidc: oidc::to_proto_config(&self.oidc),
-            webhook_verification: webhook_verification::to_proto_config(&self.webhook_verification),
-            mutual_tls: common::mutual_tls(&self.mutual_tlsca),
-            request_headers: self.request_headers.to_proto_config(),
-            response_headers: self.response_headers.to_proto_config(),
+            basic_auth: (!self.basic_auth.is_empty()).then_some((&self.basic_auth).into()),
+            oauth: self.oauth.as_ref().map(|o| o.into()),
+            oidc: self.oidc.as_ref().map(|o| o.into()),
+            webhook_verification: self.webhook_verification.as_ref().map(|w| w.into()),
+            mutual_tls: (!self.mutual_tlsca.is_empty()).then_some((&self.mutual_tlsca).into()),
+            request_headers: self
+                .request_headers
+                .has_entries()
+                .then_some((&self.request_headers).into()),
+            response_headers: self
+                .response_headers
+                .has_entries()
+                .then_some((&self.response_headers).into()),
             websocket_tcp_converter: self
                 .websocket_tcp_conversion
                 .then_some(WebsocketTcpConverter {}),
@@ -132,6 +116,26 @@ impl private::TunnelConfigPrivate for HTTPEndpoint {
     }
     fn labels(&self) -> HashMap<String, String> {
         HashMap::new()
+    }
+}
+
+// transform into the wire protocol format
+impl From<&Vec<(String, String)>> for BasicAuth {
+    fn from(v: &Vec<(String, String)>) -> Self {
+        BasicAuth {
+            credentials: v.iter().map(|b| b.into()).collect(),
+        }
+    }
+}
+
+// transform into the wire protocol format
+impl From<&(String, String)> for BasicAuthCredential {
+    fn from(b: &(String, String)) -> Self {
+        BasicAuthCredential {
+            username: b.0.clone(),
+            cleartext_password: b.1.clone(),
+            hashed_password: Vec::new(), // unused in this context
+        }
     }
 }
 

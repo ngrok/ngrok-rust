@@ -95,14 +95,17 @@ where
     }
 }
 
-pub(crate) fn to_proto_config(oauth: &Option<Box<dyn OauthOptionsTrait>>) -> Option<OAuth> {
-    oauth.as_ref().map(|o| OAuth {
-        provider: o.provider(),
-        client_id: Default::default(),     // unused in this context
-        client_secret: Default::default(), // unused in this context
-        sealed_client_secret: Default::default(), // unused in this context
-        allow_emails: o.allow_emails(),
-        allow_domains: o.allow_domains(),
-        scopes: o.scopes(),
-    })
+// transform into the wire protocol format
+impl From<&Box<dyn OauthOptionsTrait>> for OAuth {
+    fn from(o: &Box<dyn OauthOptionsTrait>) -> Self {
+        OAuth {
+            provider: o.provider(),
+            client_id: Default::default(),     // unused in this context
+            client_secret: Default::default(), // unused in this context
+            sealed_client_secret: Default::default(), // unused in this context
+            allow_emails: o.allow_emails(),
+            allow_domains: o.allow_domains(),
+            scopes: o.scopes(),
+        }
+    }
 }

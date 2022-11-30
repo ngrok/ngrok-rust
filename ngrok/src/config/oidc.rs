@@ -118,14 +118,17 @@ where
     }
 }
 
-pub(crate) fn to_proto_config(oauth: &Option<Box<dyn OidcOptionsTrait>>) -> Option<Oidc> {
-    oauth.as_ref().map(|o| Oidc {
-        issuer_url: o.issuer_url(),
-        client_id: o.client_id(),
-        client_secret: o.client_secret(),
-        sealed_client_secret: Default::default(), // unused in this context
-        allow_emails: o.allow_emails(),
-        allow_domains: o.allow_domains(),
-        scopes: o.scopes(),
-    })
+// transform into the wire protocol format
+impl From<&Box<dyn OidcOptionsTrait>> for Oidc {
+    fn from(o: &Box<dyn OidcOptionsTrait>) -> Self {
+        Oidc {
+            issuer_url: o.issuer_url(),
+            client_id: o.client_id(),
+            client_secret: o.client_secret(),
+            sealed_client_secret: Default::default(), // unused in this context
+            allow_emails: o.allow_emails(),
+            allow_domains: o.allow_domains(),
+            scopes: o.scopes(),
+        }
+    }
 }

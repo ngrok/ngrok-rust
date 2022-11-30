@@ -8,7 +8,6 @@ use prost::bytes::{
 use super::common::ProxyProto;
 use crate::{
     common::{
-        self,
         private,
         CommonOpts,
         FORWARDS_TO,
@@ -62,7 +61,8 @@ impl private::TunnelConfigPrivate for TLSEndpoint {
         tls_endpoint.proxy_proto = self.common_opts.proxy_proto;
 
         let tls_termination =
-            (self.cert_pem.is_some() && self.key_pem.is_some()).then_some(TlsTermination {
+            // uses 'then' for lazy unwrapping
+            (self.cert_pem.is_some() && self.key_pem.is_some()).then(|| TlsTermination {
                 cert: self.cert_pem.as_ref().unwrap().to_vec(),
                 key: self.key_pem.as_ref().unwrap().to_vec(),
                 sealed_key: Vec::new(), // unused in this context
@@ -70,7 +70,7 @@ impl private::TunnelConfigPrivate for TLSEndpoint {
 
         tls_endpoint.middleware = TlsMiddleware {
             ip_restriction: self.common_opts.ip_restriction(),
-            mutual_tls: common::mutual_tls(&self.mutual_tlsca),
+            mutual_tls: (!self.mutual_tlsca.is_empty()).then_some((&self.mutual_tlsca).into()),
             tls_termination,
         };
 

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::mw::middleware_configuration::Headers as HeaderProto;
 
 /// HTTP Headers to modify at the ngrok edge.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct Headers {
     /// Headers to add to requests or responses at the ngrok edge.
     added: HashMap<String, String>,
@@ -18,21 +18,22 @@ impl Headers {
     pub(crate) fn remove(&mut self, name: impl Into<String>) {
         self.removed.push(name.into());
     }
+    pub(crate) fn has_entries(&self) -> bool {
+        !self.added.is_empty() || !self.removed.is_empty()
+    }
+}
 
-    // transform into the wire protocol format
-    pub(crate) fn to_proto_config(&self) -> Option<HeaderProto> {
-        if self.added.is_empty() && self.removed.is_empty() {
-            return None;
-        }
-        Some(HeaderProto {
-            add: self
+// transform into the wire protocol format
+impl From<&Headers> for HeaderProto {
+    fn from(headers: &Headers) -> Self {
+        HeaderProto {
+            add: headers
                 .added
-                .clone()
-                .into_iter()
+                .iter()
                 .map(|a| format!("{}:{}", a.0, a.1))
                 .collect(),
-            remove: self.removed.clone(),
+            remove: headers.removed.clone(),
             add_parsed: HashMap::new(), // unused in this context
-        })
+        }
     }
 }

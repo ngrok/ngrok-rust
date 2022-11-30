@@ -121,23 +121,27 @@ pub(crate) struct CommonOpts {
 impl CommonOpts {
     // Get the proto version of cidr restrictions
     pub(crate) fn ip_restriction(&self) -> Option<IpRestriction> {
-        if self.cidr_restrictions.allowed.is_empty() && self.cidr_restrictions.denied.is_empty() {
-            return None;
-        }
-        Some(IpRestriction {
-            allow_cidrs: self.cidr_restrictions.allowed.clone(),
-            deny_cidrs: self.cidr_restrictions.denied.clone(),
-        })
+        (self.cidr_restrictions.allowed.is_empty() && self.cidr_restrictions.denied.is_empty())
+            .then_some(self.into())
     }
 }
 
-pub(crate) fn mutual_tls(certs: &[bytes::Bytes]) -> Option<MutualTls> {
-    if certs.is_empty() {
-        return None;
+// transform into the wire protocol format
+impl From<&CommonOpts> for IpRestriction {
+    fn from(common: &CommonOpts) -> Self {
+        IpRestriction {
+            allow_cidrs: common.cidr_restrictions.allowed.clone(),
+            deny_cidrs: common.cidr_restrictions.denied.clone(),
+        }
     }
-    let mut aggregated = Vec::new();
-    certs.iter().for_each(|c| aggregated.extend(c));
-    Some(MutualTls {
-        mutual_tls_ca: aggregated,
-    })
+}
+
+impl From<&Vec<bytes::Bytes>> for MutualTls {
+    fn from(b: &Vec<bytes::Bytes>) -> Self {
+        let mut aggregated = Vec::new();
+        b.iter().for_each(|c| aggregated.extend(c));
+        MutualTls {
+            mutual_tls_ca: aggregated,
+        }
+    }
 }
