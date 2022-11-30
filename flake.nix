@@ -39,6 +39,7 @@
               "rustc"
               "rustfmt"
             ])
+            cargo-udeps
             protobuf
             go_1_18
           ];
