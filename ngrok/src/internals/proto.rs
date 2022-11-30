@@ -89,15 +89,15 @@ pub struct AuthExtra {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct AuthResp {
-    pub version: Option<String>,
-    pub client_id: Option<String>,
-    pub error: Option<String>,
-    pub extra: Option<AuthRespExtra>,
+    pub version: String,
+    pub client_id: String,
+    #[serde(default)]
+    pub extra: AuthRespExtra,
 }
 
 rpc_req!(Auth, AuthResp, AUTH_REQ);
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct AuthRespExtra {
     pub version: Option<String>,
@@ -149,7 +149,6 @@ pub struct BindResp {
     pub url: String,
     pub proto: String,
     pub bind_opts: Option<BindOpts>,
-    pub error: String,
     pub extra: BindRespExtra,
 }
 
@@ -173,7 +172,6 @@ pub struct StartTunnelWithLabel {
 #[serde(rename_all = "PascalCase")]
 pub struct StartTunnelWithLabelResp {
     pub id: String,
-    pub error: String,
 }
 
 rpc_req!(
@@ -193,7 +191,6 @@ pub struct Unbind {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct UnbindResp {
-    pub error: String,
     // extra: not sure what this field actually contains
 }
 
@@ -308,9 +305,7 @@ pub struct Stop;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
-pub struct StopResp {
-    pub error: String,
-}
+pub struct StopResp {}
 
 rpc_req!(Stop, StopResp, STOP_REQ);
 
@@ -320,9 +315,7 @@ pub struct Restart;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
-pub struct RestartResp {
-    pub error: String,
-}
+pub struct RestartResp {}
 
 rpc_req!(Restart, RestartResp, RESTART_REQ);
 
@@ -335,9 +328,7 @@ pub struct Update {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
-pub struct UpdateResp {
-    pub error: String,
-}
+pub struct UpdateResp {}
 
 rpc_req!(Update, UpdateResp, UPDATE_REQ);
 

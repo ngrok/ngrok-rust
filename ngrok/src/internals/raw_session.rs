@@ -49,7 +49,11 @@ use super::{
         UPDATE_REQ,
         VERSION,
     },
-    rpc::RpcRequest,
+    rpc::{
+        RemoteError,
+        RpcRequest,
+        RpcResult,
+    },
 };
 
 #[derive(Error, Debug)]
@@ -62,6 +66,14 @@ pub enum RpcError {
     Receive(#[source] io::Error),
     #[error("failed to deserialize rpc response")]
     InvalidResponse(#[from] serde_json::Error),
+    #[error("rpc error response: {0}")]
+    Response(String),
+}
+
+impl From<RemoteError> for RpcError {
+    fn from(other: RemoteError) -> Self {
+        Self::Response(other.error)
+    }
 }
 
 #[derive(Error, Debug)]
@@ -159,7 +171,12 @@ impl RpcClient {
             .await
             .map_err(RpcError::Receive)?;
 
-        Ok(serde_json::from_slice(&buf)?)
+        let resp: RpcResult<R::Response> = serde_json::from_slice(&buf)?;
+
+        match resp {
+            RpcResult::Ok(resp) => Ok(resp),
+            RpcResult::Err(e) => Err(e.into()),
+        }
     }
 
     pub async fn auth(
