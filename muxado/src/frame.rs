@@ -17,7 +17,7 @@ use bytes::Bytes;
 use crate::{
     constrained::*,
     errors::{
-        ErrorType,
+        Error,
         InvalidHeader,
     },
 };
@@ -116,7 +116,7 @@ impl Frame {
         self
     }
 
-    pub fn rst(stream_id: StreamID, error: ErrorType) -> Frame {
+    pub fn rst(stream_id: StreamID, error: Error) -> Frame {
         let length = Length::clamp(4);
         Frame {
             header: Header {
@@ -128,7 +128,7 @@ impl Frame {
             body: Body::Rst(error),
         }
     }
-    pub fn goaway(last_stream_id: StreamID, error: ErrorType, mut message: Bytes) -> Frame {
+    pub fn goaway(last_stream_id: StreamID, error: Error, mut message: Bytes) -> Frame {
         let length = Length::clamp(message.len() as u32);
         message = message.slice(..*length as usize);
         Frame {
@@ -187,12 +187,12 @@ impl From<HeaderType> for u8 {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Body {
-    Rst(ErrorType),
+    Rst(Error),
     Data(Bytes),
     WndInc(WndInc),
     GoAway {
         last_stream_id: StreamID,
-        error: ErrorType,
+        error: Error,
         message: Bytes,
     },
     Invalid {

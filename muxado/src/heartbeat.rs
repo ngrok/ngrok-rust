@@ -25,7 +25,7 @@ use tokio::{
 };
 
 use crate::{
-    errors::ErrorType,
+    errors::Error,
     typed::{
         AcceptTypedStream,
         OpenTypedStream,
@@ -282,7 +282,7 @@ impl<S> AcceptTypedStream for Heartbeat<S>
 where
     S: AcceptTypedStream + Send,
 {
-    async fn accept_typed(&mut self) -> Result<TypedStream, ErrorType> {
+    async fn accept_typed(&mut self) -> Result<TypedStream, Error> {
         loop {
             let stream = self.inner.accept_typed().await?;
             let typ = stream.typ();
@@ -302,10 +302,10 @@ impl<S> OpenTypedStream for Heartbeat<S>
 where
     S: OpenTypedStream + Send,
 {
-    async fn open_typed(&mut self, typ: StreamType) -> Result<TypedStream, ErrorType> {
+    async fn open_typed(&mut self, typ: StreamType) -> Result<TypedStream, Error> {
         // Don't open a heartbeat stream manually
         if typ == self.typ {
-            return Err(ErrorType::StreamRefused);
+            return Err(Error::StreamRefused);
         }
 
         self.inner.open_typed(typ).await

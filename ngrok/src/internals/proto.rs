@@ -1,9 +1,10 @@
 use std::{
     collections::HashMap,
+    io,
     str::FromStr,
+    string::FromUtf8Error,
 };
 
-use anyhow::Error;
 use muxado::typed::StreamType;
 use serde::{
     de::Visitor,
@@ -88,15 +89,15 @@ pub struct AuthExtra {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct AuthResp {
-    pub version: Option<String>,
-    pub client_id: Option<String>,
-    pub error: Option<String>,
-    pub extra: Option<AuthRespExtra>,
+    pub version: String,
+    pub client_id: String,
+    #[serde(default)]
+    pub extra: AuthRespExtra,
 }
 
 rpc_req!(Auth, AuthResp, AUTH_REQ);
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct AuthRespExtra {
     pub version: Option<String>,
@@ -148,7 +149,6 @@ pub struct BindResp {
     pub url: String,
     pub proto: String,
     pub bind_opts: Option<BindOpts>,
-    pub error: String,
     pub extra: BindRespExtra,
 }
 
@@ -172,7 +172,6 @@ pub struct StartTunnelWithLabel {
 #[serde(rename_all = "PascalCase")]
 pub struct StartTunnelWithLabelResp {
     pub id: String,
-    pub error: String,
 }
 
 rpc_req!(
@@ -192,7 +191,6 @@ pub struct Unbind {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct UnbindResp {
-    pub error: String,
     // extra: not sure what this field actually contains
 }
 
@@ -209,14 +207,26 @@ pub struct ProxyHeader {
     pub passthrough_tls: bool,
 }
 
+#[derive(Error, Debug)]
+pub enum ReadHeaderError {
+    #[error("error reading proxy header")]
+    Io(#[from] io::Error),
+    #[error("invalid utf-8 in proxy header")]
+    InvalidUtf8(#[from] FromUtf8Error),
+    #[error("invalid proxy header json")]
+    InvalidHeader(#[from] serde_json::Error),
+}
+
 impl ProxyHeader {
-    pub async fn read_from_stream(mut stream: impl AsyncRead + Unpin) -> Result<Self, Error> {
+    pub async fn read_from_stream(
+        mut stream: impl AsyncRead + Unpin,
+    ) -> Result<Self, ReadHeaderError> {
         let size = stream.read_i64_le().await?;
         let mut buf = vec![0u8; size as usize];
 
         stream.read_exact(&mut buf).await?;
 
-        let header = String::from_utf8_lossy(&buf);
+        let header = String::from_utf8(buf)?;
 
         debug!(?header, "read header");
 
@@ -295,9 +305,7 @@ pub struct Stop;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
-pub struct StopResp {
-    pub error: String,
-}
+pub struct StopResp {}
 
 rpc_req!(Stop, StopResp, STOP_REQ);
 
@@ -307,9 +315,7 @@ pub struct Restart;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
-pub struct RestartResp {
-    pub error: String,
-}
+pub struct RestartResp {}
 
 rpc_req!(Restart, RestartResp, RESTART_REQ);
 
@@ -322,9 +328,7 @@ pub struct Update {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
-pub struct UpdateResp {
-    pub error: String,
-}
+pub struct UpdateResp {}
 
 rpc_req!(Update, UpdateResp, UPDATE_REQ);
 

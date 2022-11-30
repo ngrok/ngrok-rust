@@ -11,7 +11,7 @@ use crate::frame::{
 /// The muxado error type.
 #[repr(u32)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Error)]
-pub enum ErrorType {
+pub enum Error {
     #[error("No Error")]
     NoError = 0x00,
     #[error("Protocol Error")]
@@ -49,15 +49,15 @@ pub enum ErrorType {
     ErrorUnknown = u32::MAX,
 }
 
-impl From<ErrorType> for ErrorCode {
-    fn from(other: ErrorType) -> ErrorCode {
+impl From<Error> for ErrorCode {
+    fn from(other: Error) -> ErrorCode {
         ErrorCode::mask(other as u32)
     }
 }
 
-impl From<ErrorCode> for ErrorType {
-    fn from(other: ErrorCode) -> ErrorType {
-        use ErrorType::*;
+impl From<ErrorCode> for Error {
+    fn from(other: ErrorCode) -> Error {
+        use Error::*;
         match *other {
             0x00 => NoError,
             0x01 => ProtocolError,
@@ -101,8 +101,8 @@ impl From<InvalidHeader> for io::Error {
     }
 }
 
-impl From<InvalidHeader> for ErrorType {
-    fn from(_: InvalidHeader) -> ErrorType {
-        ErrorType::ProtocolError
+impl From<InvalidHeader> for Error {
+    fn from(_: InvalidHeader) -> Error {
+        Error::ProtocolError
     }
 }

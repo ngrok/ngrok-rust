@@ -41,7 +41,7 @@ use tracing::{
 };
 
 use crate::{
-    errors::ErrorType,
+    errors::Error,
     frame::{
         Body,
         Frame,
@@ -134,10 +134,10 @@ impl StreamManager {
         )
     }
 
-    pub fn go_away(&mut self, _error: ErrorType) {
+    pub fn go_away(&mut self, _error: Error) {
         self.sent_away = true;
         for (_id, handle) in self.streams.drain() {
-            handle.sink_closer.close_with(ErrorType::RemoteGoneAway);
+            handle.sink_closer.close_with(Error::RemoteGoneAway);
         }
     }
 
@@ -261,7 +261,7 @@ impl StreamT for SharedStreamManager {
 
 impl SharedStreamManager {
     #[instrument(level = "trace", skip(self))]
-    pub async fn go_away(&mut self, error: ErrorType) {
+    pub async fn go_away(&mut self, error: Error) {
         self.1.store(true, Ordering::SeqCst);
         self.lock().await.go_away(error);
     }
@@ -269,7 +269,7 @@ impl SharedStreamManager {
     // Send a frame to a stream with the given ID.
     // Should only return an error if the stream is closed, and the caller needs to send a reset.
     #[instrument(level = "trace", skip(self))]
-    pub async fn send_to_stream(&mut self, frame: Frame) -> Result<(), ErrorType> {
+    pub async fn send_to_stream(&mut self, frame: Frame) -> Result<(), Error> {
         let id = frame.header.stream_id;
         let typ = frame.header.typ;
         // If we see data coming in, reduce the stream's window. If it goes
@@ -287,7 +287,7 @@ impl SharedStreamManager {
                     id = %id,
                     "attempt to send invalid frame type to stream",
                 );
-                return Err(ErrorType::InternalError);
+                return Err(Error::InternalError);
             }
             _ => {}
         }
@@ -299,7 +299,7 @@ impl SharedStreamManager {
         let mut handle_frame = |handle: &mut StreamHandle, cx: &mut Context| {
             if typ == HeaderType::Data && handle.data_write_closed {
                 debug!("attempt to send data on closed stream");
-                return Err(ErrorType::StreamClosed).into();
+                return Err(Error::StreamClosed).into();
             }
 
             // Don't send resets to the stream, just close its channel with the
@@ -335,14 +335,14 @@ impl SharedStreamManager {
                     stream_window = handle.window,
                     "remote violated flow control"
                 );
-                return Err(ErrorType::FlowControlError).into();
+                return Err(Error::FlowControlError).into();
             }
 
             let sink = &mut handle.to_stream;
             trace!("checking stream for readiness");
             ready!(sink.poll_ready(cx))
                 .and_then(|_| sink.start_send(frame.take().unwrap()))
-                .map_err(|_| ErrorType::StreamClosed)
+                .map_err(|_| Error::StreamClosed)
                 .or_else(|res| if is_fin { Ok(()) } else { Err(res) })?;
             Ok(()).into()
         };
@@ -351,7 +351,7 @@ impl SharedStreamManager {
         // any longer than necessary to check if the stream is ready. If we did
         // it await-style, we'd continue holding the lock even if the stream was
         // still pending.
-        poll_fn(move |cx| -> Poll<Result<_, ErrorType>> {
+        poll_fn(move |cx| -> Poll<Result<_, Error>> {
             // Lock self, look up the stream. If it doesn't exist, return the
             // error.
             let mut lock = ready!(self.0.poll_lock(cx));
@@ -372,7 +372,7 @@ impl SharedStreamManager {
                 // any more frames from being sent.
                 if let Err(e) = res {
                     debug!(error = display(e), "error handling frame");
-                    handle.sink_closer.close_with(ErrorType::StreamClosed);
+                    handle.sink_closer.close_with(Error::StreamClosed);
                     handle.data_write_closed = true;
                     handle.needs_fin = false;
                 }
@@ -416,24 +416,20 @@ impl OpenReq {
 
 impl StreamManager {
     #[instrument(level = "trace", skip(self))]
-    pub(crate) fn get_stream(&mut self, id: StreamID) -> Result<&mut StreamHandle, ErrorType> {
+    pub(crate) fn get_stream(&mut self, id: StreamID) -> Result<&mut StreamHandle, Error> {
         if let Some(handle) = self.streams.get_mut(&id) {
             Ok(handle)
         } else {
             trace!("stream not found");
-            Err(ErrorType::StreamClosed)
+            Err(Error::StreamClosed)
         }
     }
 
     #[instrument(level = "trace", skip(self, req))]
-    pub fn create_stream(
-        &mut self,
-        id: Option<StreamID>,
-        req: OpenReq,
-    ) -> Result<StreamID, ErrorType> {
+    pub fn create_stream(&mut self, id: Option<StreamID>, req: OpenReq) -> Result<StreamID, Error> {
         // Only return an error if we're at the stream limit.
         if self.streams.len() == self.stream_limit {
-            return Err(ErrorType::StreamsExhausted);
+            return Err(Error::StreamsExhausted);
         }
 
         let (to_stream, from_stream) = req.channel;

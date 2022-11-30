@@ -25,7 +25,7 @@ use pin_utils::unsafe_pinned;
 use tracing::instrument;
 
 use crate::{
-    errors::ErrorType,
+    errors::Error,
     frame::{
         ErrorCode,
         Frame,
@@ -54,7 +54,7 @@ impl StreamSender {
 }
 
 impl Sink<Frame> for StreamSender {
-    type Error = ErrorType;
+    type Error = Error;
 
     #[instrument(level = "trace", skip_all)]
     fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -64,8 +64,8 @@ impl Sink<Frame> for StreamSender {
             Err(_) => {
                 // If there was an error here, it means the stream manager got
                 // dropped.
-                self.closer.close_with(ErrorType::SessionClosed);
-                Err(ErrorType::SessionClosed)
+                self.closer.close_with(Error::SessionClosed);
+                Err(Error::SessionClosed)
             }
         })
     }
@@ -75,8 +75,8 @@ impl Sink<Frame> for StreamSender {
         match self.as_mut().sink().start_send(item) {
             Ok(()) => Ok(()),
             Err(_) => {
-                self.closer.close_with(ErrorType::SessionClosed);
-                Err(ErrorType::SessionClosed)
+                self.closer.close_with(Error::SessionClosed);
+                Err(Error::SessionClosed)
             }
         }
     }
@@ -86,8 +86,8 @@ impl Sink<Frame> for StreamSender {
         Poll::Ready(match ready!(self.as_mut().sink().poll_flush(cx)) {
             Ok(()) => Ok(()),
             Err(_) => {
-                self.closer.close_with(ErrorType::SessionClosed);
-                Err(ErrorType::SessionClosed)
+                self.closer.close_with(Error::SessionClosed);
+                Err(Error::SessionClosed)
             }
         })
     }
@@ -105,10 +105,10 @@ impl Sink<Frame> for StreamSender {
             ready!(self.as_mut().sink().poll_close(cx))?;
             Ok(()).into()
         })()
-        .map_ok(|_| self.closer.close_with(ErrorType::StreamClosed))
+        .map_ok(|_| self.closer.close_with(Error::StreamClosed))
         .map_err(|_| {
-            self.closer.close_with(ErrorType::SessionClosed);
-            ErrorType::SessionClosed
+            self.closer.close_with(Error::SessionClosed);
+            Error::SessionClosed
         })
     }
 }
@@ -120,7 +120,7 @@ pub struct SinkCloser {
 
 impl SinkCloser {
     #[instrument(level = "trace")]
-    pub fn close_with(&self, ty: ErrorType) {
+    pub fn close_with(&self, ty: Error) {
         // Only store an error if there wasn't already one.
         // Discard the result since we don't really care to return it.
         let _ = self.code.compare_exchange(
@@ -135,10 +135,10 @@ impl SinkCloser {
         self.check_closed().is_err()
     }
 
-    pub fn check_closed(&self) -> Result<(), ErrorType> {
+    pub fn check_closed(&self) -> Result<(), Error> {
         let code = self.code.load(Ordering::Acquire);
         if code != 0 {
-            Err(ErrorType::from(ErrorCode::mask(code)))
+            Err(Error::from(ErrorCode::mask(code)))
         } else {
             Ok(())
         }

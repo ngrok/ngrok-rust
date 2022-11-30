@@ -26,7 +26,7 @@ use tokio::io::{
 use tracing::instrument;
 
 use crate::{
-    errors::ErrorType,
+    errors::Error,
     frame::{
         Body,
         Frame,
@@ -57,7 +57,7 @@ pub struct Stream {
     read_waker: Option<Waker>,
     write_waker: Option<Waker>,
 
-    write_closed: Option<ErrorType>,
+    write_closed: Option<Error>,
 
     data_read_closed: bool,
 
@@ -184,7 +184,7 @@ impl Stream {
 }
 
 impl<'a> StreamProj<'a> {
-    fn closed_err(&mut self, code: ErrorType) -> io::Error {
+    fn closed_err(&mut self, code: Error) -> io::Error {
         *self.write_closed = Some(code);
         io::Error::new(io::ErrorKind::ConnectionReset, code)
     }
@@ -310,7 +310,7 @@ impl AsyncWrite for Stream {
                         .start_send(Frame::from(Body::Data([][..].into())).fin())
                 })
                 .map_err(|e| this.closed_err(e))?;
-            *this.write_closed = Some(ErrorType::StreamClosed);
+            *this.write_closed = Some(Error::StreamClosed);
         }
 
         this.fout
