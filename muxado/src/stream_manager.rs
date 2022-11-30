@@ -174,6 +174,11 @@ impl StreamT for StreamManager {
             return Poll::Ready(None);
         }
 
+        // Go ahead and store the latest waker for use by newly started streams.
+        // In order to start receiving wakeups from them, we have to ensure that
+        // our task collection gets polled here after one is added to it.
+        self.new_streams = Some(cx.waker().clone());
+
         // Handle system frames first, but don't return if it's not ready, or
         // it's somehow closed (shouldn't happen).
         if let Poll::Ready(Some(frame)) = self.as_mut().sys_rx().poll_next(cx) {
@@ -184,7 +189,6 @@ impl StreamT for StreamManager {
         let (id, (item, rest)) = if let Some(i) = ready!(self.as_mut().tasks().poll_next(cx)) {
             i
         } else {
-            self.new_streams = Some(cx.waker().clone());
             return Poll::Pending;
         };
 
