@@ -64,7 +64,7 @@ impl private::TunnelConfigPrivate for TLSEndpoint {
         let tls_termination = self
             .cert_pem
             .as_ref()
-            .and_then(|c| self.key_pem.as_ref().map(|k| (c, k)))
+            .zip(self.key_pem.as_ref())
             .map(|(c, k)| TlsTermination {
                 cert: c.to_vec(),
                 key: k.to_vec(),
