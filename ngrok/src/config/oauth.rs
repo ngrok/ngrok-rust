@@ -1,14 +1,7 @@
 use crate::mw::middleware_configuration::OAuth;
 
 /// Oauth Options configuration
-pub trait OauthOptionsTrait {
-    fn provider(&self) -> String;
-    fn allow_emails(&self) -> Vec<String>;
-    fn allow_domains(&self) -> Vec<String>;
-    fn scopes(&self) -> Vec<String>;
-}
-
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct OauthOptions {
     /// The OAuth provider to use
     provider: String,
@@ -28,84 +21,31 @@ impl OauthOptions {
         }
     }
 
-    pub fn with_allow_oauth_email(&mut self, email: impl Into<String>) -> &mut Self {
+    pub fn with_allow_email(mut self, email: impl Into<String>) -> Self {
         self.allow_emails.push(email.into());
         self
     }
-    pub fn with_allow_oauth_domain(&mut self, domain: impl Into<String>) -> &mut Self {
+    pub fn with_allow_domain(mut self, domain: impl Into<String>) -> Self {
         self.allow_domains.push(domain.into());
         self
     }
-    pub fn with_oauth_scope(&mut self, scope: impl Into<String>) -> &mut Self {
+    pub fn with_scope(mut self, scope: impl Into<String>) -> Self {
         self.scopes.push(scope.into());
         self
     }
 }
 
-impl OauthOptionsTrait for OauthOptions {
-    fn provider(&self) -> String {
-        self.provider.clone()
-    }
-    fn allow_emails(&self) -> Vec<String> {
-        self.allow_emails.clone()
-    }
-    fn allow_domains(&self) -> Vec<String> {
-        self.allow_domains.clone()
-    }
-    fn scopes(&self) -> Vec<String> {
-        self.scopes.clone()
-    }
-}
-
-// delegate references
-impl<'a, T> OauthOptionsTrait for &'a T
-where
-    T: OauthOptionsTrait,
-{
-    fn provider(&self) -> String {
-        (**self).provider()
-    }
-    fn allow_emails(&self) -> Vec<String> {
-        (**self).allow_emails()
-    }
-    fn allow_domains(&self) -> Vec<String> {
-        (**self).allow_domains()
-    }
-    fn scopes(&self) -> Vec<String> {
-        (**self).scopes()
-    }
-}
-
-// delegate mutable references
-impl<'a, T> OauthOptionsTrait for &'a mut T
-where
-    T: OauthOptionsTrait,
-{
-    fn provider(&self) -> String {
-        (**self).provider()
-    }
-    fn allow_emails(&self) -> Vec<String> {
-        (**self).allow_emails()
-    }
-    fn allow_domains(&self) -> Vec<String> {
-        (**self).allow_domains()
-    }
-    fn scopes(&self) -> Vec<String> {
-        (**self).scopes()
-    }
-}
-
 // transform into the wire protocol format
-impl From<&Box<dyn OauthOptionsTrait>> for OAuth {
-    fn from(o: &Box<dyn OauthOptionsTrait>) -> Self {
+impl From<OauthOptions> for OAuth {
+    fn from(o: OauthOptions) -> Self {
         OAuth {
-            provider: o.provider(),
+            provider: o.provider,
             client_id: Default::default(),     // unused in this context
             client_secret: Default::default(), // unused in this context
             sealed_client_secret: Default::default(), // unused in this context
-            allow_emails: o.allow_emails(),
-            allow_domains: o.allow_domains(),
-            scopes: o.scopes(),
+            allow_emails: o.allow_emails,
+            allow_domains: o.allow_domains,
+            scopes: o.scopes,
         }
     }
 }

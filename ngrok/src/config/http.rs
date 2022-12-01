@@ -28,8 +28,8 @@ use crate::{
         },
         HttpMiddleware,
     },
-    oauth::OauthOptionsTrait,
-    oidc::OidcOptionsTrait,
+    oauth::OauthOptions,
+    oidc::OidcOptions,
     webhook_verification::WebhookVerification,
 };
 
@@ -53,8 +53,8 @@ pub struct HTTPEndpoint {
     pub(crate) request_headers: Headers,
     pub(crate) response_headers: Headers,
     pub(crate) basic_auth: Vec<(String, String)>,
-    pub(crate) oauth: Option<Box<dyn OauthOptionsTrait>>,
-    pub(crate) oidc: Option<Box<dyn OidcOptionsTrait>>,
+    pub(crate) oauth: Option<OauthOptions>,
+    pub(crate) oidc: Option<OidcOptions>,
     pub(crate) webhook_verification: Option<WebhookVerification>,
 }
 
@@ -95,8 +95,8 @@ impl private::TunnelConfigPrivate for HTTPEndpoint {
             }),
             ip_restriction: self.common_opts.ip_restriction(),
             basic_auth: (!self.basic_auth.is_empty()).then_some(self.basic_auth.as_slice().into()),
-            oauth: self.oauth.as_ref().map(|o| o.into()),
-            oidc: self.oidc.as_ref().map(|o| o.into()),
+            oauth: self.oauth.clone().map(From::from),
+            oidc: self.oidc.clone().map(From::from),
             webhook_verification: self.webhook_verification.clone().map(From::from),
             mutual_tls: (!self.mutual_tlsca.is_empty())
                 .then_some(self.mutual_tlsca.as_slice().into()),
@@ -244,21 +244,15 @@ impl HTTPEndpoint {
 
     /// OAuth configuration.
     /// If not called, OAuth is disabled.
-    pub fn with_oauth<O>(&mut self, oauth: O) -> &mut Self
-    where
-        O: OauthOptionsTrait + 'static,
-    {
-        self.oauth = Some(Box::new(oauth));
+    pub fn with_oauth(&mut self, oauth: OauthOptions) -> &mut Self {
+        self.oauth = Some(oauth);
         self
     }
 
     /// OIDC configuration.
     /// If not called, OIDC is disabled.
-    pub fn with_oidc<O>(&mut self, oidc: O) -> &mut Self
-    where
-        O: OidcOptionsTrait + 'static,
-    {
-        self.oidc = Some(Box::new(oidc));
+    pub fn with_oidc(&mut self, oidc: OidcOptions) -> &mut Self {
+        self.oidc = Some(oidc);
         self
     }
 

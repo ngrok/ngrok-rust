@@ -39,22 +39,6 @@ async fn main() -> anyhow::Result<()> {
             .await?,
     );
 
-    let mut oidc_options = OidcOptions::new(
-        "https://accounts.google.com",
-        "<some-client-id>",
-        "<some-client-secret>",
-    );
-    oidc_options // how to chain 'new' to 'with_*'?
-        .with_allow_oidc_email("<user>@ngrok.com")
-        .with_allow_oidc_domain("ngrok.com")
-        .with_oidc_scope("<scope>");
-
-    let mut oauth_options = OauthOptions::new("google");
-    oauth_options // how to chain 'new' to 'with_*'?
-        .with_allow_oauth_email("<user>@ngrok.com")
-        .with_allow_oauth_domain("ngrok.com")
-        .with_oauth_scope("<scope>");
-
     let tunnel = sess
         .start_tunnel(
             HTTPEndpoint::default()
@@ -72,10 +56,20 @@ async fn main() -> anyhow::Result<()> {
                 .with_response_header("X-Res-Yup", "true")
                 .with_remove_request_header("X-Req-Nope")
                 .with_remove_response_header("X-Res-Nope")
-                // .with_oauth(OauthOptions::new("p"))
-                // .with_oauth(oauth_options)
-                // .with_oidc(OidcOptions::new("a", "b", "c"))
-                // .with_oidc(oidc_options)
+                // .with_oauth(OauthOptions::new("google"))
+                // .with_oauth(
+                //     OauthOptions::new("google")
+                //         .with_allow_email("<user>@<domain>>")
+                //         .with_allow_domain("<domain>>")
+                //         //.with_scope("<scope>"),
+                // )
+                // .with_oidc(OidcOptions::new("<url>", "<id>", "<secret>"))
+                // .with_oidc(
+                //     OidcOptions::new("<url>", "<id>>", "<secret>")
+                //         .with_allow_email("<user>@<domain>")
+                //         .with_allow_domain("<domain>")
+                //         .with_scope("<scope>"),
+                // )
                 // .with_webhook_verification("twilio", "asdf"),
                 .with_basic_auth("ngrok", "online1line"),
         )
