@@ -2,8 +2,9 @@ use std::collections::HashMap;
 
 use crate::{
     common::{
-        private,
+        private::Sealed,
         CommonOpts,
+        TunnelConfig,
         FORWARDS_TO,
     },
     internals::proto::{
@@ -19,7 +20,8 @@ pub struct LabeledTunnel {
     pub(crate) labels: HashMap<String, String>,
 }
 
-impl private::TunnelConfigPrivate for LabeledTunnel {
+impl Sealed for LabeledTunnel {}
+impl TunnelConfig for LabeledTunnel {
     fn forwards_to(&self) -> String {
         self.common_opts
             .forwards_to

@@ -8,8 +8,9 @@ use prost::bytes::{
 use super::common::ProxyProto;
 use crate::{
     common::{
-        private,
+        private::Sealed,
         CommonOpts,
+        TunnelConfig,
         FORWARDS_TO,
     },
     internals::proto::{
@@ -33,7 +34,8 @@ pub struct TLSEndpoint {
     pub(crate) cert_pem: Option<bytes::Bytes>,
 }
 
-impl private::TunnelConfigPrivate for TLSEndpoint {
+impl Sealed for TLSEndpoint {}
+impl TunnelConfig for TLSEndpoint {
     fn forwards_to(&self) -> String {
         self.common_opts
             .forwards_to
