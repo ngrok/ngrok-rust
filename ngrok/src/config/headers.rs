@@ -24,15 +24,15 @@ impl Headers {
 }
 
 // transform into the wire protocol format
-impl From<&Headers> for HeaderProto {
-    fn from(headers: &Headers) -> Self {
+impl From<Headers> for HeaderProto {
+    fn from(headers: Headers) -> Self {
         HeaderProto {
             add: headers
                 .added
                 .iter()
                 .map(|a| format!("{}:{}", a.0, a.1))
                 .collect(),
-            remove: headers.removed.clone(),
+            remove: headers.removed,
             add_parsed: HashMap::new(), // unused in this context
         }
     }

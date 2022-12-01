@@ -86,7 +86,7 @@ pub(crate) mod private {
 }
 
 /// Restrictions placed on the origin of incoming connections to the edge.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct CidrRestrictions {
     /// Rejects connections that do not match the given CIDRs
     pub(crate) allowed: Vec<String>,
@@ -121,23 +121,23 @@ pub(crate) struct CommonOpts {
 impl CommonOpts {
     // Get the proto version of cidr restrictions
     pub(crate) fn ip_restriction(&self) -> Option<IpRestriction> {
-        (self.cidr_restrictions.allowed.is_empty() && self.cidr_restrictions.denied.is_empty())
-            .then_some(self.into())
+        (!self.cidr_restrictions.allowed.is_empty() || !self.cidr_restrictions.denied.is_empty())
+            .then_some(self.cidr_restrictions.clone().into())
     }
 }
 
 // transform into the wire protocol format
-impl From<&CommonOpts> for IpRestriction {
-    fn from(common: &CommonOpts) -> Self {
+impl From<CidrRestrictions> for IpRestriction {
+    fn from(cr: CidrRestrictions) -> Self {
         IpRestriction {
-            allow_cidrs: common.cidr_restrictions.allowed.clone(),
-            deny_cidrs: common.cidr_restrictions.denied.clone(),
+            allow_cidrs: cr.allowed,
+            deny_cidrs: cr.denied,
         }
     }
 }
 
-impl From<&Vec<bytes::Bytes>> for MutualTls {
-    fn from(b: &Vec<bytes::Bytes>) -> Self {
+impl From<&[bytes::Bytes]> for MutualTls {
+    fn from(b: &[bytes::Bytes]) -> Self {
         let mut aggregated = Vec::new();
         b.iter().for_each(|c| aggregated.extend(c));
         MutualTls {

@@ -94,19 +94,19 @@ impl private::TunnelConfigPrivate for HTTPEndpoint {
                 error_threshold: self.circuit_breaker,
             }),
             ip_restriction: self.common_opts.ip_restriction(),
-            basic_auth: (!self.basic_auth.is_empty()).then_some((&self.basic_auth).into()),
+            basic_auth: (!self.basic_auth.is_empty()).then_some(self.basic_auth.as_slice().into()),
             oauth: self.oauth.as_ref().map(|o| o.into()),
             oidc: self.oidc.as_ref().map(|o| o.into()),
-            webhook_verification: self.webhook_verification.as_ref().map(|w| w.into()),
-            mutual_tls: (!self.mutual_tlsca.is_empty()).then_some((&self.mutual_tlsca).into()),
+            webhook_verification: self.webhook_verification.clone().map(From::from),
+            mutual_tls: (!self.mutual_tlsca.is_empty()).then_some(self.mutual_tlsca.as_slice().into()),
             request_headers: self
                 .request_headers
                 .has_entries()
-                .then_some((&self.request_headers).into()),
+                .then_some(self.request_headers.clone().into()),
             response_headers: self
                 .response_headers
                 .has_entries()
-                .then_some((&self.response_headers).into()),
+                .then_some(self.response_headers.clone().into()),
             websocket_tcp_converter: self
                 .websocket_tcp_conversion
                 .then_some(WebsocketTcpConverter {}),
@@ -120,20 +120,20 @@ impl private::TunnelConfigPrivate for HTTPEndpoint {
 }
 
 // transform into the wire protocol format
-impl From<&Vec<(String, String)>> for BasicAuth {
-    fn from(v: &Vec<(String, String)>) -> Self {
+impl From<&[(String, String)]> for BasicAuth {
+    fn from(v: &[(String, String)]) -> Self {
         BasicAuth {
-            credentials: v.iter().map(|b| b.into()).collect(),
+            credentials: v.iter().cloned().map(From::from).collect()
         }
     }
 }
 
 // transform into the wire protocol format
-impl From<&(String, String)> for BasicAuthCredential {
-    fn from(b: &(String, String)) -> Self {
+impl From<(String, String)> for BasicAuthCredential {
+    fn from(b: (String, String)) -> Self {
         BasicAuthCredential {
-            username: b.0.clone(),
-            cleartext_password: b.1.clone(),
+            username: b.0,
+            cleartext_password: b.1,
             hashed_password: Vec::new(), // unused in this context
         }
     }
