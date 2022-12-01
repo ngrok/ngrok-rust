@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use futures::TryStreamExt;
 use ngrok::{
-    common::ProxyProto,
-    HTTPEndpoint,
+    LabeledTunnel,
     Session,
     Tunnel,
 };
@@ -13,13 +12,8 @@ use tokio::io::{
     AsyncWriteExt,
     BufReader,
 };
-use tracing::{
-    debug,
-    info,
-};
+use tracing::info;
 use tracing_subscriber::fmt::format::FmtSpan;
-
-// const CA_CERT: &[u8] = include_bytes!("ca.crt");
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -39,37 +33,9 @@ async fn main() -> anyhow::Result<()> {
 
     let tunnel = sess
         .start_tunnel(
-            HTTPEndpoint::default()
-                .with_allow_cidr_string("0.0.0.0/0")
-                .with_deny_cidr_string("10.1.1.1/32")
-                .with_proxy_proto(ProxyProto::None)
+            LabeledTunnel::default()
                 .with_metadata("Understand it so thoroughly that you merge with it")
-                .with_scheme(ngrok::Scheme::HTTPS)
-                // .with_domain("<somedomain>.ngrok.io")
-                // .with_mutual_tlsca(CA_CERT.into())
-                .with_compression()
-                // .with_websocket_tcp_conversion()
-                .with_circuit_breaker(0.5)
-                .with_request_header("X-Req-Yup", "true")
-                .with_response_header("X-Res-Yup", "true")
-                .with_remove_request_header("X-Req-Nope")
-                .with_remove_response_header("X-Res-Nope")
-                // .with_oauth(OauthOptions::new("google"))
-                // .with_oauth(
-                //     OauthOptions::new("google")
-                //         .with_allow_email("<user>@<domain>>")
-                //         .with_allow_domain("<domain>>")
-                //         //.with_scope("<scope>"),
-                // )
-                // .with_oidc(OidcOptions::new("<url>", "<id>", "<secret>"))
-                // .with_oidc(
-                //     OidcOptions::new("<url>", "<id>>", "<secret>")
-                //         .with_allow_email("<user>@<domain>")
-                //         .with_allow_domain("<domain>")
-                //         .with_scope("<scope>"),
-                // )
-                // .with_webhook_verification("twilio", "asdf"),
-                .with_basic_auth("ngrok", "online1line"),
+                .with_label("edge", "edghts_2IC6RJ6CQnuh7wRciWywGK05ONt"),
         )
         .await?;
 
@@ -93,7 +59,7 @@ fn handle_tunnel(mut tunnel: Tunnel, sess: Arc<Session>) {
             let _id: String = tunnel.id().into();
 
             tokio::spawn(async move {
-                info!("accepted connection: {:?}", stream.remote_addr());
+                info!("accepted connection: {:?}", stream.header());
                 let (rx, mut tx) = io::split(stream);
 
                 let mut lines = BufReader::new(rx);
@@ -104,8 +70,6 @@ fn handle_tunnel(mut tunnel: Tunnel, sess: Arc<Session>) {
                     if len == 0 {
                         break;
                     }
-
-                    debug!("received: {}", buf);
 
                     if buf.eq("\r\n") {
                         info!("writing");

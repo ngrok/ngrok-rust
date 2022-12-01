@@ -12,9 +12,11 @@ use crate::{
     },
 };
 
+/// Options for labeled tunnels.
 #[derive(Default)]
 pub struct LabeledTunnel {
-    common_opts: CommonOpts,
+    pub(crate) common_opts: CommonOpts,
+    pub(crate) labels: HashMap<String, String>,
 }
 
 impl private::TunnelConfigPrivate for LabeledTunnel {
@@ -38,13 +40,21 @@ impl private::TunnelConfigPrivate for LabeledTunnel {
         None
     }
     fn labels(&self) -> HashMap<String, String> {
-        HashMap::new()
+        self.labels.clone()
     }
 }
 
+/// Options for labeled tunnels.
 impl LabeledTunnel {
+    /// Tunnel-specific opaque metadata. Viewable via the API.
     pub fn with_metadata(&mut self, metadata: impl Into<String>) -> &mut Self {
         self.common_opts.metadata = Some(metadata.into());
+        self
+    }
+
+    /// Add a label, value pair for this tunnel.
+    pub fn with_label(&mut self, label: impl Into<String>, value: impl Into<String>) -> &mut Self {
+        self.labels.insert(label.into(), value.into());
         self
     }
 }

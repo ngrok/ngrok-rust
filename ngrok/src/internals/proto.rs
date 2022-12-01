@@ -344,8 +344,9 @@ pub struct SrvInfoResp {
 
 rpc_req!(SrvInfo, SrvInfoResp, SRV_INFO_REQ);
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Default)]
 pub enum ProxyProto {
+    #[default]
     None,
     V1,
     V2,
@@ -445,7 +446,7 @@ pub struct HttpEndpoint {
     proto_middleware: bool,
 
     // Uses the Go byte slice json representation, which is base64
-    #[serde(rename = "middleware_bytes")]
+    #[serde(rename = "MiddlewareBytes")]
     #[serde(with = "base64proto")]
     pub middleware: HttpMiddleware,
 }
@@ -473,7 +474,7 @@ pub struct TcpEndpoint {
 
     proto_middleware: bool,
 
-    #[serde(rename = "middleware_bytes")]
+    #[serde(rename = "MiddlewareBytes")]
     #[serde(with = "base64proto")]
     pub middleware: TcpMiddleware,
 }
@@ -499,7 +500,7 @@ pub struct TlsEndpoint {
 
     proto_middleware: bool,
 
-    #[serde(rename = "middleware_bytes")]
+    #[serde(rename = "MiddlewareBytes")]
     #[serde(with = "base64proto")]
     pub middleware: TlsMiddleware,
 }
