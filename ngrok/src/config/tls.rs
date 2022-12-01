@@ -61,8 +61,8 @@ impl private::TunnelConfigPrivate for TLSEndpoint {
         tls_endpoint.proxy_proto = self.common_opts.proxy_proto;
 
         // doing some backflips to check both cert_pem and key_pem are set, and avoid unwrapping
-        let tls_termination =
-            self.cert_pem
+        let tls_termination = self
+            .cert_pem
             .as_ref()
             .and_then(|c| self.key_pem.as_ref().map(|k| (c, k)))
             .map(|(c, k)| TlsTermination {
@@ -73,7 +73,8 @@ impl private::TunnelConfigPrivate for TLSEndpoint {
 
         tls_endpoint.middleware = TlsMiddleware {
             ip_restriction: self.common_opts.ip_restriction(),
-            mutual_tls: (!self.mutual_tlsca.is_empty()).then_some(self.mutual_tlsca.as_slice().into()),
+            mutual_tls: (!self.mutual_tlsca.is_empty())
+                .then_some(self.mutual_tlsca.as_slice().into()),
             tls_termination,
         };
 

@@ -98,7 +98,8 @@ impl private::TunnelConfigPrivate for HTTPEndpoint {
             oauth: self.oauth.as_ref().map(|o| o.into()),
             oidc: self.oidc.as_ref().map(|o| o.into()),
             webhook_verification: self.webhook_verification.clone().map(From::from),
-            mutual_tls: (!self.mutual_tlsca.is_empty()).then_some(self.mutual_tlsca.as_slice().into()),
+            mutual_tls: (!self.mutual_tlsca.is_empty())
+                .then_some(self.mutual_tlsca.as_slice().into()),
             request_headers: self
                 .request_headers
                 .has_entries()
@@ -123,7 +124,7 @@ impl private::TunnelConfigPrivate for HTTPEndpoint {
 impl From<&[(String, String)]> for BasicAuth {
     fn from(v: &[(String, String)]) -> Self {
         BasicAuth {
-            credentials: v.iter().cloned().map(From::from).collect()
+            credentials: v.iter().cloned().map(From::from).collect(),
         }
     }
 }
