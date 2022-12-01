@@ -59,7 +59,7 @@ fn handle_tunnel(mut tunnel: Tunnel, sess: Arc<Session>) {
             let _id: String = tunnel.id().into();
 
             tokio::spawn(async move {
-                info!("accepted connection: {:?}", stream.header());
+                info!("accepted connection: {:?}", stream.remote_addr());
                 let (rx, mut tx) = io::split(stream);
 
                 let mut lines = BufReader::new(rx);
