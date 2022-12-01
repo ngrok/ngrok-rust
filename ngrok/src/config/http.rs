@@ -8,8 +8,9 @@ use prost::bytes::{
 use super::common::ProxyProto;
 use crate::{
     common::{
-        private,
+        private::Sealed,
         CommonOpts,
+        TunnelConfig,
         FORWARDS_TO,
     },
     headers::Headers,
@@ -58,7 +59,8 @@ pub struct HTTPEndpoint {
     pub(crate) webhook_verification: Option<WebhookVerification>,
 }
 
-impl private::TunnelConfigPrivate for HTTPEndpoint {
+impl Sealed for HTTPEndpoint {}
+impl TunnelConfig for HTTPEndpoint {
     fn forwards_to(&self) -> String {
         self.common_opts
             .forwards_to

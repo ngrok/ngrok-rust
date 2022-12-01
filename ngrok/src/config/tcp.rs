@@ -3,8 +3,9 @@ use std::collections::HashMap;
 use super::common::ProxyProto;
 use crate::{
     common::{
-        private,
+        private::Sealed,
         CommonOpts,
+        TunnelConfig,
         FORWARDS_TO,
     },
     internals::proto::{
@@ -22,7 +23,8 @@ pub struct TCPEndpoint {
     pub(crate) remote_addr: Option<String>,
 }
 
-impl private::TunnelConfigPrivate for TCPEndpoint {
+impl Sealed for TCPEndpoint {}
+impl TunnelConfig for TCPEndpoint {
     fn forwards_to(&self) -> String {
         self.common_opts
             .forwards_to
