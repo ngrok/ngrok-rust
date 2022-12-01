@@ -3,8 +3,6 @@ use std::sync::Arc;
 use futures::TryStreamExt;
 use ngrok::{
     common::ProxyProto,
-    oauth::OauthOptions,
-    oidc::OidcOptions,
     HTTPEndpoint,
     Session,
     Tunnel,
