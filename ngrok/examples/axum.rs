@@ -34,6 +34,8 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+// const CA_CERT: &[u8] = include_bytes!("ca.crt");
+
 async fn start_tunnel() -> anyhow::Result<Tunnel> {
     let sess = Session::builder()
         .with_authtoken_from_env()

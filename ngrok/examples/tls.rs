@@ -11,6 +11,10 @@ use ngrok::{
     Tunnel,
 };
 
+const CERT: &[u8] = include_bytes!("domain.crt");
+const KEY: &[u8] = include_bytes!("domain.key");
+// const CA_CERT: &[u8] = include_bytes!("ca.crt");
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // build our application with a single route
@@ -49,8 +53,8 @@ async fn start_tunnel() -> anyhow::Result<Tunnel> {
                 // .with_forwards_to("example rust"),
                 // .with_mutual_tlsca(CA_CERT.into())
                 // .with_proxy_proto(ProxyProto::None)
-                // .with_key_pem(KEY.into())
-                // .with_cert_pem(CERT.into())
+                .with_cert_pem(CERT.into())
+                .with_key_pem(KEY.into())
                 .with_metadata("example tunnel metadata from rust"),
         )
         .await?;
