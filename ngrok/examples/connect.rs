@@ -34,7 +34,12 @@ async fn main() -> anyhow::Result<()> {
     let tunnel = sess
         .start_tunnel(
             TCPEndpoint::default()
-                .with_metadata("Understand it so thoroughly that you merge with it"),
+                // .with_allow_cidr_string("0.0.0.0/0")
+                // .with_deny_cidr_string("10.1.1.1/32")
+                // .with_forwards_to("example rust"),
+                // .with_proxy_proto(ProxyProto::None)
+                // .with_remote_addr("<n>.tcp.ngrok.io:<p>")
+                .with_metadata("example tunnel metadata from rust"),
         )
         .await?;
 
