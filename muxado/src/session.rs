@@ -199,6 +199,9 @@ where
             // These frame types are stream-specific
             HeaderType::Data | HeaderType::Rst | HeaderType::WndInc => {
                 if let Err(error) = self.manager.send_to_stream(frame).await {
+                    // If the stream manager couldn't send this frame to the
+                    // stream for some reason, generate an RST to tell the other
+                    // end to stop sending on this stream.
                     debug!(
                         stream_id = display(stream_id),
                         error = display(error),
