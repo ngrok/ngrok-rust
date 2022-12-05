@@ -54,8 +54,8 @@ async fn start_tunnel() -> anyhow::Result<Tunnel> {
                 // .with_mutual_tlsca(CA_CERT.into())
                 // .with_oauth(
                 //     OauthOptions::new("google")
-                //         .with_allow_email("<user>@<domain>>")
-                //         .with_allow_domain("<domain>>")
+                //         .with_allow_email("<user>@<domain>")
+                //         .with_allow_domain("<domain>")
                 //         .with_scope("<scope>"),
                 // )
                 // .with_oidc(
