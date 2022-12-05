@@ -13,7 +13,7 @@ fn main() -> Result<(), &'static str> {
     let mut builder = Config::new();
 
     if let Err(e) = builder.compile_protos(&[proto_path], &[proto_dir]) {
-        println!("{}", e);
+        println!("{e}");
         return Err("prost_build failed");
     }
     Ok(())
