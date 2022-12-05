@@ -97,3 +97,56 @@ impl TCPEndpoint {
         self
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    const METADATA: &str = "testmeta";
+    const TEST_FORWARD: &str = "testforward";
+    const REMOTE_ADDR: &str = "4.tcp.ngrok.io:1337";
+    const ALLOW_CIDR: &str = "0.0.0.0/0";
+    const DENY_CIDR: &str = "10.1.1.1/32";
+
+    #[test]
+    fn test_interface_to_proto() {
+        // pass to a function accepting the trait to avoid
+        // "creates a temporary which is freed while still in use"
+        tunnel_test(
+            TCPEndpoint::default()
+                .with_allow_cidr_string(ALLOW_CIDR)
+                .with_deny_cidr_string(DENY_CIDR)
+                .with_proxy_proto(ProxyProto::V2)
+                .with_metadata(METADATA)
+                .with_remote_addr(REMOTE_ADDR)
+                .with_forwards_to(TEST_FORWARD),
+        );
+    }
+
+    fn tunnel_test<C>(tunnel_cfg: C)
+    where
+        C: TunnelConfig,
+    {
+        assert_eq!(TEST_FORWARD, tunnel_cfg.forwards_to());
+
+        let extra = tunnel_cfg.extra();
+        assert_eq!(String::default(), extra.token);
+        assert_eq!(METADATA, extra.metadata);
+        assert_eq!(String::default(), extra.ip_policy_ref);
+
+        assert_eq!("tcp", tunnel_cfg.proto());
+
+        let opts = tunnel_cfg.opts().unwrap();
+        assert!(matches!(opts, BindOpts::Tcp { .. }));
+        if let BindOpts::Tcp(endpoint) = opts {
+            assert_eq!(REMOTE_ADDR, endpoint.addr);
+            assert!(matches!(endpoint.proxy_proto, ProxyProto::V2 { .. }));
+
+            let ip_restriction = endpoint.middleware.ip_restriction.unwrap();
+            assert_eq!(Vec::from([ALLOW_CIDR]), ip_restriction.allow_cidrs);
+            assert_eq!(Vec::from([DENY_CIDR]), ip_restriction.deny_cidrs);
+        }
+
+        assert_eq!(HashMap::new(), tunnel_cfg.labels());
+    }
+}

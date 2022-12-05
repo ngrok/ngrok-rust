@@ -272,3 +272,132 @@ impl HTTPEndpoint {
         self
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    const METADATA: &str = "testmeta";
+    const TEST_FORWARD: &str = "testforward";
+    const ALLOW_CIDR: &str = "0.0.0.0/0";
+    const DENY_CIDR: &str = "10.1.1.1/32";
+    const CA_CERT: &[u8] = "test ca cert".as_bytes();
+    const CA_CERT2: &[u8] = "test ca cert2".as_bytes();
+    const DOMAIN: &str = "test domain";
+
+    #[test]
+    fn test_interface_to_proto() {
+        // pass to a function accepting the trait to avoid
+        // "creates a temporary which is freed while still in use"
+        tunnel_test(
+            HTTPEndpoint::default()
+                .with_allow_cidr_string(ALLOW_CIDR)
+                .with_deny_cidr_string(DENY_CIDR)
+                .with_proxy_proto(ProxyProto::V2)
+                .with_metadata(METADATA)
+                .with_scheme(Scheme::HTTPS)
+                .with_domain(DOMAIN)
+                .with_mutual_tlsca(CA_CERT.into())
+                .with_mutual_tlsca(CA_CERT2.into())
+                .with_compression()
+                .with_websocket_tcp_conversion()
+                .with_circuit_breaker(0.5)
+                .with_request_header("X-Req-Yup", "true")
+                .with_response_header("X-Res-Yup", "true")
+                .with_remove_request_header("X-Req-Nope")
+                .with_remove_response_header("X-Res-Nope")
+                .with_oauth(OauthOptions::new("google"))
+                .with_oauth(
+                    OauthOptions::new("google")
+                        .with_allow_email("<user>@<domain>")
+                        .with_allow_domain("<domain>")
+                        .with_scope("<scope>"),
+                )
+                .with_oidc(OidcOptions::new("<url>", "<id>", "<secret>"))
+                .with_oidc(
+                    OidcOptions::new("<url>", "<id>", "<secret>")
+                        .with_allow_email("<user>@<domain>")
+                        .with_allow_domain("<domain>")
+                        .with_scope("<scope>"),
+                )
+                .with_webhook_verification("twilio", "asdf")
+                .with_basic_auth("ngrok", "online1line")
+                .with_forwards_to(TEST_FORWARD),
+        );
+    }
+
+    fn tunnel_test<C>(tunnel_cfg: C)
+    where
+        C: TunnelConfig,
+    {
+        assert_eq!(TEST_FORWARD, tunnel_cfg.forwards_to());
+
+        let extra = tunnel_cfg.extra();
+        assert_eq!(String::default(), extra.token);
+        assert_eq!(METADATA, extra.metadata);
+        assert_eq!(String::default(), extra.ip_policy_ref);
+
+        assert_eq!("https", tunnel_cfg.proto());
+
+        let opts = tunnel_cfg.opts().unwrap();
+        assert!(matches!(opts, BindOpts::Http { .. }));
+        if let BindOpts::Http(endpoint) = opts {
+            assert_eq!(DOMAIN, endpoint.hostname);
+            assert_eq!(String::default(), endpoint.subdomain);
+            assert!(matches!(endpoint.proxy_proto, ProxyProto::V2 { .. }));
+
+            let middleware = endpoint.middleware;
+            let ip_restriction = middleware.ip_restriction.unwrap();
+            assert_eq!(Vec::from([ALLOW_CIDR]), ip_restriction.allow_cidrs);
+            assert_eq!(Vec::from([DENY_CIDR]), ip_restriction.deny_cidrs);
+
+            let mutual_tls = middleware.mutual_tls.unwrap();
+            let mut agg = CA_CERT.to_vec();
+            agg.extend(CA_CERT2.to_vec());
+            assert_eq!(agg, mutual_tls.mutual_tls_ca);
+
+            assert!(middleware.compression.is_some());
+            assert!(middleware.websocket_tcp_converter.is_some());
+            assert_eq!(0.5f64, middleware.circuit_breaker.unwrap().error_threshold);
+
+            let request_headers = middleware.request_headers.unwrap();
+            assert_eq!(["X-Req-Yup:true"].to_vec(), request_headers.add);
+            assert_eq!(["X-Req-Nope"].to_vec(), request_headers.remove);
+
+            let response_headers = middleware.response_headers.unwrap();
+            assert_eq!(["X-Res-Yup:true"].to_vec(), response_headers.add);
+            assert_eq!(["X-Res-Nope"].to_vec(), response_headers.remove);
+
+            let webhook = middleware.webhook_verification.unwrap();
+            assert_eq!("twilio", webhook.provider);
+            assert_eq!("asdf", webhook.secret);
+            assert!(webhook.sealed_secret.is_empty());
+
+            let creds = middleware.basic_auth.unwrap().credentials;
+            assert_eq!(1, creds.len());
+            assert_eq!("ngrok", creds[0].username);
+            assert_eq!("online1line", creds[0].cleartext_password);
+            assert!(creds[0].hashed_password.is_empty());
+
+            let oauth = middleware.oauth.unwrap();
+            assert_eq!("google", oauth.provider);
+            assert_eq!(["<user>@<domain>"].to_vec(), oauth.allow_emails);
+            assert_eq!(["<domain>"].to_vec(), oauth.allow_domains);
+            assert_eq!(["<scope>"].to_vec(), oauth.scopes);
+            assert_eq!(String::default(), oauth.client_id);
+            assert_eq!(String::default(), oauth.client_secret);
+            assert!(oauth.sealed_client_secret.is_empty());
+
+            let oidc = middleware.oidc.unwrap();
+            assert_eq!("<url>", oidc.issuer_url);
+            assert_eq!(["<user>@<domain>"].to_vec(), oidc.allow_emails);
+            assert_eq!(["<domain>"].to_vec(), oidc.allow_domains);
+            assert_eq!(["<scope>"].to_vec(), oidc.scopes);
+            assert_eq!("<id>", oidc.client_id);
+            assert_eq!("<secret>", oidc.client_secret);
+            assert!(oidc.sealed_client_secret.is_empty());
+        }
+
+        assert_eq!(HashMap::new(), tunnel_cfg.labels());
+    }
+}

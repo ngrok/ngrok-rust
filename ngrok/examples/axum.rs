@@ -18,7 +18,7 @@ async fn main() -> anyhow::Result<()> {
         "/",
         get(
             |ConnectInfo(remote_addr): ConnectInfo<SocketAddr>| async move {
-                format!("Hello, {:?}!\r\n", remote_addr)
+                format!("Hello, {remote_addr:?}!\r\n")
             },
         ),
     );
