@@ -59,7 +59,7 @@ async fn start_tunnel() -> anyhow::Result<Tunnel> {
                 //         .with_scope("<scope>"),
                 // )
                 // .with_oidc(
-                //     OidcOptions::new("<url>", "<id>>", "<secret>")
+                //     OidcOptions::new("<url>", "<id>", "<secret>")
                 //         .with_allow_email("<user>@<domain>")
                 //         .with_allow_domain("<domain>")
                 //         .with_scope("<scope>"),
