@@ -24,7 +24,7 @@ struct FieldBuilder(String);
 
 impl tracing_core::field::Visit for FieldBuilder {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-        self.0 += &*format!(" {}={:?}", field, value);
+        self.0 += &*format!(" {field}={value:?}");
     }
 }
 

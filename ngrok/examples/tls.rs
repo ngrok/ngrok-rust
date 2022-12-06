@@ -6,10 +6,14 @@ use axum::{
     Router,
 };
 use ngrok::{
-    HTTPEndpoint,
     Session,
+    TLSEndpoint,
     Tunnel,
 };
+
+const CERT: &[u8] = include_bytes!("domain.crt");
+const KEY: &[u8] = include_bytes!("domain.key");
+// const CA_CERT: &[u8] = include_bytes!("ca.crt");
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -34,8 +38,6 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-// const CA_CERT: &[u8] = include_bytes!("ca.crt");
-
 async fn start_tunnel() -> anyhow::Result<Tunnel> {
     let sess = Session::builder()
         .with_authtoken_from_env()
@@ -44,34 +46,15 @@ async fn start_tunnel() -> anyhow::Result<Tunnel> {
 
     let tun = sess
         .start_tunnel(
-            HTTPEndpoint::default()
+            TLSEndpoint::default()
                 // .with_allow_cidr_string("0.0.0.0/0")
-                // .with_basic_auth("ngrok", "online1line")
-                // .with_circuit_breaker(0.5)
-                // .with_compression()
                 // .with_deny_cidr_string("10.1.1.1/32")
                 // .with_domain("<somedomain>.ngrok.io")
+                // .with_forwards_to("example rust"),
                 // .with_mutual_tlsca(CA_CERT.into())
-                // .with_oauth(
-                //     OauthOptions::new("google")
-                //         .with_allow_email("<user>@<domain>")
-                //         .with_allow_domain("<domain>")
-                //         .with_scope("<scope>"),
-                // )
-                // .with_oidc(
-                //     OidcOptions::new("<url>", "<id>", "<secret>")
-                //         .with_allow_email("<user>@<domain>")
-                //         .with_allow_domain("<domain>")
-                //         .with_scope("<scope>"),
-                // )
                 // .with_proxy_proto(ProxyProto::None)
-                // .with_remove_request_header("X-Req-Nope")
-                // .with_remove_response_header("X-Res-Nope")
-                // .with_request_header("X-Req-Yup", "true")
-                // .with_response_header("X-Res-Yup", "true")
-                // .with_scheme(ngrok::Scheme::HTTPS)
-                // .with_websocket_tcp_conversion()
-                // .with_webhook_verification("twilio", "asdf"),
+                .with_cert_pem(CERT.into())
+                .with_key_pem(KEY.into())
                 .with_metadata("example tunnel metadata from rust"),
         )
         .await?;
