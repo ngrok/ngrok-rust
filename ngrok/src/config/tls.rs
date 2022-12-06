@@ -138,3 +138,77 @@ impl TLSEndpoint {
         self
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    const METADATA: &str = "testmeta";
+    const TEST_FORWARD: &str = "testforward";
+    const ALLOW_CIDR: &str = "0.0.0.0/0";
+    const DENY_CIDR: &str = "10.1.1.1/32";
+    const CA_CERT: &[u8] = "test ca cert".as_bytes();
+    const CA_CERT2: &[u8] = "test ca cert2".as_bytes();
+    const KEY: &[u8] = "test cert".as_bytes();
+    const CERT: &[u8] = "test cert".as_bytes();
+    const DOMAIN: &str = "test domain";
+
+    #[test]
+    fn test_interface_to_proto() {
+        // pass to a function accepting the trait to avoid
+        // "creates a temporary which is freed while still in use"
+        tunnel_test(
+            TLSEndpoint::default()
+                .with_allow_cidr_string(ALLOW_CIDR)
+                .with_deny_cidr_string(DENY_CIDR)
+                .with_proxy_proto(ProxyProto::V2)
+                .with_metadata(METADATA)
+                .with_domain(DOMAIN)
+                .with_mutual_tlsca(CA_CERT.into())
+                .with_mutual_tlsca(CA_CERT2.into())
+                .with_key_pem(KEY.into())
+                .with_cert_pem(CERT.into())
+                .with_forwards_to(TEST_FORWARD),
+        );
+    }
+
+    fn tunnel_test<C>(tunnel_cfg: C)
+    where
+        C: TunnelConfig,
+    {
+        assert_eq!(TEST_FORWARD, tunnel_cfg.forwards_to());
+
+        let extra = tunnel_cfg.extra();
+        assert_eq!(String::default(), extra.token);
+        assert_eq!(METADATA, extra.metadata);
+        assert_eq!(String::default(), extra.ip_policy_ref);
+
+        assert_eq!("tls", tunnel_cfg.proto());
+
+        let opts = tunnel_cfg.opts().unwrap();
+        assert!(matches!(opts, BindOpts::Tls { .. }));
+        if let BindOpts::Tls(endpoint) = opts {
+            assert_eq!(DOMAIN, endpoint.hostname);
+            assert_eq!(String::default(), endpoint.subdomain);
+            assert!(matches!(endpoint.proxy_proto, ProxyProto::V2 { .. }));
+            assert!(!endpoint.mutual_tls_at_agent);
+
+            let middleware = endpoint.middleware;
+            let ip_restriction = middleware.ip_restriction.unwrap();
+            assert_eq!(Vec::from([ALLOW_CIDR]), ip_restriction.allow_cidrs);
+            assert_eq!(Vec::from([DENY_CIDR]), ip_restriction.deny_cidrs);
+
+            let tls_termination = middleware.tls_termination.unwrap();
+            assert_eq!(CERT, tls_termination.cert);
+            assert_eq!(KEY, tls_termination.key);
+            assert!(tls_termination.sealed_key.is_empty());
+
+            let mutual_tls = middleware.mutual_tls.unwrap();
+            let mut agg = CA_CERT.to_vec();
+            agg.extend(CA_CERT2.to_vec());
+            assert_eq!(agg, mutual_tls.mutual_tls_ca);
+        }
+
+        assert_eq!(HashMap::new(), tunnel_cfg.labels());
+    }
+}
