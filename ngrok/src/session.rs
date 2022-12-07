@@ -28,7 +28,7 @@ use tokio_util::compat::{
 use tracing::warn;
 
 use crate::{
-    config::common::TunnelConfig,
+    config::TunnelConfig,
     internals::{
         proto::{
             AuthExtra,
@@ -53,6 +53,7 @@ const NOT_IMPLEMENTED: &str = "the agent has not defined a callback for this ope
 
 type TunnelConns = HashMap<String, Sender<Result<Conn, AcceptError>>>;
 
+/// An ngrok session.
 #[derive(Clone)]
 pub struct Session {
     #[allow(dead_code)]
@@ -61,6 +62,7 @@ pub struct Session {
     tunnels: Arc<RwLock<TunnelConns>>,
 }
 
+/// The builder for an ngrok [Session].
 #[derive(Clone)]
 pub struct SessionBuilder {
     authtoken: Option<String>,
@@ -71,18 +73,38 @@ pub struct SessionBuilder {
     tls_config: rustls::ClientConfig,
 }
 
+/// Errors arising at [SessionBuilder::connect] time.
 #[derive(Error, Debug)]
 pub enum ConnectError {
+    /// The builder specified an invalid heartbeat interval.
+    ///
+    /// This is most likely caused a [Duration] that's outside of the [i64::MAX]
+    /// nanosecond range.
     #[error("invalid heartbeat interval: {0}")]
     InvalidHeartbeatInterval(u128),
+    /// The builder specified an invalid heartbeat tolerance.
+    ///
+    /// This is most likely caused a [Duration] that's outside of the [i64::MAX]
+    /// nanosecond range.
     #[error("invalid heartbeat tolerance: {0}")]
     InvalidHeartbeatTolerance(u128),
+    /// An error occurred when establishing a TCP connection to the ngrok
+    /// server.
     #[error("failed to establish tcp connection")]
     Tcp(io::Error),
+    /// A TLS handshake error occurred.
+    ///
+    /// This is usually a certificate validation issue, or an attempt to connect
+    /// to something that doesn't actually speak TLS.
     #[error("tls handshake error")]
     Tls(io::Error),
+    /// An error occurred when starting the ngrok session.
+    ///
+    /// This might occur when there's a protocol mismatch interfering with the
+    /// heartbeat routine.
     #[error("failed to start ngrok session")]
     Start(StartSessionError),
+    /// An error occurred when attempting to authenticate.
     #[error("authentication failure")]
     Auth(RpcError),
 }
@@ -109,9 +131,10 @@ impl Default for SessionBuilder {
     }
 }
 
+/// An invalid server address was provided.
 #[derive(Debug, Error)]
-#[error("invalid server address: {0}")]
-pub struct InvalidAddrError(ParseIntError);
+#[error("invalid server address")]
+pub struct InvalidAddrError(#[source] ParseIntError);
 
 impl SessionBuilder {
     /// Authenticate the ngrok session with the given authtoken.
@@ -249,10 +272,12 @@ impl SessionBuilder {
 }
 
 impl Session {
+    /// Create a new [SessionBuilder] to configure a new ngrok session.
     pub fn builder() -> SessionBuilder {
         SessionBuilder::default()
     }
 
+    /// Start a new tunnel in this session.
     pub async fn start_tunnel<C>(&self, tunnel_cfg: C) -> Result<Tunnel, RpcError>
     where
         C: TunnelConfig,
@@ -317,6 +342,7 @@ impl Session {
         })
     }
 
+    /// Close a tunnel with the given ID.
     pub async fn close_tunnel(&self, id: impl AsRef<str>) -> Result<(), RpcError> {
         let id = id.as_ref();
         self.client.lock().await.unlisten(id).await?;

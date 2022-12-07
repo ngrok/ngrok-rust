@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    common::{
+    config::common::{
         private::Sealed,
         CommonOpts,
         TunnelConfig,

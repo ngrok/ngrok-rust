@@ -1,4 +1,4 @@
-use crate::mw::middleware_configuration::WebhookVerification as WebhookProto;
+use crate::internals::proto::gen::middleware_configuration::WebhookVerification as WebhookProto;
 
 /// Configuration for webhook verification.
 #[derive(Clone)]

@@ -3,26 +3,32 @@ use std::collections::HashMap;
 use prost::bytes;
 
 pub use crate::internals::proto::ProxyProto;
-use crate::{
-    internals::proto::{
-        BindExtra,
-        BindOpts,
-    },
-    mw::middleware_configuration::{
+use crate::internals::proto::{
+    gen::middleware_configuration::{
         IpRestriction,
         MutualTls,
     },
+    BindExtra,
+    BindOpts,
 };
 
 pub(crate) const FORWARDS_TO: &str = "rust";
 
-// Tunnel configuration trait, implemented by our top-level config objects.
-// "Sealed," i.e. not implementable outside of the crate.
-pub trait TunnelConfig: private::Sealed {
+/// Tunnel configuration trait, implemented by our top-level config objects.
+///
+/// "Sealed," i.e. not implementable outside of the crate.
+pub trait TunnelConfig {
+    /// The "forwards to" metadata.
+    ///
+    /// Only for display/informational purposes.
     fn forwards_to(&self) -> String;
+    /// Internal-only, extra data sent when binding a tunnel.
     fn extra(&self) -> BindExtra;
+    /// The protocol for this tunnel.
     fn proto(&self) -> String;
+    /// The middleware and other configuration options for this tunnel.
     fn opts(&self) -> Option<BindOpts>;
+    /// The labels for this tunnel.
     fn labels(&self) -> HashMap<String, String>;
 }
 

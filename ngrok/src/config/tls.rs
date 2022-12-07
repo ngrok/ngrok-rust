@@ -7,7 +7,7 @@ use prost::bytes::{
 
 use super::common::ProxyProto;
 use crate::{
-    common::{
+    config::common::{
         private::Sealed,
         CommonOpts,
         TunnelConfig,
@@ -15,12 +15,12 @@ use crate::{
     },
     internals::proto::{
         self,
+        gen::{
+            middleware_configuration::TlsTermination,
+            TlsMiddleware,
+        },
         BindExtra,
         BindOpts,
-    },
-    mw::{
-        middleware_configuration::TlsTermination,
-        TlsMiddleware,
     },
 };
 

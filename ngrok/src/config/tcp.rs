@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use super::common::ProxyProto;
 use crate::{
-    common::{
+    config::common::{
         private::Sealed,
         CommonOpts,
         TunnelConfig,
@@ -10,10 +10,10 @@ use crate::{
     },
     internals::proto::{
         self,
+        gen::TcpMiddleware,
         BindExtra,
         BindOpts,
     },
-    mw::TcpMiddleware,
 };
 
 /// The options for a TCP edge.

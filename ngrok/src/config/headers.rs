@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::mw::middleware_configuration::Headers as HeaderProto;
+use crate::internals::proto::gen::middleware_configuration::Headers as HeaderProto;
 
 /// HTTP Headers to modify at the ngrok edge.
 #[derive(Clone, Default)]

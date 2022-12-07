@@ -6,7 +6,7 @@ use axum::{
     Router,
 };
 use ngrok::{
-    LabeledTunnel,
+    config::LabeledTunnel,
     Session,
     Tunnel,
 };
