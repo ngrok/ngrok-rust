@@ -20,14 +20,10 @@ async-trait = "0.1.52"
 rand = "0.8.5"
 
 [dev-dependencies]
-tracing-opentelemetry = { version = "0.16.0" }
 anyhow = { version = "1.0.47" }
 tracing-subscriber = { version = "0.3.3", features = ["env-filter"] }
-console-subscriber = { version = "0.1.0" }
 tokio = { version = "1.14.0", features = ["full", "tracing", "io-util", "time", "rt-multi-thread", "macros"] }
 tracing-core = { version = "0.1.21" }
-opentelemetry = { version = "0.16.0" }
-opentelemetry-jaeger = { version = "0.15.0" }
 tracing-test = "0.2.1"
 
 [features]
