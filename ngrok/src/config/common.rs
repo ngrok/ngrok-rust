@@ -54,24 +54,6 @@ where
     }
 }
 
-// Non-exported private tunnel config type that "seals" the exported one
-// This is where we'll produce the config struct that ultimately gets passed
-// to the tunnel bind RPCs.
-// private: https://rust-lang.github.io/api-guidelines/future-proofing.html
-// avoids "A private trait was used on a public type parameter bound"
-//   https://doc.rust-lang.org/error_codes/E0445.html
-// or "can't leak crate-private trait"
-//   https://users.rust-lang.org/t/pub-trait-in-private-module-no-cant-leak-private-trait-error/46052
-pub(crate) mod private {
-    pub trait Sealed {}
-
-    // delegate references
-    impl<'a, T> Sealed for &'a T where T: Sealed {}
-
-    // delegate mutable references
-    impl<'a, T> Sealed for &'a mut T where T: Sealed {}
-}
-
 /// Restrictions placed on the origin of incoming connections to the edge.
 #[derive(Clone, Default)]
 pub struct CidrRestrictions {

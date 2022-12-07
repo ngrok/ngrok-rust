@@ -9,7 +9,6 @@ use super::common::ProxyProto;
 use crate::{
     config::{
         common::{
-            private::Sealed,
             CommonOpts,
             TunnelConfig,
             FORWARDS_TO,
@@ -66,7 +65,6 @@ pub struct HTTPEndpoint {
     pub(crate) webhook_verification: Option<WebhookVerification>,
 }
 
-impl Sealed for HTTPEndpoint {}
 impl TunnelConfig for HTTPEndpoint {
     fn forwards_to(&self) -> String {
         self.common_opts
