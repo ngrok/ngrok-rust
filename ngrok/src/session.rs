@@ -8,10 +8,10 @@ use std::{
 };
 
 use async_rustls::{
-    rustls,
-    webpki,
+    rustls::{self, client::InvalidDnsNameError},
 };
 use muxado::heartbeat::HeartbeatConfig;
+use rustls_pemfile::Item;
 use thiserror::Error;
 use tokio::sync::{
     mpsc::{
@@ -88,6 +88,9 @@ pub enum ConnectError {
     /// nanosecond range.
     #[error("invalid heartbeat tolerance: {0}")]
     InvalidHeartbeatTolerance(u128),
+    /// The builder specified an invalid server name.
+    #[error("invalid server name")]
+    InvalidServerName(#[from] InvalidDnsNameError),
     /// An error occurred when establishing a TCP connection to the ngrok
     /// server.
     #[error("failed to establish tcp connection")]
@@ -113,12 +116,22 @@ impl Default for SessionBuilder {
     fn default() -> Self {
         let mut root_store = rustls::RootCertStore::empty();
         let mut cert_pem = io::Cursor::new(CERT_BYTES);
-        root_store
-            .add_pem_file(&mut cert_pem)
-            .expect("a valid ngrok root cert");
+        root_store.add_parsable_certificates(
+            rustls_pemfile::read_all(&mut cert_pem)
+                .expect("a valid ngrok root certificate")
+                .into_iter()
+                .filter_map(|it| match it {
+                    Item::X509Certificate(bs) => Some(bs),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .as_slice(),
+        );
 
-        let mut tls_config = rustls::ClientConfig::new();
-        tls_config.root_store = root_store;
+        let tls_config = rustls::ClientConfig::builder()
+            .with_safe_defaults()
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
 
         SessionBuilder {
             authtoken: None,
@@ -205,7 +218,7 @@ impl SessionBuilder {
 
         let tls_conn = async_rustls::TlsConnector::from(Arc::new(self.tls_config.clone()))
             .connect(
-                webpki::DNSNameRef::try_from_ascii(self.server_addr.0.as_bytes()).unwrap(),
+                rustls::ServerName::try_from(self.server_addr.0.as_str())?,
                 conn,
             )
             .await

@@ -15,11 +15,12 @@ thiserror = "1.0.37"
 base64 = "0.13.1"
 tokio = { version = "1.23.0", features = ["sync", "time"] }
 tracing = "0.1.37"
-async-rustls = { version = "0.2.0", features = ["dangerous_configuration"] }
+async-rustls = { version = "0.3.0" }
 tokio-util = { version = "0.7.4", features = ["compat"] }
 futures = "0.3.25"
 hyper = { version = "0.14.23", features = ["server"] }
 axum = { version = "0.6.1", features = ["tokio"] }
+rustls-pemfile = "1.0.1"
 
 [build-dependencies]
 prost-build = "0.11.3"
