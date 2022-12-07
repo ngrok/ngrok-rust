@@ -27,9 +27,9 @@ pub const STREAMID_MAX: u32 = 0x7FFFFFFF;
 pub const LENGTH_MAX: u32 = 0x00FFFFFF;
 pub const ERROR_MAX: u32 = u32::MAX;
 
-constrained_num!(StreamID, u32, 0..=STREAMID_MAX);
-constrained_num!(WndInc, u32, 0..=WNDINC_MAX);
-constrained_num!(Length, u32, 0..=LENGTH_MAX);
+constrained_num!(StreamID, u32, 0..=STREAMID_MAX, clamp, mask);
+constrained_num!(WndInc, u32, 0..=WNDINC_MAX, clamp, mask);
+constrained_num!(Length, u32, 0..=LENGTH_MAX, clamp);
 constrained_num!(ErrorCode, u32, 0..=ERROR_MAX);
 
 bitflags! {
@@ -71,32 +71,6 @@ impl From<Body> for Frame {
 }
 
 impl Frame {
-    pub fn data(stream_id: StreamID, mut data: Bytes) -> Frame {
-        let length = Length::clamp(data.len() as u32);
-        data = data.slice(..*length as usize);
-        Frame {
-            header: Header {
-                typ: HeaderType::Data,
-                length,
-                stream_id,
-                ..Default::default()
-            },
-            body: Body::Data(data),
-        }
-    }
-
-    pub fn wndinc(stream_id: StreamID, by: WndInc) -> Frame {
-        Frame {
-            header: Header {
-                typ: HeaderType::WndInc,
-                length: Length::clamp(4),
-                stream_id,
-                ..Default::default()
-            },
-            body: Body::WndInc(by),
-        }
-    }
-
     pub fn is_fin(&self) -> bool {
         self.header.flags.contains(Flags::FIN)
     }

@@ -11,15 +11,16 @@ use crate::frame::{
 /// The muxado error type.
 #[repr(u32)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Error)]
+#[allow(missing_docs)]
 pub enum Error {
     #[error("No Error")]
-    NoError = 0x00,
+    None = 0x00,
     #[error("Protocol Error")]
-    ProtocolError = 0x01,
+    Protocol = 0x01,
     #[error("Internal Error")]
-    InternalError = 0x02,
+    Internal = 0x02,
     #[error("Flow Control Error")]
-    FlowControlError = 0x03,
+    FlowControl = 0x03,
     #[error("Stream Closed")]
     StreamClosed = 0x04,
     #[error("Stream Refused")]
@@ -59,10 +60,10 @@ impl From<ErrorCode> for Error {
     fn from(other: ErrorCode) -> Error {
         use Error::*;
         match *other {
-            0x00 => NoError,
-            0x01 => ProtocolError,
-            0x02 => InternalError,
-            0x03 => FlowControlError,
+            0x00 => None,
+            0x01 => Protocol,
+            0x02 => Internal,
+            0x03 => FlowControl,
             0x04 => StreamClosed,
             0x05 => StreamRefused,
             0x06 => StreamCancelled,
@@ -103,6 +104,6 @@ impl From<InvalidHeader> for io::Error {
 
 impl From<InvalidHeader> for Error {
     fn from(_: InvalidHeader) -> Error {
-        Error::ProtocolError
+        Error::Protocol
     }
 }

@@ -1,7 +1,7 @@
 use std::env;
 
 use futures::prelude::*;
-use muxado::session::*;
+use muxado::*;
 use tokio::{
     io::{
         AsyncReadExt,

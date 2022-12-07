@@ -291,7 +291,7 @@ impl SharedStreamManager {
                     id = %id,
                     "attempt to send invalid frame type to stream",
                 );
-                return Err(Error::InternalError);
+                return Err(Error::Internal);
             }
             _ => {}
         }
@@ -339,7 +339,7 @@ impl SharedStreamManager {
                     stream_window = handle.window,
                     "remote violated flow control"
                 );
-                return Err(Error::FlowControlError).into();
+                return Err(Error::FlowControl).into();
             }
 
             let sink = &mut handle.to_stream;

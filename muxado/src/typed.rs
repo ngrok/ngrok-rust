@@ -1,3 +1,5 @@
+//! Wrappers to add typing to muxado streams.
+
 use std::{
     fmt,
     ops::{
@@ -21,14 +23,17 @@ use crate::{
     constrained::*,
     errors::Error,
     session::{
-        AcceptStream,
-        OpenStream,
+        Accept,
+        Open,
         Session,
     },
     stream::Stream,
 };
 
-constrained_num!(StreamType, u32, 0..=u32::MAX);
+constrained_num! {
+    /// A muxado stream type.
+    StreamType, u32, 0..=u32::MAX, clamp
+}
 
 /// Wrapper for a session capable of opening streams prefixed with a `u32` type
 /// id.
@@ -86,34 +91,39 @@ impl TypedStream {
     }
 }
 
-/// Typed analogue to the [`Session`] trait.
-pub trait TypedSession: AcceptTypedStream + OpenTypedStream {
-    type AcceptTyped: AcceptTypedStream;
-    type OpenTyped: OpenTypedStream;
+/// Typed analogue to the [Session] trait.
+pub trait TypedSession: TypedAccept + TypedOpen {
+    /// The component implementing [TypedAccept].
+    type TypedAccept: TypedAccept;
+    /// The component implementing [TypedOpen].
+    type TypedOpen: TypedOpen;
 
     /// Split the typed session into open/accept components.
-    fn split_typed(self) -> (Self::OpenTyped, Self::AcceptTyped);
+    fn split_typed(self) -> (Self::TypedOpen, Self::TypedAccept);
 }
 
+/// Typed analogue to the [Accept] trait.
 #[async_trait]
-pub trait AcceptTypedStream {
+pub trait TypedAccept {
     /// Accept a typed stream.
+    ///
     /// Because typed streams are indistinguishable from untyped streams, if the
     /// remote isn't sending a type, then the first 4 bytes of data will be
     /// misinterpreted as the stream type.
     async fn accept_typed(&mut self) -> Result<TypedStream, Error>;
 }
 
+/// Typed analogue to the [Open] trait.
 #[async_trait]
-pub trait OpenTypedStream {
+pub trait TypedOpen {
     /// Open a typed stream with the given type.
     async fn open_typed(&mut self, typ: StreamType) -> Result<TypedStream, Error>;
 }
 
 #[async_trait]
-impl<S> AcceptTypedStream for Typed<S>
+impl<S> TypedAccept for Typed<S>
 where
-    S: AcceptStream + Send,
+    S: Accept + Send,
 {
     async fn accept_typed(&mut self) -> Result<TypedStream, Error> {
         let mut stream = self.accept().await.ok_or(Error::SessionClosed)?;
@@ -131,9 +141,9 @@ where
     }
 }
 #[async_trait]
-impl<S> OpenTypedStream for Typed<S>
+impl<S> TypedOpen for Typed<S>
 where
-    S: OpenStream + Send,
+    S: Open + Send,
 {
     async fn open_typed(&mut self, typ: StreamType) -> Result<TypedStream, Error> {
         let mut stream = self.open().await?;
@@ -156,9 +166,9 @@ where
     S::Accept: Send,
     S::Open: Send,
 {
-    type AcceptTyped = Typed<S::Accept>;
-    type OpenTyped = Typed<S::Open>;
-    fn split_typed(self) -> (Self::OpenTyped, Self::AcceptTyped) {
+    type TypedAccept = Typed<S::Accept>;
+    type TypedOpen = Typed<S::Open>;
+    fn split_typed(self) -> (Self::TypedOpen, Self::TypedAccept) {
         let (open, accept) = self.inner.split();
         (Typed { inner: open }, Typed { inner: accept })
     }

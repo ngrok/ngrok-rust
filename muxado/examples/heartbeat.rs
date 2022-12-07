@@ -5,8 +5,8 @@ use muxado::{
         Heartbeat,
         HeartbeatConfig,
     },
-    session::*,
     typed::Typed,
+    *,
 };
 use tokio::net::TcpStream;
 use tracing_subscriber::{

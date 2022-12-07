@@ -1,3 +1,10 @@
+//! Heartbeating [TypedSession] wrapper.
+//!
+//! This can be used to wrap a [TypedSession] to provide heartbeating
+//! functionality. The wrapper will start a background task to send heartbeats
+//! to the remote via a dedicated heartbeat stream. It will also accept incoming
+//! heartbeat streams and start a task to reply to them.
+
 use std::{
     io,
     sync::{
@@ -27,9 +34,9 @@ use tokio::{
 use crate::{
     errors::Error,
     typed::{
-        AcceptTypedStream,
-        OpenTypedStream,
         StreamType,
+        TypedAccept,
+        TypedOpen,
         TypedSession,
         TypedStream,
     },
@@ -37,14 +44,15 @@ use crate::{
 
 const HEARTBEAT_TYPE: StreamType = StreamType::clamp(0xFFFFFFFF);
 
-/// Wrapper for muxado streams that adds heartbeating over a dedicated typed
-/// stream.
+/// Wrapper for a muxado [TypedSession] that adds heartbeating over a dedicated
+/// typed stream.
 pub struct Heartbeat<S> {
     typ: StreamType,
     inner: S,
 }
 
 /// Controller for the heartbeat task.
+///
 /// Allows owners to change the heartbeat timing at runtime and to explicitly
 /// request heartbeats.
 pub struct HeartbeatCtl {
@@ -278,9 +286,9 @@ fn start_responder(mut stream: TypedStream) {
 }
 
 #[async_trait]
-impl<S> AcceptTypedStream for Heartbeat<S>
+impl<S> TypedAccept for Heartbeat<S>
 where
-    S: AcceptTypedStream + Send,
+    S: TypedAccept + Send,
 {
     async fn accept_typed(&mut self) -> Result<TypedStream, Error> {
         loop {
@@ -298,9 +306,9 @@ where
 }
 
 #[async_trait]
-impl<S> OpenTypedStream for Heartbeat<S>
+impl<S> TypedOpen for Heartbeat<S>
 where
-    S: OpenTypedStream + Send,
+    S: TypedOpen + Send,
 {
     async fn open_typed(&mut self, typ: StreamType) -> Result<TypedStream, Error> {
         // Don't open a heartbeat stream manually
@@ -315,13 +323,13 @@ where
 impl<S> TypedSession for Heartbeat<S>
 where
     S: TypedSession + Send,
-    S::AcceptTyped: Send,
-    S::OpenTyped: Send,
+    S::TypedAccept: Send,
+    S::TypedOpen: Send,
 {
-    type AcceptTyped = Heartbeat<S::AcceptTyped>;
-    type OpenTyped = Heartbeat<S::OpenTyped>;
+    type TypedAccept = Heartbeat<S::TypedAccept>;
+    type TypedOpen = Heartbeat<S::TypedOpen>;
 
-    fn split_typed(self) -> (Self::OpenTyped, Self::AcceptTyped) {
+    fn split_typed(self) -> (Self::TypedOpen, Self::TypedAccept) {
         let typ = self.typ;
         let (open, accept) = self.inner.split_typed();
         (

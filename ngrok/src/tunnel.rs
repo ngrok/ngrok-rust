@@ -15,8 +15,8 @@ use futures::{
 };
 use hyper::server::accept::Accept;
 use muxado::{
-    errors::Error as MuxadoError,
     typed::TypedStream,
+    Error as MuxadoError,
 };
 use thiserror::Error;
 use tokio::{
