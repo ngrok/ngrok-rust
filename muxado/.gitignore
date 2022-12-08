@@ -1,0 +1,13 @@
+# Nix-related things
+/result
+/.direnv
+
+# Rust-related things
+/target
+Cargo.lock
+
+# swap files
+**/*.swp
+
+# test binary
+/muxado
