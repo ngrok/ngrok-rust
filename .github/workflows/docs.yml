@@ -1,6 +1,6 @@
 on:
   push:
-    branches: ["josh/publish-docs"]
+    branches: [main]
 
 name: Publish Docs
 
