@@ -25,11 +25,10 @@ where
 }
 
 macro_rules! constrained_num {
-    ($name:ident, $base:ty, $range:expr) => {
-        #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-        pub struct $name($base);
-
+    (clamp; $name:ty, $base:ty, $range:expr) => {
         impl $name {
+            /// Clamp the provided value to the valid range for this number
+            /// type.
             pub const fn clamp(value: $base) -> Self {
                 const RANGE: RangeInclusive<$base> = $range;
                 if value > *RANGE.end() {
@@ -40,7 +39,11 @@ macro_rules! constrained_num {
                     Self(value)
                 }
             }
-
+        }
+    };
+    (mask; $name:ty, $base:ty, $range:expr) => {
+        impl $name {
+            /// Mask the provided value using the maximum for this number type.
             pub const fn mask(value: $base) -> Self {
                 const RANGE: RangeInclusive<$base> = $range;
                 if value < *RANGE.start() {
@@ -51,6 +54,21 @@ macro_rules! constrained_num {
                     Self(value)
                 }
             }
+        }
+    };
+    ($(#[$outer:meta])* $name:ident, $base:ty, $range:expr, $($t:tt),*) => {
+        $(#[$outer])*
+        ///
+        /// This is a type-safe wrapper for a primitive number type that
+        /// enforces range or bitmask constraints.
+        #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+        pub struct $name($base);
+
+        #[allow(dead_code, missing_docs)]
+        impl $name {
+            pub const MIN: $base = *$range.start();
+            pub const MAX: $base = *$range.end();
+            pub const BITS: $base = <$base>::BITS - $range.end().leading_zeros();
         }
 
         impl Default for $name {
@@ -83,5 +101,10 @@ macro_rules! constrained_num {
                 }
             }
         }
+
+        $(constrained_num!($t; $name, $base, $range);)*
+    };
+    ($(#[$outer:meta])* $name:ident, $base:ty, $range:expr) => {
+        constrained_num!($(#[$outer])* $name, $base, $range, clamp, mask);
     };
 }

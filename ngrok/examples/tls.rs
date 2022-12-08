@@ -6,8 +6,8 @@ use axum::{
     Router,
 };
 use ngrok::{
+    config::TLSEndpoint,
     Session,
-    TLSEndpoint,
     Tunnel,
 };
 

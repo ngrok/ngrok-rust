@@ -39,7 +39,9 @@ use crate::{
 };
 
 /// A muxado stream.
-/// This is an AsyncRead/Write struct that's backed by a muxado session.
+///
+/// This is an [AsyncRead]/[AsyncWrite] struct that's backed by a muxado
+/// session.
 #[pin_project(project = StreamProj, PinnedDrop)]
 pub struct Stream {
     window: Window,

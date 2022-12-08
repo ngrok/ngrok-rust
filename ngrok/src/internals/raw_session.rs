@@ -9,16 +9,16 @@ use std::{
 };
 
 use muxado::{
-    errors::Error as MuxadoError,
     heartbeat::HeartbeatConfig,
-    session::SessionBuilder,
     typed::{
-        AcceptTypedStream,
-        OpenTypedStream,
         StreamType,
+        TypedAccept,
+        TypedOpen,
         TypedSession,
         TypedStream,
     },
+    Error as MuxadoError,
+    SessionBuilder,
 };
 use thiserror::Error;
 use tokio::io::{
@@ -93,11 +93,11 @@ pub enum AcceptError {
 }
 
 pub struct RpcClient {
-    open: Box<dyn OpenTypedStream + Send>,
+    open: Box<dyn TypedOpen + Send>,
 }
 
 pub struct IncomingStreams {
-    accept: Box<dyn AcceptTypedStream + Send>,
+    accept: Box<dyn TypedAccept + Send>,
 }
 
 pub struct RawSession {

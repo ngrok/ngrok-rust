@@ -7,36 +7,42 @@ use prost::bytes::{
 
 use super::common::ProxyProto;
 use crate::{
-    common::{
-        private::Sealed,
-        CommonOpts,
-        TunnelConfig,
-        FORWARDS_TO,
+    config::{
+        common::{
+            CommonOpts,
+            TunnelConfig,
+            FORWARDS_TO,
+        },
+        headers::Headers,
+        oauth::OauthOptions,
+        oidc::OidcOptions,
+        webhook_verification::WebhookVerification,
     },
-    headers::Headers,
     internals::proto::{
         self,
+        gen::{
+            middleware_configuration::{
+                BasicAuth,
+                BasicAuthCredential,
+                CircuitBreaker,
+                Compression,
+                WebsocketTcpConverter,
+            },
+            HttpMiddleware,
+        },
         BindExtra,
         BindOpts,
     },
-    mw::{
-        middleware_configuration::{
-            BasicAuth,
-            BasicAuthCredential,
-            CircuitBreaker,
-            Compression,
-            WebsocketTcpConverter,
-        },
-        HttpMiddleware,
-    },
-    oauth::OauthOptions,
-    oidc::OidcOptions,
-    webhook_verification::WebhookVerification,
 };
 
+/// The URL scheme for this HTTP endpoint.
+///
+/// [Scheme::HTTPS] will enable TLS termination at the ngrok edge.
 #[derive(Clone, Default, Eq, PartialEq)]
 pub enum Scheme {
+    /// The `http` URL scheme.
     HTTP,
+    /// The `https` URL scheme.
     #[default]
     HTTPS,
 }
@@ -59,7 +65,6 @@ pub struct HTTPEndpoint {
     pub(crate) webhook_verification: Option<WebhookVerification>,
 }
 
-impl Sealed for HTTPEndpoint {}
 impl TunnelConfig for HTTPEndpoint {
     fn forwards_to(&self) -> String {
         self.common_opts

@@ -2,18 +2,17 @@ use std::collections::HashMap;
 
 use super::common::ProxyProto;
 use crate::{
-    common::{
-        private::Sealed,
+    config::common::{
         CommonOpts,
         TunnelConfig,
         FORWARDS_TO,
     },
     internals::proto::{
         self,
+        gen::TcpMiddleware,
         BindExtra,
         BindOpts,
     },
-    mw::TcpMiddleware,
 };
 
 /// The options for a TCP edge.
@@ -23,7 +22,6 @@ pub struct TCPEndpoint {
     pub(crate) remote_addr: Option<String>,
 }
 
-impl Sealed for TCPEndpoint {}
 impl TunnelConfig for TCPEndpoint {
     fn forwards_to(&self) -> String {
         self.common_opts

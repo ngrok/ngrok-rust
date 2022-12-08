@@ -18,7 +18,11 @@ use tokio::io::{
 };
 use tracing::debug;
 
-use crate::mw::{
+pub mod gen {
+    include!(concat!(env!("OUT_DIR"), "/agent.rs"));
+}
+
+use gen::{
     HttpMiddleware,
     TcpMiddleware,
     TlsMiddleware,
@@ -344,11 +348,18 @@ pub struct SrvInfoResp {
 
 rpc_req!(SrvInfo, SrvInfoResp, SRV_INFO_REQ);
 
+/// The version of [PROXY protocol](https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt)
+/// to use with this tunnel.
+///
+/// [ProxyProto::None] disables PROXY protocol support.
 #[derive(Debug, Copy, Clone, Default)]
 pub enum ProxyProto {
+    /// No PROXY protocol
     #[default]
     None,
+    /// PROXY protocol v1
     V1,
+    /// PROXY protocol v2
     V2,
 }
 

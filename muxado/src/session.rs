@@ -44,6 +44,7 @@ const DEFAULT_ACCEPT: usize = 64;
 const DEFAULT_STREAMS: usize = 512;
 
 /// Builder for a muxado session.
+///
 /// Should probably leave this alone unless you're sure you know what you're
 /// doing.
 pub struct SessionBuilder<S> {
@@ -78,7 +79,7 @@ where
 
     /// Set the accept queue size.
     /// This is the size of the channel that will hold "open stream" requests
-    /// from the remote. If [`AcceptStream::accept`] isn't called and the
+    /// from the remote. If [Accept::accept] isn't called and the
     /// channel fills up, the session will block.
     /// Defaults to 64.
     pub fn with_accept_queue_size(mut self, size: usize) -> Self {
@@ -107,7 +108,7 @@ where
     }
 
     /// Start a muxado session with the current options.
-    pub fn start(self) -> Muxado {
+    pub fn start(self) -> MuxadoSession {
         let SessionBuilder {
             io_stream,
             window,
@@ -144,7 +145,7 @@ where
         tokio::spawn(read_task.run());
         tokio::spawn(write_task.run());
 
-        Muxado {
+        MuxadoSession {
             incoming: MuxadoAccept(accept_rx),
             outgoing: MuxadoOpen(open_tx),
         }
@@ -235,7 +236,7 @@ where
                 self.sys_tx
                     .send(Frame::goaway(
                         self.last_stream_processed,
-                        Error::ProtocolError,
+                        Error::Protocol,
                         "invalid frame".into(),
                     ))
                     .map_err(|_| Error::StreamClosed)
@@ -312,43 +313,46 @@ where
 }
 
 /// A muxado session.
+///
 /// Can be used directly to open and accept streams, or split into dedicated
 /// open/accept parts.
-pub trait Session: AcceptStream + OpenStream {
+pub trait Session: Accept + Open {
     /// The open half of the session.
-    type Open: OpenStream;
+    type Open: Open;
     /// The accept half of the session.
-    type Accept: AcceptStream;
+    type Accept: Accept;
     /// Split the session into dedicated open/accept components.
     fn split(self) -> (Self::Open, Self::Accept);
 }
 
+/// Trait for accepting incoming streams in a muxado [Session].
 #[async_trait]
-pub trait AcceptStream {
+pub trait Accept {
     /// Accept an incoming stream that was opened by the remote.
     async fn accept(&mut self) -> Option<Stream>;
 }
 
+/// Trait for opening new streams in a muxado [Session].
 #[async_trait]
-pub trait OpenStream {
+pub trait Open {
     /// Open a new stream.
     async fn open(&mut self) -> Result<Stream, Error>;
 }
 
-/// The [`OpenStream`] half of a muxado session.
+/// The [Open] half of a muxado session.
 pub struct MuxadoOpen(mpsc::Sender<oneshot::Sender<Result<Stream, Error>>>);
-/// The [`AcceptStream`] half of a muxado session.
+/// The [Accept] half of a muxado session.
 pub struct MuxadoAccept(mpsc::Receiver<Stream>);
 
 #[async_trait]
-impl AcceptStream for MuxadoAccept {
+impl Accept for MuxadoAccept {
     async fn accept(&mut self) -> Option<Stream> {
         self.0.next().await
     }
 }
 
 #[async_trait]
-impl OpenStream for MuxadoOpen {
+impl Open for MuxadoOpen {
     async fn open(&mut self) -> Result<Stream, Error> {
         let (resp_tx, resp_rx) = oneshot::channel();
 
@@ -364,26 +368,30 @@ impl OpenStream for MuxadoOpen {
     }
 }
 
-pub struct Muxado {
+/// The base muxado [Session] implementation.
+///
+/// See the [Session], [Accept], and [Open] trait implementations for
+/// available methods.
+pub struct MuxadoSession {
     incoming: MuxadoAccept,
     outgoing: MuxadoOpen,
 }
 
 #[async_trait]
-impl AcceptStream for Muxado {
+impl Accept for MuxadoSession {
     async fn accept(&mut self) -> Option<Stream> {
         self.incoming.accept().await
     }
 }
 
 #[async_trait]
-impl OpenStream for Muxado {
+impl Open for MuxadoSession {
     async fn open(&mut self) -> Result<Stream, Error> {
         self.outgoing.open().await
     }
 }
 
-impl Session for Muxado {
+impl Session for MuxadoSession {
     type Accept = MuxadoAccept;
     type Open = MuxadoOpen;
     fn split(self) -> (Self::Open, Self::Accept) {

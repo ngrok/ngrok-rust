@@ -8,10 +8,10 @@ use std::{
 };
 
 use async_rustls::{
-    rustls,
-    webpki,
+    rustls::{self, client::InvalidDnsNameError},
 };
 use muxado::heartbeat::HeartbeatConfig;
+use rustls_pemfile::Item;
 use thiserror::Error;
 use tokio::sync::{
     mpsc::{
@@ -28,7 +28,7 @@ use tokio_util::compat::{
 use tracing::warn;
 
 use crate::{
-    config::common::TunnelConfig,
+    config::TunnelConfig,
     internals::{
         proto::{
             AuthExtra,
@@ -53,6 +53,7 @@ const NOT_IMPLEMENTED: &str = "the agent has not defined a callback for this ope
 
 type TunnelConns = HashMap<String, Sender<Result<Conn, AcceptError>>>;
 
+/// An ngrok session.
 #[derive(Clone)]
 pub struct Session {
     #[allow(dead_code)]
@@ -61,6 +62,7 @@ pub struct Session {
     tunnels: Arc<RwLock<TunnelConns>>,
 }
 
+/// The builder for an ngrok [Session].
 #[derive(Clone)]
 pub struct SessionBuilder {
     authtoken: Option<String>,
@@ -71,18 +73,41 @@ pub struct SessionBuilder {
     tls_config: rustls::ClientConfig,
 }
 
+/// Errors arising at [SessionBuilder::connect] time.
 #[derive(Error, Debug)]
 pub enum ConnectError {
+    /// The builder specified an invalid heartbeat interval.
+    ///
+    /// This is most likely caused a [Duration] that's outside of the [i64::MAX]
+    /// nanosecond range.
     #[error("invalid heartbeat interval: {0}")]
     InvalidHeartbeatInterval(u128),
+    /// The builder specified an invalid heartbeat tolerance.
+    ///
+    /// This is most likely caused a [Duration] that's outside of the [i64::MAX]
+    /// nanosecond range.
     #[error("invalid heartbeat tolerance: {0}")]
     InvalidHeartbeatTolerance(u128),
+    /// The builder specified an invalid server name.
+    #[error("invalid server name")]
+    InvalidServerName(#[from] InvalidDnsNameError),
+    /// An error occurred when establishing a TCP connection to the ngrok
+    /// server.
     #[error("failed to establish tcp connection")]
     Tcp(io::Error),
+    /// A TLS handshake error occurred.
+    ///
+    /// This is usually a certificate validation issue, or an attempt to connect
+    /// to something that doesn't actually speak TLS.
     #[error("tls handshake error")]
     Tls(io::Error),
+    /// An error occurred when starting the ngrok session.
+    ///
+    /// This might occur when there's a protocol mismatch interfering with the
+    /// heartbeat routine.
     #[error("failed to start ngrok session")]
     Start(StartSessionError),
+    /// An error occurred when attempting to authenticate.
     #[error("authentication failure")]
     Auth(RpcError),
 }
@@ -91,12 +116,22 @@ impl Default for SessionBuilder {
     fn default() -> Self {
         let mut root_store = rustls::RootCertStore::empty();
         let mut cert_pem = io::Cursor::new(CERT_BYTES);
-        root_store
-            .add_pem_file(&mut cert_pem)
-            .expect("a valid ngrok root cert");
+        root_store.add_parsable_certificates(
+            rustls_pemfile::read_all(&mut cert_pem)
+                .expect("a valid ngrok root certificate")
+                .into_iter()
+                .filter_map(|it| match it {
+                    Item::X509Certificate(bs) => Some(bs),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .as_slice(),
+        );
 
-        let mut tls_config = rustls::ClientConfig::new();
-        tls_config.root_store = root_store;
+        let tls_config = rustls::ClientConfig::builder()
+            .with_safe_defaults()
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
 
         SessionBuilder {
             authtoken: None,
@@ -109,9 +144,10 @@ impl Default for SessionBuilder {
     }
 }
 
+/// An invalid server address was provided.
 #[derive(Debug, Error)]
-#[error("invalid server address: {0}")]
-pub struct InvalidAddrError(ParseIntError);
+#[error("invalid server address")]
+pub struct InvalidAddrError(#[source] ParseIntError);
 
 impl SessionBuilder {
     /// Authenticate the ngrok session with the given authtoken.
@@ -182,7 +218,7 @@ impl SessionBuilder {
 
         let tls_conn = async_rustls::TlsConnector::from(Arc::new(self.tls_config.clone()))
             .connect(
-                webpki::DNSNameRef::try_from_ascii(self.server_addr.0.as_bytes()).unwrap(),
+                rustls::ServerName::try_from(self.server_addr.0.as_str())?,
                 conn,
             )
             .await
@@ -249,10 +285,12 @@ impl SessionBuilder {
 }
 
 impl Session {
+    /// Create a new [SessionBuilder] to configure a new ngrok session.
     pub fn builder() -> SessionBuilder {
         SessionBuilder::default()
     }
 
+    /// Start a new tunnel in this session.
     pub async fn start_tunnel<C>(&self, tunnel_cfg: C) -> Result<Tunnel, RpcError>
     where
         C: TunnelConfig,
@@ -317,6 +355,7 @@ impl Session {
         })
     }
 
+    /// Close a tunnel with the given ID.
     pub async fn close_tunnel(&self, id: impl AsRef<str>) -> Result<(), RpcError> {
         let id = id.as_ref();
         self.client.lock().await.unlisten(id).await?;

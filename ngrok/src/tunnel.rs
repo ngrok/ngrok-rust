@@ -15,8 +15,8 @@ use futures::{
 };
 use hyper::server::accept::Accept;
 use muxado::{
-    errors::Error as MuxadoError,
     typed::TypedStream,
+    Error as MuxadoError,
 };
 use thiserror::Error;
 use tokio::{
@@ -38,6 +38,9 @@ use crate::{
     Session,
 };
 
+/// An ngrok tunnel.
+///
+/// This acts like a TCP listener and can be used as a [Stream] of [Result]<[Conn], [AcceptError]>.
 pub struct Tunnel {
     pub(crate) id: String,
     pub(crate) proto: String,
@@ -57,13 +60,19 @@ pub struct Tunnel {
     pub(crate) bind_extra: BindExtra,
 }
 
+/// A connection from an ngrok tunnel.
+///
+/// This implements [AsyncRead]/[AsyncWrite], as well as providing access to the
+/// address from which the connection to the ngrok edge originated.
 pub struct Conn {
     pub(crate) remote_addr: SocketAddr,
     pub(crate) stream: TypedStream,
 }
 
+/// Errors arising when accepting a [Conn] from a [Tunnel].
 #[derive(Error, Debug, Clone, Copy)]
 pub enum AcceptError {
+    /// An error occurred in the underlying transport protocol.
     #[error("transport error")]
     Transport(#[from] MuxadoError),
 }
@@ -131,6 +140,7 @@ impl Tunnel {
 }
 
 impl Conn {
+    /// Get the client address that initiated the connection to the ngrok edge.
     pub fn remote_addr(&self) -> SocketAddr {
         self.remote_addr
     }

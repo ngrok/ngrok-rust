@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use futures::TryStreamExt;
 use ngrok::{
+    config::TCPEndpoint,
     Session,
-    TCPEndpoint,
     Tunnel,
 };
 use tokio::io::{

@@ -7,22 +7,23 @@ description = "The ngrok agent SDK"
 repository = "https://github.com/ngrok/ngrok-rs"
 
 [dependencies]
-prost = "0.11.0"
+prost = "0.11.3"
 muxado = { path = "../muxado", version = "0.1.0" }
-serde = { version = "1.0.144", features = ["derive"] }
-serde_json = "1.0.85"
+serde = { version = "1.0.149", features = ["derive"] }
+serde_json = "1.0.89"
 thiserror = "1.0.37"
-base64 = "0.13.0"
-tokio = { version = "1.21.2", features = ["sync", "time"] }
-tracing = "0.1.29"
-async-rustls = { version = "0.2.0", features = ["dangerous_configuration"] }
+base64 = "0.13.1"
+tokio = { version = "1.23.0", features = ["sync", "time"] }
+tracing = "0.1.37"
+async-rustls = { version = "0.3.0" }
 tokio-util = { version = "0.7.4", features = ["compat"] }
 futures = "0.3.25"
 hyper = { version = "0.14.23", features = ["server"] }
 axum = { version = "0.6.1", features = ["tokio"] }
+rustls-pemfile = "1.0.1"
 
 [build-dependencies]
-prost-build = "0.11.1"
+prost-build = "0.11.3"
 
 [dev-dependencies]
 anyhow = "1.0.66"

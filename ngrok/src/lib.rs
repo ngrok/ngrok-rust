@@ -1,6 +1,6 @@
-pub mod mw {
-    include!(concat!(env!("OUT_DIR"), "/agent.rs"));
-}
+//! The ngrok agent SDK.
+
+#![warn(missing_docs)]
 
 mod internals {
     #[macro_use]
@@ -9,31 +9,32 @@ mod internals {
     pub mod raw_session;
 }
 
-mod config {
+/// Tunnel and endpoint configuration types.
+pub mod config {
     // TODO: remove this once all of the config structs are fully fleshed out
     //       and tested.
     #![allow(dead_code)]
 
-    pub mod common;
-    pub mod headers;
-    pub mod http;
-    pub mod labeled;
-    pub mod oauth;
-    pub mod oidc;
-    pub mod tcp;
-    pub mod tls;
-    pub mod webhook_verification;
+    mod common;
+    pub use common::*;
+    mod headers;
+    mod http;
+    pub use http::*;
+    mod labeled;
+    pub use labeled::*;
+    mod oauth;
+    pub use oauth::*;
+    mod oidc;
+    pub use oidc::*;
+    mod tcp;
+    pub use tcp::*;
+    mod tls;
+    pub use tls::*;
+    mod webhook_verification;
 }
 
 mod session;
 mod tunnel;
 
-pub use config::{
-    http::*,
-    labeled::*,
-    tcp::*,
-    tls::*,
-    *,
-};
 pub use session::*;
 pub use tunnel::*;

@@ -1,6 +1,6 @@
 use std::env;
 
-use muxado::session::*;
+use muxado::*;
 use tokio::{
     io::{
         AsyncReadExt,

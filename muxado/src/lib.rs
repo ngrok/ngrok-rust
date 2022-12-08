@@ -1,15 +1,23 @@
+//! Implementation of the muxado protocol.
+
+#![warn(missing_docs)]
+
 #[macro_use]
 mod constrained;
 
 mod codec;
-pub mod errors;
+mod errors;
 mod frame;
-pub mod session;
-pub mod stream;
-pub mod stream_manager;
+mod session;
+mod stream;
+mod stream_manager;
 mod stream_output;
 pub mod typed;
 mod window;
+
+pub use errors::Error;
+pub use session::*;
+pub use stream::Stream;
 
 #[cfg(feature = "tokio_rt")]
 pub mod heartbeat;

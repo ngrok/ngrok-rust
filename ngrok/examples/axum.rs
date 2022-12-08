@@ -6,7 +6,7 @@ use axum::{
     Router,
 };
 use ngrok::{
-    HTTPEndpoint,
+    config::HTTPEndpoint,
     Session,
     Tunnel,
 };

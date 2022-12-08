@@ -1,4 +1,4 @@
-use crate::mw::middleware_configuration::Oidc;
+use crate::internals::proto::gen::middleware_configuration::Oidc;
 
 /// Oidc Options configuration
 #[derive(Clone, Default)]
@@ -12,6 +12,7 @@ pub struct OidcOptions {
 }
 
 impl OidcOptions {
+    /// Create a new [OidcOptions] with the given issuer and client information.
     pub fn new(
         issuer_url: impl Into<String>,
         client_id: impl Into<String>,
@@ -25,14 +26,17 @@ impl OidcOptions {
         }
     }
 
+    /// Allow the oidc user with the given email to access the tunnel.
     pub fn with_allow_email(mut self, email: impl Into<String>) -> Self {
         self.allow_emails.push(email.into());
         self
     }
+    /// Allow the oidc user with the given email domain to access the tunnel.
     pub fn with_allow_domain(mut self, domain: impl Into<String>) -> Self {
         self.allow_domains.push(domain.into());
         self
     }
+    /// Request the given scope from the oidc provider.
     pub fn with_scope(mut self, scope: impl Into<String>) -> Self {
         self.scopes.push(scope.into());
         self
