@@ -7,8 +7,9 @@ use std::{
     time::Duration,
 };
 
-use async_rustls::{
-    rustls::{self, client::InvalidDnsNameError},
+use async_rustls::rustls::{
+    self,
+    client::InvalidDnsNameError,
 };
 use muxado::heartbeat::HeartbeatConfig;
 use rustls_pemfile::Item;
