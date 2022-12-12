@@ -32,14 +32,14 @@ async fn main() -> anyhow::Result<()> {
 
 async fn start_tunnel() -> anyhow::Result<impl Tunnel> {
     let sess = ngrok::Session::builder()
-        .with_authtoken_from_env()
+        .authtoken_from_env()
         .connect()
         .await?;
 
     let tun = sess
         .labeled_tunnel()
-        .with_label("edge", "edghts_<edge_id>")
-        .with_metadata("example tunnel metadata from rust")
+        .label("edge", "edghts_<edge_id>")
+        .metadata("example tunnel metadata from rust")
         .listen()
         .await?;
 

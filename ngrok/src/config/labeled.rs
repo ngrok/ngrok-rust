@@ -57,13 +57,13 @@ impl_builder! {
 
 impl LabeledTunnelBuilder {
     /// Tunnel-specific opaque metadata. Viewable via the API.
-    pub fn with_metadata(mut self, metadata: impl Into<String>) -> Self {
+    pub fn metadata(mut self, metadata: impl Into<String>) -> Self {
         self.options.common_opts.metadata = Some(metadata.into());
         self
     }
 
     /// Add a label, value pair for this tunnel.
-    pub fn with_label(mut self, label: impl Into<String>, value: impl Into<String>) -> Self {
+    pub fn label(mut self, label: impl Into<String>, value: impl Into<String>) -> Self {
         self.options.labels.insert(label.into(), value.into());
         self
     }
@@ -86,8 +86,8 @@ mod test {
                 session: None,
                 options: Default::default(),
             }
-            .with_metadata(METADATA)
-            .with_label(LABEL_KEY, LABEL_VAL)
+            .metadata(METADATA)
+            .label(LABEL_KEY, LABEL_VAL)
             .options,
         );
     }

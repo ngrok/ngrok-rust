@@ -18,19 +18,19 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let sess = ngrok::Session::builder()
-        .with_authtoken_from_env()
-        .with_metadata("Online in One Line")
+        .authtoken_from_env()
+        .metadata("Online in One Line")
         .connect()
         .await?;
 
     let tunnel = sess
         .tcp_endpoint()
-        // .with_allow_cidr_string("0.0.0.0/0")
-        // .with_deny_cidr_string("10.1.1.1/32")
-        // .with_forwards_to("example rust"),
-        // .with_proxy_proto(ProxyProto::None)
-        // .with_remote_addr("<n>.tcp.ngrok.io:<p>")
-        .with_metadata("example tunnel metadata from rust")
+        // .allow_cidr_string("0.0.0.0/0")
+        // .deny_cidr_string("10.1.1.1/32")
+        // .forwards_to("example rust"),
+        // .proxy_proto(ProxyProto::None)
+        // .remote_addr("<n>.tcp.ngrok.io:<p>")
+        .metadata("example tunnel metadata from rust")
         .listen()
         .await?;
 

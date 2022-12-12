@@ -72,7 +72,7 @@ where
 
     /// Set the stream window size.
     /// Defaults to 256kb.
-    pub fn with_window_size(mut self, size: usize) -> Self {
+    pub fn window_size(mut self, size: usize) -> Self {
         self.window = size;
         self
     }
@@ -82,7 +82,7 @@ where
     /// from the remote. If [Accept::accept] isn't called and the
     /// channel fills up, the session will block.
     /// Defaults to 64.
-    pub fn with_accept_queue_size(mut self, size: usize) -> Self {
+    pub fn accept_queue_size(mut self, size: usize) -> Self {
         self.accept_queue_size = size;
         self
     }
@@ -90,7 +90,7 @@ where
     /// Set the maximum number of streams allowed at a given time.
     /// If this limit is reached, new streams will be refused.
     /// Defaults to 512.
-    pub fn with_stream_limit(mut self, count: usize) -> Self {
+    pub fn stream_limit(mut self, count: usize) -> Self {
         self.stream_limit = count;
         self
     }

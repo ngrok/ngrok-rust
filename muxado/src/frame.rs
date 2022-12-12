@@ -85,7 +85,7 @@ impl Frame {
         self.header.flags.set(Flags::SYN, true);
         self
     }
-    pub fn with_stream_id(mut self, id: StreamID) -> Frame {
+    pub fn stream_id(mut self, id: StreamID) -> Frame {
         self.header.stream_id = id;
         self
     }

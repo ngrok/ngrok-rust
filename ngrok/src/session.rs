@@ -160,14 +160,14 @@ pub struct InvalidAddrError(#[source] ParseIntError);
 
 impl SessionBuilder {
     /// Authenticate the ngrok session with the given authtoken.
-    pub fn with_authtoken(mut self, authtoken: impl Into<String>) -> Self {
+    pub fn authtoken(mut self, authtoken: impl Into<String>) -> Self {
         self.authtoken = Some(authtoken.into());
         self
     }
 
     /// Authenticate using the authtoken in the `NGROK_AUTHTOKEN` environment
     /// variable.
-    pub fn with_authtoken_from_env(mut self) -> Self {
+    pub fn authtoken_from_env(mut self) -> Self {
         self.authtoken = env::var("NGROK_AUTHTOKEN").ok();
         self
     }
@@ -175,7 +175,7 @@ impl SessionBuilder {
     /// Set the heartbeat interval for the session.
     /// This value determines how often we send application level
     /// heartbeats to the server go check connection liveness.
-    pub fn with_heartbeat_interval(mut self, heartbeat_interval: Duration) -> Self {
+    pub fn heartbeat_interval(mut self, heartbeat_interval: Duration) -> Self {
         self.heartbeat_interval = Some(heartbeat_interval);
         self
     }
@@ -183,20 +183,20 @@ impl SessionBuilder {
     /// Set the heartbeat tolerance for the session.
     /// If the session's heartbeats are outside of their interval by this duration,
     /// the server will assume the session is dead and close it.
-    pub fn with_heartbeat_tolerance(mut self, heartbeat_tolerance: Duration) -> Self {
+    pub fn heartbeat_tolerance(mut self, heartbeat_tolerance: Duration) -> Self {
         self.heartbeat_tolerance = Some(heartbeat_tolerance);
         self
     }
 
     /// Use the provided opaque metadata string for this session.
     /// Viewable from the ngrok dashboard or API.
-    pub fn with_metadata(mut self, metadata: impl Into<String>) -> Self {
+    pub fn metadata(mut self, metadata: impl Into<String>) -> Self {
         self.metadata = Some(metadata.into());
         self
     }
 
     /// Connect to the provided ngrok server address.
-    pub fn with_server_addr(mut self, addr: impl AsRef<str>) -> Result<Self, InvalidAddrError> {
+    pub fn server_addr(mut self, addr: impl AsRef<str>) -> Result<Self, InvalidAddrError> {
         let addr = addr.as_ref();
         let mut split = addr.split(':');
         let host = split.next().unwrap().into();
@@ -210,7 +210,7 @@ impl SessionBuilder {
     }
 
     /// Use the provided tls config when connecting to the ngrok server.
-    pub fn with_tls_config(mut self, config: rustls::ClientConfig) -> Self {
+    pub fn tls_config(mut self, config: rustls::ClientConfig) -> Self {
         self.tls_config = config;
         self
     }

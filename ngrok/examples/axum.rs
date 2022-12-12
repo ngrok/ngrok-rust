@@ -33,41 +33,39 @@ async fn main() -> anyhow::Result<()> {
 // const CA_CERT: &[u8] = include_bytes!("ca.crt");
 
 async fn start_tunnel() -> anyhow::Result<impl UrlTunnel> {
-    let sess = ngrok::Session::builder()
-        .with_authtoken_from_env()
+    let tun = ngrok::Session::builder()
+        .authtoken_from_env()
         .connect()
-        .await?;
-
-    let tun = sess
+        .await?
         .http_endpoint()
-        // .with_allow_cidr_string("0.0.0.0/0")
-        // .with_basic_auth("ngrok", "online1line")
-        // .with_circuit_breaker(0.5)
-        // .with_compression()
-        // .with_deny_cidr_string("10.1.1.1/32")
-        // .with_domain("<somedomain>.ngrok.io")
-        // .with_mutual_tlsca(CA_CERT.into())
-        // .with_oauth(
+        // .allow_cidr_string("0.0.0.0/0")
+        // .basic_auth("ngrok", "online1line")
+        // .circuit_breaker(0.5)
+        // .compression()
+        // .deny_cidr_string("10.1.1.1/32")
+        // .domain("<somedomain>.ngrok.io")
+        // .mutual_tlsca(CA_CERT.into())
+        // .oauth(
         //     OauthOptions::new("google")
-        //         .with_allow_email("<user>@<domain>")
-        //         .with_allow_domain("<domain>")
-        //         .with_scope("<scope>"),
+        //         .allow_email("<user>@<domain>")
+        //         .allow_domain("<domain>")
+        //         .scope("<scope>"),
         // )
-        // .with_oidc(
+        // .oidc(
         //     OidcOptions::new("<url>", "<id>", "<secret>")
-        //         .with_allow_email("<user>@<domain>")
-        //         .with_allow_domain("<domain>")
-        //         .with_scope("<scope>"),
+        //         .allow_email("<user>@<domain>")
+        //         .allow_domain("<domain>")
+        //         .scope("<scope>"),
         // )
-        // .with_proxy_proto(ProxyProto::None)
-        // .with_remove_request_header("X-Req-Nope")
-        // .with_remove_response_header("X-Res-Nope")
-        // .with_request_header("X-Req-Yup", "true")
-        // .with_response_header("X-Res-Yup", "true")
-        // .with_scheme(ngrok::Scheme::HTTPS)
-        // .with_websocket_tcp_conversion()
-        // .with_webhook_verification("twilio", "asdf"),
-        .with_metadata("example tunnel metadata from rust")
+        // .proxy_proto(ProxyProto::None)
+        // .remove_request_header("X-Req-Nope")
+        // .remove_response_header("X-Res-Nope")
+        // .request_header("X-Req-Yup", "true")
+        // .response_header("X-Res-Yup", "true")
+        // .scheme(ngrok::Scheme::HTTPS)
+        // .websocket_tcp_conversion()
+        // .webhook_verification("twilio", "asdf"),
+        .metadata("example tunnel metadata from rust")
         .listen()
         .await?;
 
