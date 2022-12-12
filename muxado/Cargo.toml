@@ -25,8 +25,3 @@ tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 tokio = { version = "1.23.0", features = ["full", "tracing", "io-util", "time", "rt-multi-thread", "macros"] }
 tracing-core = { version = "0.1.30" }
 tracing-test = "0.2.3"
-
-[features]
-default = ["tokio_rt", "bin"]
-bin = ["tokio/full", "tokio/tracing"]
-tokio_rt = ["tokio/rt-multi-thread"]
