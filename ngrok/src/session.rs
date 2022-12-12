@@ -7,6 +7,7 @@ use std::{
     time::Duration,
 };
 
+use arc_swap::ArcSwap;
 use async_rustls::rustls::{
     self,
     client::InvalidDnsNameError,
@@ -65,10 +66,14 @@ type TunnelConns = HashMap<String, Sender<Result<Conn, AcceptError>>>;
 /// An ngrok session.
 #[derive(Clone)]
 pub struct Session {
+    inner: Arc<ArcSwap<SessionInner>>,
+}
+
+struct SessionInner {
     #[allow(dead_code)]
     authresp: AuthResp,
-    client: Arc<Mutex<RpcClient>>,
-    tunnels: Arc<RwLock<TunnelConns>>,
+    client: Mutex<RpcClient>,
+    tunnels: RwLock<TunnelConns>,
 }
 
 /// The builder for an ngrok [Session].
@@ -272,15 +277,15 @@ impl SessionBuilder {
 
         let (client, incoming) = raw.split();
 
-        let tunnels: Arc<RwLock<TunnelConns>> = Default::default();
-
-        tokio::spawn(accept_incoming(incoming, tunnels.clone()));
-
-        Ok(Session {
+        let inner = Arc::new(ArcSwap::from(Arc::new(SessionInner {
             authresp: resp,
-            client: Arc::new(Mutex::new(client)),
-            tunnels,
-        })
+            client: client.into(),
+            tunnels: Default::default(),
+        })));
+
+        tokio::spawn(accept_incoming(incoming, inner.clone()));
+
+        Ok(Session { inner })
     }
 }
 
@@ -315,7 +320,8 @@ impl Session {
     where
         C: TunnelConfig,
     {
-        let mut client = self.client.lock().await;
+        let inner = self.inner.load();
+        let mut client = inner.client.lock().await;
 
         // let tunnelCfg: dyn TunnelConfig = TunnelConfig(opts);
         let (tx, rx) = channel(64);
@@ -332,7 +338,7 @@ impl Session {
                 )
                 .await?;
 
-            let mut tunnels = self.tunnels.write().await;
+            let mut tunnels = inner.tunnels.write().await;
             tunnels.insert(resp.client_id.clone(), tx);
 
             return Ok(TunnelInner {
@@ -358,7 +364,7 @@ impl Session {
             )
             .await?;
 
-        let mut tunnels = self.tunnels.write().await;
+        let mut tunnels = inner.tunnels.write().await;
         tunnels.insert(resp.id.clone(), tx);
 
         Ok(TunnelInner {
@@ -378,13 +384,14 @@ impl Session {
     /// Close a tunnel with the given ID.
     pub async fn close_tunnel(&self, id: impl AsRef<str>) -> Result<(), RpcError> {
         let id = id.as_ref();
-        self.client.lock().await.unlisten(id).await?;
-        self.tunnels.write().await.remove(id);
+        let inner = self.inner.load();
+        inner.client.lock().await.unlisten(id).await?;
+        inner.tunnels.write().await.remove(id);
         Ok(())
     }
 }
 
-async fn accept_incoming(mut incoming: IncomingStreams, tunnels: Arc<RwLock<TunnelConns>>) {
+async fn accept_incoming(mut incoming: IncomingStreams, inner: Arc<ArcSwap<SessionInner>>) {
     let error: AcceptError = loop {
         let conn = match incoming.accept().await {
             Ok(conn) => conn,
@@ -408,7 +415,8 @@ async fn accept_incoming(mut incoming: IncomingStreams, tunnels: Arc<RwLock<Tunn
             );
             "0.0.0.0:0".parse().unwrap()
         });
-        let guard = tunnels.read().await;
+        let inner = inner.load();
+        let guard = inner.tunnels.read().await;
         let res = if let Some(ch) = guard.get(&id) {
             ch.send(Ok(Conn {
                 remote_addr,
@@ -420,11 +428,11 @@ async fn accept_incoming(mut incoming: IncomingStreams, tunnels: Arc<RwLock<Tunn
         };
         drop(guard);
         if res.is_err() {
-            RwLock::write(&tunnels).await.remove(&id);
+            RwLock::write(&inner.tunnels).await.remove(&id);
         }
     }
     .into();
-    for (_id, ch) in tunnels.write().await.drain() {
+    for (_id, ch) in inner.load().tunnels.write().await.drain() {
         let _ = ch.send(Err(error)).await;
     }
 }
