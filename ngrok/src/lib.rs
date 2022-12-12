@@ -50,6 +50,7 @@ pub use tunnel::{
 
 /// A prelude of traits for working with ngrok types.
 pub mod prelude {
+    #[doc(inline)]
     pub use crate::{
         config::TunnelBuilder,
         tunnel::{
