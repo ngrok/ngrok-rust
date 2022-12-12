@@ -18,9 +18,9 @@ use crate::{
         BindExtra,
         BindOpts,
     },
-    RpcError,
+    session::RpcError,
+    tunnel::TcpTunnel,
     Session,
-    TcpTunnel,
 };
 
 /// The options for a TCP edge.

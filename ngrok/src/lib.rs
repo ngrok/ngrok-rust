@@ -9,8 +9,6 @@ mod internals {
     pub mod raw_session;
 }
 
-pub use internals::raw_session::RpcError;
-
 /// Tunnel and endpoint configuration types.
 pub mod config {
     // TODO: remove this once all of the config structs are fully fleshed out
@@ -37,8 +35,28 @@ pub mod config {
     mod webhook_verification;
 }
 
-mod session;
-mod tunnel;
+/// Types for working with the ngrok session.
+pub mod session;
+/// Types for working with ngrok tunnels.
+pub mod tunnel;
 
-pub use session::*;
-pub use tunnel::*;
+#[doc(inline)]
+pub use session::Session;
+#[doc(inline)]
+pub use tunnel::{
+    Conn,
+    Tunnel,
+};
+
+/// A prelude of traits for working with ngrok types.
+pub mod prelude {
+    pub use crate::{
+        config::TunnelBuilder,
+        tunnel::{
+            LabelsTunnel,
+            ProtoTunnel,
+            Tunnel,
+            UrlTunnel,
+        },
+    };
+}

@@ -37,8 +37,8 @@ use crate::{
         BindExtra,
         BindOpts,
     },
-    HttpTunnel,
-    RpcError,
+    session::RpcError,
+    tunnel::HttpTunnel,
     Session,
 };
 

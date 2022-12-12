@@ -5,11 +5,7 @@ use axum::{
     routing::get,
     Router,
 };
-use ngrok::{
-    config::TunnelBuilder,
-    HttpTunnel,
-    Session,
-};
+use ngrok::prelude::*;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -36,8 +32,8 @@ async fn main() -> anyhow::Result<()> {
 
 // const CA_CERT: &[u8] = include_bytes!("ca.crt");
 
-async fn start_tunnel() -> anyhow::Result<HttpTunnel> {
-    let sess = Session::builder()
+async fn start_tunnel() -> anyhow::Result<impl UrlTunnel> {
+    let sess = ngrok::Session::builder()
         .with_authtoken_from_env()
         .connect()
         .await?;

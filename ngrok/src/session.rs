@@ -28,6 +28,7 @@ use tokio_util::compat::{
 };
 use tracing::warn;
 
+pub use crate::internals::raw_session::RpcError;
 use crate::{
     config::{
         HttpTunnelBuilder,
@@ -46,13 +47,14 @@ use crate::{
             IncomingStreams,
             RawSession,
             RpcClient,
-            RpcError,
             StartSessionError,
         },
     },
-    AcceptError,
-    Conn,
-    TunnelInner,
+    tunnel::{
+        AcceptError,
+        Conn,
+        TunnelInner,
+    },
 };
 
 const CERT_BYTES: &[u8] = include_bytes!("../assets/ngrok.ca.crt");

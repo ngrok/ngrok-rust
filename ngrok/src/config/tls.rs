@@ -25,9 +25,9 @@ use crate::{
         BindExtra,
         BindOpts,
     },
-    RpcError,
+    session::RpcError,
+    tunnel::TlsTunnel,
     Session,
-    TlsTunnel,
 };
 
 /// The options for TLS edges.

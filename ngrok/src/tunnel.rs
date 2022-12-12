@@ -8,6 +8,7 @@ use std::{
     },
 };
 
+use async_trait::async_trait;
 use axum::extract::connect_info::Connected;
 use futures::{
     Stream,
@@ -44,9 +45,14 @@ use crate::{
     Session,
 };
 
-/// An ngrok tunnel.
-///
-/// This acts like a TCP listener and can be used as a [Stream] of [Result]<[Conn], [AcceptError]>.
+/// Errors arising when accepting a [Conn] from an ngrok tunnel.
+#[derive(Error, Debug, Clone, Copy)]
+pub enum AcceptError {
+    /// An error occurred in the underlying transport protocol.
+    #[error("transport error")]
+    Transport(#[from] MuxadoError),
+}
+
 pub(crate) struct TunnelInner {
     pub(crate) id: String,
     pub(crate) proto: String,
@@ -66,6 +72,45 @@ pub(crate) struct TunnelInner {
     pub(crate) bind_extra: BindExtra,
 }
 
+/// An ngrok tunnel.
+///
+/// This acts like a TCP listener and can be used as a [Stream] of [Result]<[Conn], [AcceptError]>.
+#[async_trait]
+pub trait Tunnel:
+    Stream<Item = Result<Conn, AcceptError>>
+    + Accept<Conn = Conn, Error = AcceptError>
+    + Unpin
+    + Send
+    + 'static
+{
+    /// The ID of this tunnel, assigned by the remote server.
+    fn id(&self) -> &str;
+    /// Get the forwards_to metadata for this tunnel.
+    fn forwards_to(&self) -> &str;
+    /// Close the tunnel.
+    ///
+    /// This is an RPC call that must be `.await`ed.
+    async fn close(&mut self) -> Result<(), RpcError>;
+}
+
+/// An ngrok tunnel that supports getting the URL it was started for.
+pub trait UrlTunnel: Tunnel {
+    /// The URL that this tunnel backs.
+    fn url(&self) -> &str;
+}
+
+/// An ngrok tunnel that supports getting the protocol it uses at the ngrok edge.
+pub trait ProtoTunnel: Tunnel {
+    /// The protocol of the endpoint that this tunnel backs.
+    fn proto(&self) -> &str;
+}
+
+/// An ngrok tunnel that supports getting the labels it was started with.
+pub trait LabelsTunnel: Tunnel {
+    /// The labels this tunnel was started with.
+    fn labels(&self) -> &HashMap<String, String>;
+}
+
 /// A connection from an ngrok tunnel.
 ///
 /// This implements [AsyncRead]/[AsyncWrite], as well as providing access to the
@@ -73,14 +118,6 @@ pub(crate) struct TunnelInner {
 pub struct Conn {
     pub(crate) remote_addr: SocketAddr,
     pub(crate) stream: TypedStream,
-}
-
-/// Errors arising when accepting a [Conn] from an ngrok tunnel.
-#[derive(Error, Debug, Clone, Copy)]
-pub enum AcceptError {
-    /// An error occurred in the underlying transport protocol.
-    #[error("transport error")]
-    Transport(#[from] MuxadoError),
 }
 
 impl Stream for TunnelInner {
@@ -197,37 +234,32 @@ macro_rules! make_tunnel_type {
             pub(crate) inner: TunnelInner,
         }
 
+        #[async_trait]
+        impl Tunnel for $wrapper {
+            fn id(&self) -> &str {
+                self.inner.id()
+            }
+
+            async fn close(&mut self) -> Result<(), RpcError> {
+                self.inner.close().await
+            }
+
+            fn forwards_to(&self) -> &str {
+                self.inner.forwards_to()
+            }
+
+        }
+
         impl $wrapper {
             /// Create a builder for this tunnel type.
             pub fn builder(session: Session) -> $builder {
                 $builder::from(session)
             }
-
-            /// Accept an incomming connection on this tunnel.
-            pub async fn accept(&mut self) -> Result<Option<Conn>, AcceptError> {
-                self.inner.accept().await
-            }
-
-            /// Get this tunnel's ID as returned by the ngrok server.
-            pub fn id(&self) -> &str {
-                self.inner.id()
-            }
-
-            /// Close the tunnel.
-            /// This is an RPC call and needs to be `.await`ed.
-            pub async fn close(&mut self) -> Result<(), RpcError> {
-                self.inner.close().await
-            }
-
-            /// Get the address that this tunnel says it forwards to.
-            pub fn forwards_to(&self) -> &str {
-                self.inner.forwards_to()
-            }
-
-            $(
-                make_tunnel_type!($m; $wrapper);
-            )*
         }
+
+        $(
+            make_tunnel_type!($m; $wrapper);
+        )*
 
         impl Stream for $wrapper {
             type Item = Result<Conn, AcceptError>;
@@ -250,23 +282,24 @@ macro_rules! make_tunnel_type {
         }
     };
     (url; $wrapper:ty) => {
-        /// Get the URL for this tunnel.
-        /// Labeled tunnels will return an empty string.
-        pub fn url(&self) -> &str {
-            self.inner.url()
+        impl UrlTunnel for $wrapper {
+            fn url(&self) -> &str {
+                self.inner.url()
+            }
         }
     };
     (proto; $wrapper:ty) => {
-        /// Get the protocol that this tunnel uses.
-        pub fn proto(&self) -> &str {
-            self.inner.proto()
+        impl ProtoTunnel for $wrapper {
+            fn proto(&self) -> &str {
+                self.inner.proto()
+            }
         }
     };
     (labels; $wrapper:ty) => {
-        /// Get the labels this tunnel was started with.
-        /// The returned [`HashMap`] will be empty for non-labeled tunnels.
-        pub fn labels(&self) -> &HashMap<String, String> {
-            self.inner.labels()
+        impl LabelsTunnel for $wrapper {
+            fn labels(&self) -> &HashMap<String, String> {
+                self.inner.labels()
+            }
         }
     };
 }

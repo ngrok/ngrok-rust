@@ -13,8 +13,8 @@ use crate::{
         BindExtra,
         BindOpts,
     },
-    LabeledTunnel,
-    RpcError,
+    session::RpcError,
+    tunnel::LabeledTunnel,
     Session,
 };
 

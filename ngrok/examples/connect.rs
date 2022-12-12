@@ -1,11 +1,5 @@
-use std::sync::Arc;
-
 use futures::TryStreamExt;
-use ngrok::{
-    config::TunnelBuilder,
-    Session,
-    TcpTunnel,
-};
+use ngrok::prelude::*;
 use tokio::io::{
     self,
     AsyncBufReadExt,
@@ -23,13 +17,11 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(std::env::var("RUST_LOG").unwrap_or_default())
         .init();
 
-    let sess = Arc::new(
-        Session::builder()
-            .with_authtoken_from_env()
-            .with_metadata("Online in One Line")
-            .connect()
-            .await?,
-    );
+    let sess = ngrok::Session::builder()
+        .with_authtoken_from_env()
+        .with_metadata("Online in One Line")
+        .connect()
+        .await?;
 
     let tunnel = sess
         .tcp_endpoint()
@@ -47,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
     futures::future::pending().await
 }
 
-fn handle_tunnel(mut tunnel: TcpTunnel, sess: Arc<Session>) {
+fn handle_tunnel(mut tunnel: impl UrlTunnel, sess: ngrok::Session) {
     info!("bound new tunnel: {}", tunnel.url());
     tokio::spawn(async move {
         loop {
