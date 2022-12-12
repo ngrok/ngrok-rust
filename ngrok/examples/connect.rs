@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use futures::TryStreamExt;
 use ngrok::{
-    config::TCPEndpoint,
+    config::TunnelBuilder,
     Session,
-    Tunnel,
+    TcpTunnel,
 };
 use tokio::io::{
     self,
@@ -32,15 +32,14 @@ async fn main() -> anyhow::Result<()> {
     );
 
     let tunnel = sess
-        .start_tunnel(
-            TCPEndpoint::default()
-                // .with_allow_cidr_string("0.0.0.0/0")
-                // .with_deny_cidr_string("10.1.1.1/32")
-                // .with_forwards_to("example rust"),
-                // .with_proxy_proto(ProxyProto::None)
-                // .with_remote_addr("<n>.tcp.ngrok.io:<p>")
-                .with_metadata("example tunnel metadata from rust"),
-        )
+        .tcp_endpoint()
+        // .with_allow_cidr_string("0.0.0.0/0")
+        // .with_deny_cidr_string("10.1.1.1/32")
+        // .with_forwards_to("example rust"),
+        // .with_proxy_proto(ProxyProto::None)
+        // .with_remote_addr("<n>.tcp.ngrok.io:<p>")
+        .with_metadata("example tunnel metadata from rust")
+        .listen()
         .await?;
 
     handle_tunnel(tunnel, sess);
@@ -48,7 +47,7 @@ async fn main() -> anyhow::Result<()> {
     futures::future::pending().await
 }
 
-fn handle_tunnel(mut tunnel: Tunnel, sess: Arc<Session>) {
+fn handle_tunnel(mut tunnel: TcpTunnel, sess: Arc<Session>) {
     info!("bound new tunnel: {}", tunnel.url());
     tokio::spawn(async move {
         loop {
@@ -82,7 +81,7 @@ fn handle_tunnel(mut tunnel: Tunnel, sess: Arc<Session>) {
                         return Ok(());
                     } else if buf.contains("another!") {
                         info!("another requested");
-                        let new_tunnel = sess.start_tunnel(TCPEndpoint::default()).await?;
+                        let new_tunnel = sess.tcp_endpoint().listen().await?;
                         tx.write_all(new_tunnel.url().as_bytes()).await?;
                         handle_tunnel(new_tunnel, sess.clone());
                     } else {

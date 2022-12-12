@@ -29,7 +29,13 @@ use tokio_util::compat::{
 use tracing::warn;
 
 use crate::{
-    config::TunnelConfig,
+    config::{
+        HttpTunnelBuilder,
+        LabeledTunnelBuilder,
+        TcpTunnelBuilder,
+        TlsTunnelBuilder,
+        TunnelConfig,
+    },
     internals::{
         proto::{
             AuthExtra,
@@ -46,7 +52,7 @@ use crate::{
     },
     AcceptError,
     Conn,
-    Tunnel,
+    TunnelInner,
 };
 
 const CERT_BYTES: &[u8] = include_bytes!("../assets/ngrok.ca.crt");
@@ -291,8 +297,28 @@ impl Session {
         SessionBuilder::default()
     }
 
+    /// Start building a tunnel backing an HTTP endpoint.
+    pub fn http_endpoint(&self) -> HttpTunnelBuilder {
+        self.clone().into()
+    }
+
+    /// Start building a tunnel backing a TCP endpoint.
+    pub fn tcp_endpoint(&self) -> TcpTunnelBuilder {
+        self.clone().into()
+    }
+
+    /// Start building a tunnel backing a TLS endpoint.
+    pub fn tls_endpoint(&self) -> TlsTunnelBuilder {
+        self.clone().into()
+    }
+
+    /// Start building a labeled tunnel.
+    pub fn labeled_tunnel(&self) -> LabeledTunnelBuilder {
+        self.clone().into()
+    }
+
     /// Start a new tunnel in this session.
-    pub async fn start_tunnel<C>(&self, tunnel_cfg: C) -> Result<Tunnel, RpcError>
+    pub(crate) async fn start_tunnel<C>(&self, tunnel_cfg: C) -> Result<TunnelInner, RpcError>
     where
         C: TunnelConfig,
     {
@@ -316,7 +342,7 @@ impl Session {
             let mut tunnels = self.tunnels.write().await;
             tunnels.insert(resp.client_id.clone(), tx);
 
-            return Ok(Tunnel {
+            return Ok(TunnelInner {
                 id: resp.client_id,
                 proto: resp.proto,
                 url: resp.url,
@@ -342,7 +368,7 @@ impl Session {
         let mut tunnels = self.tunnels.write().await;
         tunnels.insert(resp.id.clone(), tx);
 
-        Ok(Tunnel {
+        Ok(TunnelInner {
             id: resp.id,
             proto: Default::default(),
             url: Default::default(),

@@ -6,9 +6,9 @@ use axum::{
     Router,
 };
 use ngrok::{
-    config::TLSEndpoint,
+    config::TunnelBuilder,
     Session,
-    Tunnel,
+    TlsTunnel,
 };
 
 const CERT: &[u8] = include_bytes!("domain.crt");
@@ -38,25 +38,24 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn start_tunnel() -> anyhow::Result<Tunnel> {
+async fn start_tunnel() -> anyhow::Result<TlsTunnel> {
     let sess = Session::builder()
         .with_authtoken_from_env()
         .connect()
         .await?;
 
     let tun = sess
-        .start_tunnel(
-            TLSEndpoint::default()
-                // .with_allow_cidr_string("0.0.0.0/0")
-                // .with_deny_cidr_string("10.1.1.1/32")
-                // .with_domain("<somedomain>.ngrok.io")
-                // .with_forwards_to("example rust"),
-                // .with_mutual_tlsca(CA_CERT.into())
-                // .with_proxy_proto(ProxyProto::None)
-                .with_cert_pem(CERT.into())
-                .with_key_pem(KEY.into())
-                .with_metadata("example tunnel metadata from rust"),
-        )
+        .tls_endpoint()
+        // .with_allow_cidr_string("0.0.0.0/0")
+        // .with_deny_cidr_string("10.1.1.1/32")
+        // .with_domain("<somedomain>.ngrok.io")
+        // .with_forwards_to("example rust"),
+        // .with_mutual_tlsca(CA_CERT.into())
+        // .with_proxy_proto(ProxyProto::None)
+        .with_cert_pem(CERT.into())
+        .with_key_pem(KEY.into())
+        .with_metadata("example tunnel metadata from rust")
+        .listen()
         .await?;
 
     println!("Tunnel started on URL: {:?}", tun.url());

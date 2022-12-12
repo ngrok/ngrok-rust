@@ -28,6 +28,12 @@ use tokio::{
 };
 
 use crate::{
+    config::{
+        HttpTunnelBuilder,
+        LabeledTunnelBuilder,
+        TcpTunnelBuilder,
+        TlsTunnelBuilder,
+    },
     internals::{
         proto::{
             BindExtra,
@@ -41,7 +47,7 @@ use crate::{
 /// An ngrok tunnel.
 ///
 /// This acts like a TCP listener and can be used as a [Stream] of [Result]<[Conn], [AcceptError]>.
-pub struct Tunnel {
+pub(crate) struct TunnelInner {
     pub(crate) id: String,
     pub(crate) proto: String,
     pub(crate) url: String,
@@ -69,7 +75,7 @@ pub struct Conn {
     pub(crate) stream: TypedStream,
 }
 
-/// Errors arising when accepting a [Conn] from a [Tunnel].
+/// Errors arising when accepting a [Conn] from an ngrok tunnel.
 #[derive(Error, Debug, Clone, Copy)]
 pub enum AcceptError {
     /// An error occurred in the underlying transport protocol.
@@ -77,7 +83,7 @@ pub enum AcceptError {
     Transport(#[from] MuxadoError),
 }
 
-impl Stream for Tunnel {
+impl Stream for TunnelInner {
     type Item = Result<Conn, AcceptError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -85,7 +91,7 @@ impl Stream for Tunnel {
     }
 }
 
-impl Accept for Tunnel {
+impl Accept for TunnelInner {
     type Conn = Conn;
     type Error = AcceptError;
 
@@ -97,7 +103,7 @@ impl Accept for Tunnel {
     }
 }
 
-impl Tunnel {
+impl TunnelInner {
     /// Accept an incomming connection on this tunnel.
     pub async fn accept(&mut self) -> Result<Option<Conn>, AcceptError> {
         self.try_next().await
@@ -182,4 +188,102 @@ impl Connected<&Conn> for SocketAddr {
     fn connect_info(target: &Conn) -> Self {
         target.remote_addr
     }
+}
+
+macro_rules! make_tunnel_type {
+    ($(#[$outer:meta])* $wrapper:ident, $builder:tt, $($m:tt),*) => {
+        $(#[$outer])*
+        pub struct $wrapper {
+            pub(crate) inner: TunnelInner,
+        }
+
+        impl $wrapper {
+            /// Create a builder for this tunnel type.
+            pub fn builder(session: Session) -> $builder {
+                $builder::from(session)
+            }
+
+            /// Accept an incomming connection on this tunnel.
+            pub async fn accept(&mut self) -> Result<Option<Conn>, AcceptError> {
+                self.inner.accept().await
+            }
+
+            /// Get this tunnel's ID as returned by the ngrok server.
+            pub fn id(&self) -> &str {
+                self.inner.id()
+            }
+
+            /// Close the tunnel.
+            /// This is an RPC call and needs to be `.await`ed.
+            pub async fn close(&mut self) -> Result<(), RpcError> {
+                self.inner.close().await
+            }
+
+            /// Get the address that this tunnel says it forwards to.
+            pub fn forwards_to(&self) -> &str {
+                self.inner.forwards_to()
+            }
+
+            $(
+                make_tunnel_type!($m; $wrapper);
+            )*
+        }
+
+        impl Stream for $wrapper {
+            type Item = Result<Conn, AcceptError>;
+
+            fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+                Pin::new(&mut self.inner).poll_next(cx)
+            }
+        }
+
+        impl Accept for $wrapper {
+            type Conn = Conn;
+            type Error = AcceptError;
+
+            fn poll_accept(
+                mut self: Pin<&mut Self>,
+                cx: &mut Context<'_>,
+            ) -> Poll<Option<Result<Self::Conn, Self::Error>>> {
+                Pin::new(&mut self.inner).poll_accept(cx)
+            }
+        }
+    };
+    (url; $wrapper:ty) => {
+        /// Get the URL for this tunnel.
+        /// Labeled tunnels will return an empty string.
+        pub fn url(&self) -> &str {
+            self.inner.url()
+        }
+    };
+    (proto; $wrapper:ty) => {
+        /// Get the protocol that this tunnel uses.
+        pub fn proto(&self) -> &str {
+            self.inner.proto()
+        }
+    };
+    (labels; $wrapper:ty) => {
+        /// Get the labels this tunnel was started with.
+        /// The returned [`HashMap`] will be empty for non-labeled tunnels.
+        pub fn labels(&self) -> &HashMap<String, String> {
+            self.inner.labels()
+        }
+    };
+}
+
+make_tunnel_type! {
+    /// An ngrok tunnel backing an HTTP endpoint.
+    HttpTunnel, HttpTunnelBuilder, url, proto
+}
+make_tunnel_type! {
+    /// An ngrok tunnel backing a TCP endpoint.
+    TcpTunnel, TcpTunnelBuilder, url, proto
+}
+make_tunnel_type! {
+    /// An ngrok tunnel bcking a TLS endpoint.
+    TlsTunnel, TlsTunnelBuilder, url, proto
+}
+make_tunnel_type! {
+    /// A labeled ngrok tunnel.
+    LabeledTunnel, LabeledTunnelBuilder, labels
 }

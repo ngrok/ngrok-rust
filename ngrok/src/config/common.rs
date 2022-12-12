@@ -1,23 +1,76 @@
 use std::collections::HashMap;
 
+use async_trait::async_trait;
 use prost::bytes;
 
 pub use crate::internals::proto::ProxyProto;
-use crate::internals::proto::{
-    gen::middleware_configuration::{
-        IpRestriction,
-        MutualTls,
+use crate::{
+    internals::proto::{
+        gen::middleware_configuration::{
+            IpRestriction,
+            MutualTls,
+        },
+        BindExtra,
+        BindOpts,
     },
-    BindExtra,
-    BindOpts,
+    Session,
 };
 
 pub(crate) const FORWARDS_TO: &str = "rust";
 
+/// Trait representing things that can be built into an ngrok tunnel.
+#[async_trait]
+pub trait TunnelBuilder: From<Session> {
+    /// The ngrok tunnel type that this builder produces.
+    type Tunnel;
+    /// The type of error that may arise when listening on this tunnel.
+    type Error;
+
+    /// Begin listening for new connections on this tunnel.
+    async fn listen(&self) -> Result<Self::Tunnel, Self::Error>;
+}
+
+macro_rules! impl_builder {
+    ($(#[$m:meta])* $name:ident, $opts:ty, $tun:ident) => {
+        $(#[$m])*
+        #[derive(Clone)]
+        pub struct $name {
+            options: $opts,
+            // Note: This is only optional for testing purposes.
+            session: Option<Session>,
+        }
+
+        impl From<Session> for $name {
+            fn from(session: Session) -> Self {
+                $name {
+                    options: Default::default(),
+                    session: session.into(),
+                }
+            }
+        }
+
+        #[async_trait]
+        impl TunnelBuilder for $name {
+            type Tunnel = $tun;
+            type Error = RpcError;
+
+            async fn listen(&self) -> Result<$tun, RpcError> {
+                Ok($tun {
+                    inner: self
+                        .session
+                        .as_ref()
+                        .unwrap()
+                        .start_tunnel(&self.options)
+                        .await?,
+                })
+            }
+        }
+    };
+}
 /// Tunnel configuration trait, implemented by our top-level config objects.
 ///
 /// "Sealed," i.e. not implementable outside of the crate.
-pub trait TunnelConfig {
+pub(crate) trait TunnelConfig {
     /// The "forwards to" metadata.
     ///
     /// Only for display/informational purposes.
@@ -33,7 +86,7 @@ pub trait TunnelConfig {
 }
 
 // delegate references
-impl<'a, T> TunnelConfig for &'a mut T
+impl<'a, T> TunnelConfig for &'a T
 where
     T: TunnelConfig,
 {
@@ -73,7 +126,7 @@ impl CidrRestrictions {
 }
 
 // Common
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub(crate) struct CommonOpts {
     // Restrictions placed on the origin of incoming connections to the edge.
     pub(crate) cidr_restrictions: CidrRestrictions,

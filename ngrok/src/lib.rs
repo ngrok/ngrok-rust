@@ -9,14 +9,18 @@ mod internals {
     pub mod raw_session;
 }
 
+pub use internals::raw_session::RpcError;
+
 /// Tunnel and endpoint configuration types.
 pub mod config {
     // TODO: remove this once all of the config structs are fully fleshed out
     //       and tested.
     #![allow(dead_code)]
 
+    #[macro_use]
     mod common;
     pub use common::*;
+
     mod headers;
     mod http;
     pub use http::*;
