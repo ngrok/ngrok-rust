@@ -57,13 +57,13 @@ impl_builder! {
 
 impl LabeledTunnelBuilder {
     /// Tunnel-specific opaque metadata. Viewable via the API.
-    pub fn with_metadata(&mut self, metadata: impl Into<String>) -> &mut Self {
+    pub fn with_metadata(mut self, metadata: impl Into<String>) -> Self {
         self.options.common_opts.metadata = Some(metadata.into());
         self
     }
 
     /// Add a label, value pair for this tunnel.
-    pub fn with_label(&mut self, label: impl Into<String>, value: impl Into<String>) -> &mut Self {
+    pub fn with_label(mut self, label: impl Into<String>, value: impl Into<String>) -> Self {
         self.options.labels.insert(label.into(), value.into());
         self
     }
@@ -82,7 +82,7 @@ mod test {
         // pass to a function accepting the trait to avoid
         // "creates a temporary which is freed while still in use"
         tunnel_test(
-            &LabeledTunnelBuilder {
+            LabeledTunnelBuilder {
                 session: None,
                 options: Default::default(),
             }

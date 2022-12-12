@@ -76,34 +76,34 @@ impl_builder! {
 impl TcpTunnelBuilder {
     /// Restriction placed on the origin of incoming connections to the edge to only allow these CIDR ranges.
     /// Call multiple times to add additional CIDR ranges.
-    pub fn with_allow_cidr_string(&mut self, cidr: impl Into<String>) -> &mut Self {
+    pub fn with_allow_cidr_string(mut self, cidr: impl Into<String>) -> Self {
         self.options.common_opts.cidr_restrictions.allow(cidr);
         self
     }
     /// Restriction placed on the origin of incoming connections to the edge to deny these CIDR ranges.
     /// Call multiple times to add additional CIDR ranges.
-    pub fn with_deny_cidr_string(&mut self, cidr: impl Into<String>) -> &mut Self {
+    pub fn with_deny_cidr_string(mut self, cidr: impl Into<String>) -> Self {
         self.options.common_opts.cidr_restrictions.deny(cidr);
         self
     }
     /// The version of PROXY protocol to use with this tunnel, None if not using.
-    pub fn with_proxy_proto(&mut self, proxy_proto: ProxyProto) -> &mut Self {
+    pub fn with_proxy_proto(mut self, proxy_proto: ProxyProto) -> Self {
         self.options.common_opts.proxy_proto = proxy_proto;
         self
     }
     /// Tunnel-specific opaque metadata. Viewable via the API.
-    pub fn with_metadata(&mut self, metadata: impl Into<String>) -> &mut Self {
+    pub fn with_metadata(mut self, metadata: impl Into<String>) -> Self {
         self.options.common_opts.metadata = Some(metadata.into());
         self
     }
     /// Tunnel backend metadata. Viewable via the dashboard and API, but has no
     /// bearing on tunnel behavior.
-    pub fn with_forwards_to(&mut self, forwards_to: impl Into<String>) -> &mut Self {
+    pub fn with_forwards_to(mut self, forwards_to: impl Into<String>) -> Self {
         self.options.common_opts.forwards_to = Some(forwards_to.into());
         self
     }
     /// The TCP address to request for this edge.
-    pub fn with_remote_addr(&mut self, remote_addr: impl Into<String>) -> &mut Self {
+    pub fn with_remote_addr(mut self, remote_addr: impl Into<String>) -> Self {
         self.options.remote_addr = Some(remote_addr.into());
         self
     }
@@ -124,7 +124,7 @@ mod test {
         // pass to a function accepting the trait to avoid
         // "creates a temporary which is freed while still in use"
         tunnel_test(
-            &TcpTunnelBuilder {
+            TcpTunnelBuilder {
                 session: None,
                 options: Default::default(),
             }

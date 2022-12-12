@@ -10,10 +10,7 @@ use std::{
 
 use async_trait::async_trait;
 use axum::extract::connect_info::Connected;
-use futures::{
-    Stream,
-    TryStreamExt,
-};
+use futures::Stream;
 use hyper::server::accept::Accept;
 use muxado::{
     typed::TypedStream,
@@ -141,11 +138,6 @@ impl Accept for TunnelInner {
 }
 
 impl TunnelInner {
-    /// Accept an incomming connection on this tunnel.
-    pub async fn accept(&mut self) -> Result<Option<Conn>, AcceptError> {
-        self.try_next().await
-    }
-
     /// Get this tunnel's ID as returned by the ngrok server.
     pub fn id(&self) -> &str {
         &self.id

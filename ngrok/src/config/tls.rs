@@ -100,50 +100,50 @@ impl_builder! {
 impl TlsTunnelBuilder {
     /// Restriction placed on the origin of incoming connections to the edge to only allow these CIDR ranges.
     /// Call multiple times to add additional CIDR ranges.
-    pub fn with_allow_cidr_string(&mut self, cidr: impl Into<String>) -> &mut Self {
+    pub fn with_allow_cidr_string(mut self, cidr: impl Into<String>) -> Self {
         self.options.common_opts.cidr_restrictions.allow(cidr);
         self
     }
     /// Restriction placed on the origin of incoming connections to the edge to deny these CIDR ranges.
     /// Call multiple times to add additional CIDR ranges.
-    pub fn with_deny_cidr_string(&mut self, cidr: impl Into<String>) -> &mut Self {
+    pub fn with_deny_cidr_string(mut self, cidr: impl Into<String>) -> Self {
         self.options.common_opts.cidr_restrictions.deny(cidr);
         self
     }
     /// The version of PROXY protocol to use with this tunnel, None if not using.
-    pub fn with_proxy_proto(&mut self, proxy_proto: ProxyProto) -> &mut Self {
+    pub fn with_proxy_proto(mut self, proxy_proto: ProxyProto) -> Self {
         self.options.common_opts.proxy_proto = proxy_proto;
         self
     }
     /// Tunnel-specific opaque metadata. Viewable via the API.
-    pub fn with_metadata(&mut self, metadata: impl Into<String>) -> &mut Self {
+    pub fn with_metadata(mut self, metadata: impl Into<String>) -> Self {
         self.options.common_opts.metadata = Some(metadata.into());
         self
     }
     /// Tunnel backend metadata. Viewable via the dashboard and API, but has no
     /// bearing on tunnel behavior.
-    pub fn with_forwards_to(&mut self, forwards_to: impl Into<String>) -> &mut Self {
+    pub fn with_forwards_to(mut self, forwards_to: impl Into<String>) -> Self {
         self.options.common_opts.forwards_to = Some(forwards_to.into());
         self
     }
     /// The domain to request for this edge.
-    pub fn with_domain(&mut self, domain: impl Into<String>) -> &mut Self {
+    pub fn with_domain(mut self, domain: impl Into<String>) -> Self {
         self.options.domain = Some(domain.into());
         self
     }
     /// Certificates to use for client authentication at the ngrok edge.
-    pub fn with_mutual_tlsca(&mut self, mutual_tlsca: Bytes) -> &mut Self {
+    pub fn with_mutual_tlsca(mut self, mutual_tlsca: Bytes) -> Self {
         self.options.mutual_tlsca.push(mutual_tlsca);
         self
     }
     /// The key to use for TLS termination at the ngrok edge in PEM format.
-    pub fn with_key_pem(&mut self, key_pem: Bytes) -> &mut Self {
+    pub fn with_key_pem(mut self, key_pem: Bytes) -> Self {
         self.options.key_pem = Some(key_pem);
         self
     }
     /// The certificate to use for TLS termination at the ngrok edge in PEM
     /// format.
-    pub fn with_cert_pem(&mut self, cert_pem: Bytes) -> &mut Self {
+    pub fn with_cert_pem(mut self, cert_pem: Bytes) -> Self {
         self.options.cert_pem = Some(cert_pem);
         self
     }

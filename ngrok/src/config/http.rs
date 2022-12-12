@@ -162,90 +162,90 @@ impl_builder! {
 impl HttpTunnelBuilder {
     /// Restriction placed on the origin of incoming connections to the edge to only allow these CIDR ranges.
     /// Call multiple times to add additional CIDR ranges.
-    pub fn with_allow_cidr_string(&mut self, cidr: impl Into<String>) -> &mut Self {
+    pub fn with_allow_cidr_string(mut self, cidr: impl Into<String>) -> Self {
         self.options.common_opts.cidr_restrictions.allow(cidr);
         self
     }
     /// Restriction placed on the origin of incoming connections to the edge to deny these CIDR ranges.
     /// Call multiple times to add additional CIDR ranges.
-    pub fn with_deny_cidr_string(&mut self, cidr: impl Into<String>) -> &mut Self {
+    pub fn with_deny_cidr_string(mut self, cidr: impl Into<String>) -> Self {
         self.options.common_opts.cidr_restrictions.deny(cidr);
         self
     }
     /// The version of PROXY protocol to use with this tunnel, None if not using.
-    pub fn with_proxy_proto(&mut self, proxy_proto: ProxyProto) -> &mut Self {
+    pub fn with_proxy_proto(mut self, proxy_proto: ProxyProto) -> Self {
         self.options.common_opts.proxy_proto = proxy_proto;
         self
     }
     /// Tunnel-specific opaque metadata. Viewable via the API.
-    pub fn with_metadata(&mut self, metadata: impl Into<String>) -> &mut Self {
+    pub fn with_metadata(mut self, metadata: impl Into<String>) -> Self {
         self.options.common_opts.metadata = Some(metadata.into());
         self
     }
     /// Tunnel backend metadata. Viewable via the dashboard and API, but has no
     /// bearing on tunnel behavior.
-    pub fn with_forwards_to(&mut self, forwards_to: impl Into<String>) -> &mut Self {
+    pub fn with_forwards_to(mut self, forwards_to: impl Into<String>) -> Self {
         self.options.common_opts.forwards_to = Some(forwards_to.into());
         self
     }
     /// The scheme that this edge should use.
     /// Defaults to [Scheme::HTTPS].
-    pub fn with_scheme(&mut self, scheme: Scheme) -> &mut Self {
+    pub fn with_scheme(mut self, scheme: Scheme) -> Self {
         self.options.scheme = scheme;
         self
     }
     /// The domain to request for this edge.
-    pub fn with_domain(&mut self, domain: impl Into<String>) -> &mut Self {
+    pub fn with_domain(mut self, domain: impl Into<String>) -> Self {
         self.options.domain = Some(domain.into());
         self
     }
     /// Certificates to use for client authentication at the ngrok edge.
-    pub fn with_mutual_tlsca(&mut self, mutual_tlsca: Bytes) -> &mut Self {
+    pub fn with_mutual_tlsca(mut self, mutual_tlsca: Bytes) -> Self {
         self.options.mutual_tlsca.push(mutual_tlsca);
         self
     }
     /// Enable gzip compression for HTTP responses.
-    pub fn with_compression(&mut self) -> &mut Self {
+    pub fn with_compression(mut self) -> Self {
         self.options.compression = true;
         self
     }
     /// Convert incoming websocket connections to TCP-like streams.
-    pub fn with_websocket_tcp_conversion(&mut self) -> &mut Self {
+    pub fn with_websocket_tcp_conversion(mut self) -> Self {
         self.options.websocket_tcp_conversion = true;
         self
     }
     /// Reject requests when 5XX responses exceed this ratio.
     /// Disabled when 0.
-    pub fn with_circuit_breaker(&mut self, circuit_breaker: f64) -> &mut Self {
+    pub fn with_circuit_breaker(mut self, circuit_breaker: f64) -> Self {
         self.options.circuit_breaker = circuit_breaker;
         self
     }
 
     /// with_request_header adds a header to all requests to this edge.
     pub fn with_request_header(
-        &mut self,
+        mut self,
         name: impl Into<String>,
         value: impl Into<String>,
-    ) -> &mut Self {
+    ) -> Self {
         self.options.request_headers.add(name, value);
         self
     }
     /// with_response_header adds a header to all responses coming from this edge.
     pub fn with_response_header(
-        &mut self,
+        mut self,
         name: impl Into<String>,
         value: impl Into<String>,
-    ) -> &mut Self {
+    ) -> Self {
         self.options.response_headers.add(name, value);
         self
     }
     /// with_remove_request_header removes a header from requests to this edge.
-    pub fn with_remove_request_header(&mut self, name: impl Into<String>) -> &mut Self {
+    pub fn with_remove_request_header(mut self, name: impl Into<String>) -> Self {
         self.options.request_headers.remove(name);
         self
     }
     /// with_remove_response_header removes a header from responses from this edge.
-    pub fn with_remove_response_header(&mut self, name: impl Into<String>) -> &mut Self {
+    pub fn with_remove_response_header(mut self, name: impl Into<String>) -> Self {
         self.options.response_headers.remove(name);
         self
     }
@@ -253,10 +253,10 @@ impl HttpTunnelBuilder {
     /// Credentials for basic authentication.
     /// If not called, basic authentication is disabled.
     pub fn with_basic_auth(
-        &mut self,
+        mut self,
         username: impl Into<String>,
         password: impl Into<String>,
-    ) -> &mut Self {
+    ) -> Self {
         self.options
             .basic_auth
             .push((username.into(), password.into()));
@@ -265,14 +265,14 @@ impl HttpTunnelBuilder {
 
     /// OAuth configuration.
     /// If not called, OAuth is disabled.
-    pub fn with_oauth(&mut self, oauth: OauthOptions) -> &mut Self {
+    pub fn with_oauth(mut self, oauth: OauthOptions) -> Self {
         self.options.oauth = Some(oauth);
         self
     }
 
     /// OIDC configuration.
     /// If not called, OIDC is disabled.
-    pub fn with_oidc(&mut self, oidc: OidcOptions) -> &mut Self {
+    pub fn with_oidc(mut self, oidc: OidcOptions) -> Self {
         self.options.oidc = Some(oidc);
         self
     }
@@ -280,10 +280,10 @@ impl HttpTunnelBuilder {
     /// WebhookVerification configuration.
     /// If not called, WebhookVerification is disabled.
     pub fn with_webhook_verification(
-        &mut self,
+        mut self,
         provider: impl Into<String>,
         secret: impl Into<String>,
-    ) -> &mut Self {
+    ) -> Self {
         self.options.webhook_verification = Some(WebhookVerification {
             provider: provider.into(),
             secret: secret.into(),
