@@ -13,7 +13,9 @@ use crate::{
         BindExtra,
         BindOpts,
     },
+    session::RpcError,
     Session,
+    Tunnel,
 };
 
 pub(crate) const FORWARDS_TO: &str = "rust";
@@ -22,12 +24,10 @@ pub(crate) const FORWARDS_TO: &str = "rust";
 #[async_trait]
 pub trait TunnelBuilder: From<Session> {
     /// The ngrok tunnel type that this builder produces.
-    type Tunnel;
-    /// The type of error that may arise when listening on this tunnel.
-    type Error;
+    type Tunnel: Tunnel;
 
     /// Begin listening for new connections on this tunnel.
-    async fn listen(&self) -> Result<Self::Tunnel, Self::Error>;
+    async fn listen(&self) -> Result<Self::Tunnel, RpcError>;
 }
 
 macro_rules! impl_builder {
@@ -52,7 +52,6 @@ macro_rules! impl_builder {
         #[async_trait]
         impl TunnelBuilder for $name {
             type Tunnel = $tun;
-            type Error = RpcError;
 
             async fn listen(&self) -> Result<$tun, RpcError> {
                 Ok($tun {
