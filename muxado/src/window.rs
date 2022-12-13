@@ -26,10 +26,6 @@ impl Window {
     }
 
     pub fn dec(&mut self, by: usize) -> usize {
-        if self.size == 0 {
-            panic!("dec called without capacity")
-        }
-
         let actual = cmp::min(self.size, by);
 
         self.size -= actual;
