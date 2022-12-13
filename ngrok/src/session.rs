@@ -78,7 +78,7 @@ pub struct SessionBuilder {
     metadata: Option<String>,
     heartbeat_interval: Option<Duration>,
     heartbeat_tolerance: Option<Duration>,
-    server_addr: (String, u16),
+    server_addr: String,
     tls_config: rustls::ClientConfig,
 }
 
@@ -97,6 +97,9 @@ pub enum ConnectError {
     /// nanosecond range.
     #[error("invalid heartbeat tolerance: {0}")]
     InvalidHeartbeatTolerance(u128),
+    /// The builder specified an invalid port.
+    #[error("invalid server port")]
+    InvalidServerPort(#[from] ParseIntError),
     /// The builder specified an invalid server name.
     #[error("invalid server name")]
     InvalidServerName(#[from] InvalidDnsNameError),
@@ -147,16 +150,11 @@ impl Default for SessionBuilder {
             metadata: None,
             heartbeat_interval: None,
             heartbeat_tolerance: None,
-            server_addr: ("tunnel.ngrok.com".into(), 443),
+            server_addr: "tunnel.ngrok.com:443".into(),
             tls_config,
         }
     }
 }
-
-/// An invalid server address was provided.
-#[derive(Debug, Error)]
-#[error("invalid server address")]
-pub struct InvalidAddrError(#[source] ParseIntError);
 
 impl SessionBuilder {
     /// Authenticate the ngrok session with the given authtoken.
@@ -196,17 +194,9 @@ impl SessionBuilder {
     }
 
     /// Connect to the provided ngrok server address.
-    pub fn server_addr(mut self, addr: impl AsRef<str>) -> Result<Self, InvalidAddrError> {
-        let addr = addr.as_ref();
-        let mut split = addr.split(':');
-        let host = split.next().unwrap().into();
-        let port = split
-            .next()
-            .map(str::parse::<u16>)
-            .transpose()
-            .map_err(InvalidAddrError)?;
-        self.server_addr = (host, port.unwrap_or(443));
-        Ok(self)
+    pub fn with_server_addr(&mut self, addr: impl Into<String>) -> &mut Self {
+        self.server_addr = addr.into();
+        self
     }
 
     /// Use the provided tls config when connecting to the ngrok server.
@@ -217,16 +207,20 @@ impl SessionBuilder {
 
     /// Attempt to establish an ngrok session using the current configuration.
     pub async fn connect(&self) -> Result<Session, ConnectError> {
-        let conn = tokio::net::TcpStream::connect(&self.server_addr)
+        let mut split = self.server_addr.split(':');
+        let host = split.next().unwrap();
+        let port = split
+            .next()
+            .map(str::parse::<u16>)
+            .transpose()?
+            .unwrap_or(443);
+        let conn = tokio::net::TcpStream::connect(&(host, port))
             .await
             .map_err(ConnectError::Tcp)?
             .compat();
 
         let tls_conn = async_rustls::TlsConnector::from(Arc::new(self.tls_config.clone()))
-            .connect(
-                rustls::ServerName::try_from(self.server_addr.0.as_str())?,
-                conn,
-            )
+            .connect(rustls::ServerName::try_from(host)?, conn)
             .await
             .map_err(ConnectError::Tls)?;
 
