@@ -1,10 +1,8 @@
 use std::{
     collections::HashMap,
     env,
-    future::Future,
     io,
     num::ParseIntError,
-    pin::Pin,
     sync::Arc,
     time::Duration,
 };
@@ -17,10 +15,6 @@ use async_rustls::rustls::{
 use futures::{
     future::BoxFuture,
     FutureExt,
-};
-use hyper::server::accept::{
-    self,
-    Accept,
 };
 use muxado::heartbeat::HeartbeatConfig;
 use rustls_pemfile::Item;
@@ -38,6 +32,10 @@ use tokio::{
         Mutex,
         RwLock,
     },
+};
+use tokio_retry::{
+    strategy::ExponentialBackoff,
+    Retry,
 };
 use tokio_util::compat::{
     FuturesAsyncReadCompatExt,
@@ -60,10 +58,8 @@ use crate::{
     internals::{
         proto::{
             AuthExtra,
-            AuthResp,
             BindExtra,
             BindOpts,
-            BindRespExtra,
         },
         raw_session::{
             AcceptError as RawAcceptError,
@@ -545,17 +541,13 @@ async fn accept_one(
     Ok(())
 }
 
-async fn try_reconnect(
-    incoming: &mut IncomingStreams,
-    inner: &ArcSwap<SessionInner>,
-) -> Result<(), AcceptError> {
+async fn try_reconnect(inner: Arc<ArcSwap<SessionInner>>) -> Result<IncomingStreams, AcceptError> {
     let old_inner = inner.load();
     let (new_inner, new_incoming) = old_inner
         .builder
         .connect_inner()
         .await
         .map_err(|_| AcceptError::Transport(muxado::Error::SessionClosed))?;
-    *incoming = new_incoming;
     let mut client = new_inner.client.lock().await;
     let mut old_tunnels = old_inner.tunnels.write().await;
     let mut new_tunnels = new_inner.tunnels.write().await;
@@ -593,17 +585,23 @@ async fn try_reconnect(
     drop(new_tunnels);
     inner.store(new_inner.into());
 
-    Ok(())
+    Ok(new_incoming)
 }
 
 async fn accept_incoming(mut incoming: IncomingStreams, inner: Arc<ArcSwap<SessionInner>>) {
     let error: AcceptError = loop {
         if let Err(error) = accept_one(&mut incoming, &inner).await {
             debug!(%error, "failed to accept stream, attempting reconnect");
-            if let Err(error) = try_reconnect(&mut incoming, &inner).await {
-                debug!(%error, "reconnect failed, giving up");
-                break error;
-            }
+            let reconnect = Retry::spawn(ExponentialBackoff::from_millis(50), || {
+                try_reconnect(inner.clone())
+            });
+            incoming = match reconnect.await {
+                Ok(incoming) => incoming,
+                Err(error) => {
+                    debug!(%error, "reconnect failed, giving up");
+                    break error;
+                }
+            };
         }
     };
     for (_id, tun) in inner.load().tunnels.write().await.drain() {
