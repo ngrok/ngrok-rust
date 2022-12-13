@@ -108,7 +108,7 @@ where
 
 /// Restrictions placed on the origin of incoming connections to the edge.
 #[derive(Clone, Default)]
-pub struct CidrRestrictions {
+pub(crate) struct CidrRestrictions {
     /// Rejects connections that do not match the given CIDRs
     pub(crate) allowed: Vec<String>,
     /// Rejects connections that match the given CIDRs and allows all other CIDRs.
