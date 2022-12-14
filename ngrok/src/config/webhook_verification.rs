@@ -1,4 +1,4 @@
-use crate::internals::proto::gen::middleware_configuration::WebhookVerification as WebhookProto;
+use crate::internals::proto::WebhookVerification as WebhookProto;
 
 /// Configuration for webhook verification.
 #[derive(Clone)]
@@ -17,7 +17,7 @@ impl From<WebhookVerification> for WebhookProto {
         WebhookProto {
             provider: wv.provider,
             secret: wv.secret,
-            sealed_secret: Vec::new(), // unused in this context
+            sealed_secret: vec![], // unused in this context
         }
     }
 }

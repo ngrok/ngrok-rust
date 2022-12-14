@@ -7,7 +7,10 @@ use std::{
 
 use muxado::typed::StreamType;
 use serde::{
-    de::Visitor,
+    de::{
+        DeserializeOwned,
+        Visitor,
+    },
     Deserialize,
     Serialize,
 };
@@ -17,16 +20,6 @@ use tokio::io::{
     AsyncReadExt,
 };
 use tracing::debug;
-
-pub mod gen {
-    include!(concat!(env!("OUT_DIR"), "/agent.rs"));
-}
-
-use gen::{
-    HttpMiddleware,
-    TcpMiddleware,
-    TlsMiddleware,
-};
 
 pub const AUTH_REQ: StreamType = StreamType::clamp(0);
 pub const BIND_REQ: StreamType = StreamType::clamp(1);
@@ -115,18 +108,16 @@ pub struct AuthRespExtra {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
-pub struct Bind {
+pub struct Bind<T> {
     #[serde(rename = "Id")]
     pub client_id: String,
     pub proto: String,
     pub forwards_to: String,
-    pub opts: BindOpts,
+    pub opts: T,
     pub extra: BindExtra,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(rename_all = "PascalCase")]
-#[serde(untagged)]
+#[derive(Debug, Clone)]
 // allowing this since these aren't persistent values.
 #[allow(clippy::large_enum_variant)]
 pub enum BindOpts {
@@ -146,13 +137,14 @@ pub struct BindExtra {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
-pub struct BindResp {
+pub struct BindResp<T> {
     #[serde(rename = "Id")]
     pub client_id: String,
     #[serde(rename = "URL")]
     pub url: String,
     pub proto: String,
-    pub bind_opts: Option<BindOpts>,
+    #[serde(rename = "Opts")]
+    pub bind_opts: T,
     pub extra: BindRespExtra,
 }
 
@@ -162,7 +154,7 @@ pub struct BindRespExtra {
     pub token: String,
 }
 
-rpc_req!(Bind, BindResp, BIND_REQ);
+rpc_req!(Bind<T>, BindResp<T>, BIND_REQ; T: std::fmt::Debug + Serialize + DeserializeOwned + Clone);
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
@@ -443,65 +435,129 @@ impl<'de> Deserialize<'de> for ProxyProto {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct HttpEndpoint {
     pub hostname: String,
     pub auth: String,
     pub subdomain: String,
     pub host_header_rewrite: bool,
-    pub local_url_scheme: String,
+    pub local_url_scheme: Option<String>,
     pub proxy_proto: ProxyProto,
 
-    // must always be true, only here for serialization purposes.
-    proto_middleware: bool,
-
-    // Uses the Go byte slice json representation, which is base64
-    #[serde(rename = "MiddlewareBytes")]
-    #[serde(with = "base64proto")]
-    pub middleware: HttpMiddleware,
+    pub compression: Option<Compression>,
+    pub circuit_breaker: Option<CircuitBreaker>,
+    #[serde(rename = "IPRestriction")]
+    pub ip_restriction: Option<IpRestriction>,
+    pub basic_auth: Option<BasicAuth>,
+    #[serde(rename = "OAuth")]
+    pub oauth: Option<Oauth>,
+    #[serde(rename = "OIDC")]
+    pub oidc: Option<Oidc>,
+    pub webhook_verification: Option<WebhookVerification>,
+    #[serde(rename = "MutualTLSCA")]
+    pub mutual_tls_ca: Option<MutualTls>,
+    pub request_headers: Option<Headers>,
+    pub response_headers: Option<Headers>,
+    #[serde(rename = "WebsocketTCPConverter")]
+    pub websocket_tcp_converter: Option<WebsocketTcpConverter>,
 }
 
-impl Default for HttpEndpoint {
-    fn default() -> Self {
-        HttpEndpoint {
-            hostname: Default::default(),
-            auth: Default::default(),
-            subdomain: Default::default(),
-            host_header_rewrite: false,
-            local_url_scheme: Default::default(),
-            proxy_proto: ProxyProto::None,
-            proto_middleware: true,
-            middleware: Default::default(),
-        }
-    }
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct Compression;
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct CircuitBreaker {
+    pub error_threshold: f64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct BasicAuth {
+    pub credentials: Vec<BasicAuthCredential>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct BasicAuthCredential {
+    pub username: String,
+    pub cleartext_password: String,
+    #[serde(with = "base64bytes")]
+    pub hashed_password: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct IpRestriction {
+    pub allow_cidrs: Vec<String>,
+    pub deny_cidrs: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct Oauth {
+    pub provider: String,
+    pub client_id: String,
+    pub client_secret: String,
+    #[serde(with = "base64bytes")]
+    pub sealed_client_secret: Vec<u8>,
+    pub allow_emails: Vec<String>,
+    pub allow_domains: Vec<String>,
+    pub scopes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct Oidc {
+    pub issuer_url: String,
+    pub client_id: String,
+    pub client_secret: String,
+    #[serde(with = "base64bytes")]
+    pub sealed_client_secret: Vec<u8>,
+    pub allow_emails: Vec<String>,
+    pub allow_domains: Vec<String>,
+    pub scopes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct WebhookVerification {
+    pub provider: String,
+    pub secret: String,
+    #[serde(with = "base64bytes")]
+    pub sealed_secret: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct MutualTls {
+    #[serde(with = "base64bytes")]
+    pub mutual_tls_ca: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct Headers {
+    pub add: Vec<String>,
+    pub remove: Vec<String>,
+    pub add_parsed: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct WebsocketTcpConverter;
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct TcpEndpoint {
     pub addr: String,
     pub proxy_proto: ProxyProto,
 
-    proto_middleware: bool,
-
-    #[serde(rename = "MiddlewareBytes")]
-    #[serde(with = "base64proto")]
-    pub middleware: TcpMiddleware,
+    pub ip_restriction: Option<IpRestriction>,
 }
 
-impl Default for TcpEndpoint {
-    fn default() -> Self {
-        TcpEndpoint {
-            addr: Default::default(),
-            proxy_proto: ProxyProto::None,
-            proto_middleware: true,
-            middleware: Default::default(),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct TlsEndpoint {
     pub hostname: String,
@@ -509,24 +565,20 @@ pub struct TlsEndpoint {
     pub proxy_proto: ProxyProto,
     pub mutual_tls_at_agent: bool,
 
-    proto_middleware: bool,
-
-    #[serde(rename = "MiddlewareBytes")]
-    #[serde(with = "base64proto")]
-    pub middleware: TlsMiddleware,
+    pub mutual_tls_at_edge: Option<MutualTls>,
+    pub tls_termination: Option<TlsTermination>,
+    pub ip_restriction: Option<IpRestriction>,
 }
 
-impl Default for TlsEndpoint {
-    fn default() -> Self {
-        TlsEndpoint {
-            hostname: Default::default(),
-            subdomain: Default::default(),
-            proxy_proto: ProxyProto::None,
-            mutual_tls_at_agent: false,
-            proto_middleware: true,
-            middleware: Default::default(),
-        }
-    }
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[serde(rename_all = "PascalCase")]
+pub struct TlsTermination {
+    #[serde(with = "base64bytes")]
+    pub cert: Vec<u8>,
+    #[serde(with = "base64bytes")]
+    pub key: Vec<u8>,
+    #[serde(with = "base64bytes")]
+    pub sealed_key: Vec<u8>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -535,10 +587,9 @@ pub struct LabelEndpoint {
     pub labels: HashMap<String, String>,
 }
 
-// These are helpers to facilitate the struct <-> base64-encoded protobuf
+// These are helpers to facilitate the Vec<u8> <-> base64-encoded bytes
 // representation that the Go messages use
-mod base64proto {
-    use prost::Message;
+mod base64bytes {
     use serde::{
         Deserialize,
         Deserializer,
@@ -546,18 +597,15 @@ mod base64proto {
         Serializer,
     };
 
-    pub fn serialize<M: Message, S: Serializer>(v: &M, s: S) -> Result<S::Ok, S::Error> {
-        let bytes = v.encode_to_vec();
-        let base64 = base64::encode(bytes);
+    pub fn serialize<S: Serializer>(v: &Vec<u8>, s: S) -> Result<S::Ok, S::Error> {
+        let base64 = base64::encode(v);
         String::serialize(&base64, s)
     }
 
-    pub fn deserialize<'de, M: Message + Default, D: Deserializer<'de>>(
-        d: D,
-    ) -> Result<M, D::Error> {
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
         let base64 = String::deserialize(d)?;
         let bytes = base64::decode(base64.as_bytes()).map_err(serde::de::Error::custom)?;
-        M::decode(bytes.as_slice()).map_err(serde::de::Error::custom)
+        Ok(bytes)
     }
 }
 

@@ -14,7 +14,6 @@ use crate::{
     },
     internals::proto::{
         self,
-        gen::TcpMiddleware,
         BindExtra,
         BindOpts,
     },
@@ -56,9 +55,7 @@ impl TunnelConfig for TcpOptions {
         }
         tcp_endpoint.proxy_proto = self.common_opts.proxy_proto;
 
-        tcp_endpoint.middleware = TcpMiddleware {
-            ip_restriction: self.common_opts.ip_restriction(),
-        };
+        tcp_endpoint.ip_restriction = self.common_opts.ip_restriction();
 
         Some(BindOpts::Tcp(tcp_endpoint))
     }
@@ -157,7 +154,7 @@ mod test {
             assert_eq!(REMOTE_ADDR, endpoint.addr);
             assert!(matches!(endpoint.proxy_proto, ProxyProto::V2 { .. }));
 
-            let ip_restriction = endpoint.middleware.ip_restriction.unwrap();
+            let ip_restriction = endpoint.ip_restriction.unwrap();
             assert_eq!(Vec::from([ALLOW_CIDR]), ip_restriction.allow_cidrs);
             assert_eq!(Vec::from([DENY_CIDR]), ip_restriction.deny_cidrs);
         }
