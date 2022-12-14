@@ -58,15 +58,6 @@ pub(crate) struct TunnelInner {
     pub(crate) forwards_to: String,
     pub(crate) session: Session,
     pub(crate) incoming: Receiver<Result<Conn, AcceptError>>,
-
-    // TODO: remove these allows once we start using these, or the fields if we
-    //       decide we don't need them.
-    #[allow(dead_code)]
-    pub(crate) opts: Option<BindOpts>,
-    #[allow(dead_code)]
-    pub(crate) token: String,
-    #[allow(dead_code)]
-    pub(crate) bind_extra: BindExtra,
 }
 
 /// An ngrok tunnel.
