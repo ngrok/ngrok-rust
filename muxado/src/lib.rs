@@ -19,14 +19,4 @@ pub use errors::Error;
 pub use session::*;
 pub use stream::Stream;
 
-#[cfg(feature = "tokio_rt")]
 pub mod heartbeat;
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
-    }
-}
