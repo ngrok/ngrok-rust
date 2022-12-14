@@ -23,13 +23,13 @@ use crate::{
         webhook_verification::WebhookVerification,
     },
     internals::proto::{
-        self,
         BasicAuth,
         BasicAuthCredential,
         BindExtra,
         BindOpts,
         CircuitBreaker,
         Compression,
+        HttpEndpoint,
         WebsocketTcpConverter,
     },
     session::RpcError,
@@ -88,34 +88,33 @@ impl TunnelConfig for HttpOptions {
         "https".into()
     }
     fn opts(&self) -> Option<BindOpts> {
-        // fill out all the options, translating to proto here
-        let mut http_endpoint = proto::HttpEndpoint::default();
-
-        http_endpoint.proxy_proto = self.common_opts.proxy_proto;
-        http_endpoint.hostname = self.domain.clone().unwrap_or_default();
-        http_endpoint.compression = self.compression.then_some(Compression);
-        http_endpoint.circuit_breaker = (self.circuit_breaker != 0f64).then_some(CircuitBreaker {
-            error_threshold: self.circuit_breaker,
-        });
-        http_endpoint.ip_restriction = self.common_opts.ip_restriction();
-        http_endpoint.basic_auth =
-            (!self.basic_auth.is_empty()).then_some(self.basic_auth.as_slice().into());
-        http_endpoint.oauth = self.oauth.clone().map(From::from);
-        http_endpoint.oidc = self.oidc.clone().map(From::from);
-        http_endpoint.webhook_verification = self.webhook_verification.clone().map(From::from);
-        http_endpoint.mutual_tls_ca =
-            (!self.mutual_tlsca.is_empty()).then_some(self.mutual_tlsca.as_slice().into());
-        http_endpoint.request_headers = self
-            .request_headers
-            .has_entries()
-            .then_some(self.request_headers.clone().into());
-        http_endpoint.response_headers = self
-            .response_headers
-            .has_entries()
-            .then_some(self.response_headers.clone().into());
-        http_endpoint.websocket_tcp_converter = self
-            .websocket_tcp_conversion
-            .then_some(WebsocketTcpConverter);
+        let http_endpoint = HttpEndpoint {
+            proxy_proto: self.common_opts.proxy_proto,
+            hostname: self.domain.clone().unwrap_or_default(),
+            compression: self.compression.then_some(Compression),
+            circuit_breaker: (self.circuit_breaker != 0f64).then_some(CircuitBreaker {
+                error_threshold: self.circuit_breaker,
+            }),
+            ip_restriction: self.common_opts.ip_restriction(),
+            basic_auth: (!self.basic_auth.is_empty()).then_some(self.basic_auth.as_slice().into()),
+            oauth: self.oauth.clone().map(From::from),
+            oidc: self.oidc.clone().map(From::from),
+            webhook_verification: self.webhook_verification.clone().map(From::from),
+            mutual_tls_ca: (!self.mutual_tlsca.is_empty())
+                .then_some(self.mutual_tlsca.as_slice().into()),
+            request_headers: self
+                .request_headers
+                .has_entries()
+                .then_some(self.request_headers.clone().into()),
+            response_headers: self
+                .response_headers
+                .has_entries()
+                .then_some(self.response_headers.clone().into()),
+            websocket_tcp_converter: self
+                .websocket_tcp_conversion
+                .then_some(WebsocketTcpConverter),
+            ..Default::default()
+        };
 
         Some(BindOpts::Http(http_endpoint))
     }
