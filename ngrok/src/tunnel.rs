@@ -32,13 +32,7 @@ use crate::{
         TcpTunnelBuilder,
         TlsTunnelBuilder,
     },
-    internals::{
-        proto::{
-            BindExtra,
-            BindOpts,
-        },
-        raw_session::RpcError,
-    },
+    internals::raw_session::RpcError,
     Session,
 };
 
