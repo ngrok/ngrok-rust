@@ -28,8 +28,15 @@ use tokio_util::compat::{
 };
 use tracing::warn;
 
+pub use crate::internals::raw_session::RpcError;
 use crate::{
-    config::TunnelConfig,
+    config::{
+        HttpTunnelBuilder,
+        LabeledTunnelBuilder,
+        TcpTunnelBuilder,
+        TlsTunnelBuilder,
+        TunnelConfig,
+    },
     internals::{
         proto::{
             AuthExtra,
@@ -40,13 +47,14 @@ use crate::{
             IncomingStreams,
             RawSession,
             RpcClient,
-            RpcError,
             StartSessionError,
         },
     },
-    AcceptError,
-    Conn,
-    Tunnel,
+    tunnel::{
+        AcceptError,
+        Conn,
+        TunnelInner,
+    },
 };
 
 const CERT_BYTES: &[u8] = include_bytes!("../assets/ngrok.ca.crt");
@@ -152,14 +160,14 @@ pub struct InvalidAddrError(#[source] ParseIntError);
 
 impl SessionBuilder {
     /// Authenticate the ngrok session with the given authtoken.
-    pub fn with_authtoken(&mut self, authtoken: impl Into<String>) -> &mut Self {
+    pub fn authtoken(mut self, authtoken: impl Into<String>) -> Self {
         self.authtoken = Some(authtoken.into());
         self
     }
 
     /// Authenticate using the authtoken in the `NGROK_AUTHTOKEN` environment
     /// variable.
-    pub fn with_authtoken_from_env(&mut self) -> &mut Self {
+    pub fn authtoken_from_env(mut self) -> Self {
         self.authtoken = env::var("NGROK_AUTHTOKEN").ok();
         self
     }
@@ -167,7 +175,7 @@ impl SessionBuilder {
     /// Set the heartbeat interval for the session.
     /// This value determines how often we send application level
     /// heartbeats to the server go check connection liveness.
-    pub fn with_heartbeat_interval(&mut self, heartbeat_interval: Duration) -> &mut Self {
+    pub fn heartbeat_interval(mut self, heartbeat_interval: Duration) -> Self {
         self.heartbeat_interval = Some(heartbeat_interval);
         self
     }
@@ -175,23 +183,20 @@ impl SessionBuilder {
     /// Set the heartbeat tolerance for the session.
     /// If the session's heartbeats are outside of their interval by this duration,
     /// the server will assume the session is dead and close it.
-    pub fn with_heartbeat_tolerance(&mut self, heartbeat_tolerance: Duration) -> &mut Self {
+    pub fn heartbeat_tolerance(mut self, heartbeat_tolerance: Duration) -> Self {
         self.heartbeat_tolerance = Some(heartbeat_tolerance);
         self
     }
 
     /// Use the provided opaque metadata string for this session.
     /// Viewable from the ngrok dashboard or API.
-    pub fn with_metadata(&mut self, metadata: impl Into<String>) -> &mut Self {
+    pub fn metadata(mut self, metadata: impl Into<String>) -> Self {
         self.metadata = Some(metadata.into());
         self
     }
 
     /// Connect to the provided ngrok server address.
-    pub fn with_server_addr(
-        &mut self,
-        addr: impl AsRef<str>,
-    ) -> Result<&mut Self, InvalidAddrError> {
+    pub fn server_addr(mut self, addr: impl AsRef<str>) -> Result<Self, InvalidAddrError> {
         let addr = addr.as_ref();
         let mut split = addr.split(':');
         let host = split.next().unwrap().into();
@@ -205,7 +210,7 @@ impl SessionBuilder {
     }
 
     /// Use the provided tls config when connecting to the ngrok server.
-    pub fn with_tls_config(&mut self, config: rustls::ClientConfig) -> &mut Self {
+    pub fn tls_config(mut self, config: rustls::ClientConfig) -> Self {
         self.tls_config = config;
         self
     }
@@ -291,8 +296,28 @@ impl Session {
         SessionBuilder::default()
     }
 
+    /// Start building a tunnel backing an HTTP endpoint.
+    pub fn http_endpoint(&self) -> HttpTunnelBuilder {
+        self.clone().into()
+    }
+
+    /// Start building a tunnel backing a TCP endpoint.
+    pub fn tcp_endpoint(&self) -> TcpTunnelBuilder {
+        self.clone().into()
+    }
+
+    /// Start building a tunnel backing a TLS endpoint.
+    pub fn tls_endpoint(&self) -> TlsTunnelBuilder {
+        self.clone().into()
+    }
+
+    /// Start building a labeled tunnel.
+    pub fn labeled_tunnel(&self) -> LabeledTunnelBuilder {
+        self.clone().into()
+    }
+
     /// Start a new tunnel in this session.
-    pub async fn start_tunnel<C>(&self, tunnel_cfg: C) -> Result<Tunnel, RpcError>
+    pub(crate) async fn start_tunnel<C>(&self, tunnel_cfg: C) -> Result<TunnelInner, RpcError>
     where
         C: TunnelConfig,
     {
@@ -316,7 +341,7 @@ impl Session {
             let mut tunnels = self.tunnels.write().await;
             tunnels.insert(resp.client_id.clone(), tx);
 
-            return Ok(Tunnel {
+            return Ok(TunnelInner {
                 id: resp.client_id,
                 proto: resp.proto,
                 url: resp.url,
@@ -342,7 +367,7 @@ impl Session {
         let mut tunnels = self.tunnels.write().await;
         tunnels.insert(resp.id.clone(), tx);
 
-        Ok(Tunnel {
+        Ok(TunnelInner {
             id: resp.id,
             proto: Default::default(),
             url: Default::default(),

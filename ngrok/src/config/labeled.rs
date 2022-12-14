@@ -1,5 +1,8 @@
 use std::collections::HashMap;
 
+use async_trait::async_trait;
+
+use super::TunnelBuilder;
 use crate::{
     config::common::{
         CommonOpts,
@@ -10,16 +13,19 @@ use crate::{
         BindExtra,
         BindOpts,
     },
+    session::RpcError,
+    tunnel::LabeledTunnel,
+    Session,
 };
 
 /// Options for labeled tunnels.
-#[derive(Default)]
-pub struct LabeledTunnel {
+#[derive(Default, Clone)]
+struct LabeledOptions {
     pub(crate) common_opts: CommonOpts,
     pub(crate) labels: HashMap<String, String>,
 }
 
-impl TunnelConfig for LabeledTunnel {
+impl TunnelConfig for LabeledOptions {
     fn forwards_to(&self) -> String {
         self.common_opts
             .forwards_to
@@ -44,17 +50,21 @@ impl TunnelConfig for LabeledTunnel {
     }
 }
 
-/// Options for labeled tunnels.
-impl LabeledTunnel {
+impl_builder! {
+    /// A builder for a labeled tunnel.
+    LabeledTunnelBuilder, LabeledOptions, LabeledTunnel
+}
+
+impl LabeledTunnelBuilder {
     /// Tunnel-specific opaque metadata. Viewable via the API.
-    pub fn with_metadata(&mut self, metadata: impl Into<String>) -> &mut Self {
-        self.common_opts.metadata = Some(metadata.into());
+    pub fn metadata(mut self, metadata: impl Into<String>) -> Self {
+        self.options.common_opts.metadata = Some(metadata.into());
         self
     }
 
     /// Add a label, value pair for this tunnel.
-    pub fn with_label(&mut self, label: impl Into<String>, value: impl Into<String>) -> &mut Self {
-        self.labels.insert(label.into(), value.into());
+    pub fn label(mut self, label: impl Into<String>, value: impl Into<String>) -> Self {
+        self.options.labels.insert(label.into(), value.into());
         self
     }
 }
@@ -72,9 +82,13 @@ mod test {
         // pass to a function accepting the trait to avoid
         // "creates a temporary which is freed while still in use"
         tunnel_test(
-            LabeledTunnel::default()
-                .with_metadata(METADATA)
-                .with_label(LABEL_KEY, LABEL_VAL),
+            LabeledTunnelBuilder {
+                session: None,
+                options: Default::default(),
+            }
+            .metadata(METADATA)
+            .label(LABEL_KEY, LABEL_VAL)
+            .options,
         );
     }
 

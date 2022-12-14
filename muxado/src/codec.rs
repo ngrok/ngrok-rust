@@ -215,7 +215,7 @@ mod test {
     #[test]
     fn round_trip() {
         let frame = Frame::from(Body::Data(Bytes::from_static(b"Hello, world!")))
-            .with_stream_id(StreamID::clamp(5));
+            .stream_id(StreamID::clamp(5));
         let mut buf = bytes::BytesMut::new();
         let mut codec = FrameCodec::default();
 

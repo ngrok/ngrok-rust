@@ -56,16 +56,22 @@ use super::{
     },
 };
 
+/// Errors arising from tunneling protocol RPC calls.
 #[derive(Error, Debug)]
 pub enum RpcError {
+    /// Failed to open a new stream to start the RPC call.
     #[error("failed to open muxado stream")]
     Open(#[from] MuxadoError),
-    #[error("error reading rpc response")]
-    Send(#[source] io::Error),
+    /// Failed to send the request over the stream.
     #[error("error sending rpc request")]
+    Send(#[source] io::Error),
+    /// Failed to read the RPC response from the stream.
+    #[error("error reading rpc response")]
     Receive(#[source] io::Error),
+    /// The RPC response was invalid.
     #[error("failed to deserialize rpc response")]
     InvalidResponse(#[from] serde_json::Error),
+    /// There was an error in the RPC response.
     #[error("rpc error response: {0}")]
     Response(String),
 }

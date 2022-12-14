@@ -15,8 +15,10 @@ pub mod config {
     //       and tested.
     #![allow(dead_code)]
 
+    #[macro_use]
     mod common;
     pub use common::*;
+
     mod headers;
     mod http;
     pub use http::*;
@@ -33,8 +35,29 @@ pub mod config {
     mod webhook_verification;
 }
 
-mod session;
-mod tunnel;
+/// Types for working with the ngrok session.
+pub mod session;
+/// Types for working with ngrok tunnels.
+pub mod tunnel;
 
-pub use session::*;
-pub use tunnel::*;
+#[doc(inline)]
+pub use session::Session;
+#[doc(inline)]
+pub use tunnel::{
+    Conn,
+    Tunnel,
+};
+
+/// A prelude of traits for working with ngrok types.
+pub mod prelude {
+    #[doc(inline)]
+    pub use crate::{
+        config::TunnelBuilder,
+        tunnel::{
+            LabelsTunnel,
+            ProtoTunnel,
+            Tunnel,
+            UrlTunnel,
+        },
+    };
+}

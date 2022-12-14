@@ -1,11 +1,15 @@
 use std::collections::HashMap;
 
+use async_trait::async_trait;
 use prost::bytes::{
     self,
     Bytes,
 };
 
-use super::common::ProxyProto;
+use super::{
+    common::ProxyProto,
+    TunnelBuilder,
+};
 use crate::{
     config::{
         common::{
@@ -33,6 +37,9 @@ use crate::{
         BindExtra,
         BindOpts,
     },
+    session::RpcError,
+    tunnel::HttpTunnel,
+    Session,
 };
 
 /// The URL scheme for this HTTP endpoint.
@@ -48,8 +55,8 @@ pub enum Scheme {
 }
 
 /// The options for a HTTP edge.
-#[derive(Default)]
-pub struct HTTPEndpoint {
+#[derive(Default, Clone)]
+struct HttpOptions {
     pub(crate) common_opts: CommonOpts,
     pub(crate) scheme: Scheme,
     pub(crate) domain: Option<String>,
@@ -65,7 +72,7 @@ pub struct HTTPEndpoint {
     pub(crate) webhook_verification: Option<WebhookVerification>,
 }
 
-impl TunnelConfig for HTTPEndpoint {
+impl TunnelConfig for HttpOptions {
     fn forwards_to(&self) -> String {
         self.common_opts
             .forwards_to
@@ -147,130 +154,125 @@ impl From<(String, String)> for BasicAuthCredential {
     }
 }
 
-impl HTTPEndpoint {
+impl_builder! {
+    /// A builder for a tunnel backing an HTTP endpoint.
+    HttpTunnelBuilder, HttpOptions, HttpTunnel
+}
+
+impl HttpTunnelBuilder {
     /// Restriction placed on the origin of incoming connections to the edge to only allow these CIDR ranges.
     /// Call multiple times to add additional CIDR ranges.
-    pub fn with_allow_cidr_string(&mut self, cidr: impl Into<String>) -> &mut Self {
-        self.common_opts.cidr_restrictions.allow(cidr);
+    pub fn allow_cidr_string(mut self, cidr: impl Into<String>) -> Self {
+        self.options.common_opts.cidr_restrictions.allow(cidr);
         self
     }
     /// Restriction placed on the origin of incoming connections to the edge to deny these CIDR ranges.
     /// Call multiple times to add additional CIDR ranges.
-    pub fn with_deny_cidr_string(&mut self, cidr: impl Into<String>) -> &mut Self {
-        self.common_opts.cidr_restrictions.deny(cidr);
+    pub fn deny_cidr_string(mut self, cidr: impl Into<String>) -> Self {
+        self.options.common_opts.cidr_restrictions.deny(cidr);
         self
     }
     /// The version of PROXY protocol to use with this tunnel, None if not using.
-    pub fn with_proxy_proto(&mut self, proxy_proto: ProxyProto) -> &mut Self {
-        self.common_opts.proxy_proto = proxy_proto;
+    pub fn proxy_proto(mut self, proxy_proto: ProxyProto) -> Self {
+        self.options.common_opts.proxy_proto = proxy_proto;
         self
     }
     /// Tunnel-specific opaque metadata. Viewable via the API.
-    pub fn with_metadata(&mut self, metadata: impl Into<String>) -> &mut Self {
-        self.common_opts.metadata = Some(metadata.into());
+    pub fn metadata(mut self, metadata: impl Into<String>) -> Self {
+        self.options.common_opts.metadata = Some(metadata.into());
         self
     }
     /// Tunnel backend metadata. Viewable via the dashboard and API, but has no
     /// bearing on tunnel behavior.
-    pub fn with_forwards_to(&mut self, forwards_to: impl Into<String>) -> &mut Self {
-        self.common_opts.forwards_to = Some(forwards_to.into());
+    pub fn forwards_to(mut self, forwards_to: impl Into<String>) -> Self {
+        self.options.common_opts.forwards_to = Some(forwards_to.into());
         self
     }
     /// The scheme that this edge should use.
-    /// Defaults to [HTTPS].
-    pub fn with_scheme(&mut self, scheme: Scheme) -> &mut Self {
-        self.scheme = scheme;
+    /// Defaults to [Scheme::HTTPS].
+    pub fn scheme(mut self, scheme: Scheme) -> Self {
+        self.options.scheme = scheme;
         self
     }
-    /// The domain to request for this edge
-    pub fn with_domain(&mut self, domain: impl Into<String>) -> &mut Self {
-        self.domain = Some(domain.into());
+    /// The domain to request for this edge.
+    pub fn domain(mut self, domain: impl Into<String>) -> Self {
+        self.options.domain = Some(domain.into());
         self
     }
     /// Certificates to use for client authentication at the ngrok edge.
-    pub fn with_mutual_tlsca(&mut self, mutual_tlsca: Bytes) -> &mut Self {
-        self.mutual_tlsca.push(mutual_tlsca);
+    pub fn mutual_tlsca(mut self, mutual_tlsca: Bytes) -> Self {
+        self.options.mutual_tlsca.push(mutual_tlsca);
         self
     }
     /// Enable gzip compression for HTTP responses.
-    pub fn with_compression(&mut self) -> &mut Self {
-        self.compression = true;
+    pub fn compression(mut self) -> Self {
+        self.options.compression = true;
         self
     }
     /// Convert incoming websocket connections to TCP-like streams.
-    pub fn with_websocket_tcp_conversion(&mut self) -> &mut Self {
-        self.websocket_tcp_conversion = true;
+    pub fn websocket_tcp_conversion(mut self) -> Self {
+        self.options.websocket_tcp_conversion = true;
         self
     }
     /// Reject requests when 5XX responses exceed this ratio.
     /// Disabled when 0.
-    pub fn with_circuit_breaker(&mut self, circuit_breaker: f64) -> &mut Self {
-        self.circuit_breaker = circuit_breaker;
+    pub fn circuit_breaker(mut self, circuit_breaker: f64) -> Self {
+        self.options.circuit_breaker = circuit_breaker;
         self
     }
 
     /// with_request_header adds a header to all requests to this edge.
-    pub fn with_request_header(
-        &mut self,
-        name: impl Into<String>,
-        value: impl Into<String>,
-    ) -> &mut Self {
-        self.request_headers.add(name, value);
+    pub fn request_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.options.request_headers.add(name, value);
         self
     }
     /// with_response_header adds a header to all responses coming from this edge.
-    pub fn with_response_header(
-        &mut self,
-        name: impl Into<String>,
-        value: impl Into<String>,
-    ) -> &mut Self {
-        self.response_headers.add(name, value);
+    pub fn response_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.options.response_headers.add(name, value);
         self
     }
     /// with_remove_request_header removes a header from requests to this edge.
-    pub fn with_remove_request_header(&mut self, name: impl Into<String>) -> &mut Self {
-        self.request_headers.remove(name);
+    pub fn remove_request_header(mut self, name: impl Into<String>) -> Self {
+        self.options.request_headers.remove(name);
         self
     }
     /// with_remove_response_header removes a header from responses from this edge.
-    pub fn with_remove_response_header(&mut self, name: impl Into<String>) -> &mut Self {
-        self.response_headers.remove(name);
+    pub fn remove_response_header(mut self, name: impl Into<String>) -> Self {
+        self.options.response_headers.remove(name);
         self
     }
 
     /// Credentials for basic authentication.
     /// If not called, basic authentication is disabled.
-    pub fn with_basic_auth(
-        &mut self,
-        username: impl Into<String>,
-        password: impl Into<String>,
-    ) -> &mut Self {
-        self.basic_auth.push((username.into(), password.into()));
+    pub fn basic_auth(mut self, username: impl Into<String>, password: impl Into<String>) -> Self {
+        self.options
+            .basic_auth
+            .push((username.into(), password.into()));
         self
     }
 
     /// OAuth configuration.
     /// If not called, OAuth is disabled.
-    pub fn with_oauth(&mut self, oauth: OauthOptions) -> &mut Self {
-        self.oauth = Some(oauth);
+    pub fn oauth(mut self, oauth: OauthOptions) -> Self {
+        self.options.oauth = Some(oauth);
         self
     }
 
     /// OIDC configuration.
     /// If not called, OIDC is disabled.
-    pub fn with_oidc(&mut self, oidc: OidcOptions) -> &mut Self {
-        self.oidc = Some(oidc);
+    pub fn oidc(mut self, oidc: OidcOptions) -> Self {
+        self.options.oidc = Some(oidc);
         self
     }
 
     /// WebhookVerification configuration.
     /// If not called, WebhookVerification is disabled.
-    pub fn with_webhook_verification(
-        &mut self,
+    pub fn webhook_verification(
+        mut self,
         provider: impl Into<String>,
         secret: impl Into<String>,
-    ) -> &mut Self {
-        self.webhook_verification = Some(WebhookVerification {
+    ) -> Self {
+        self.options.webhook_verification = Some(WebhookVerification {
             provider: provider.into(),
             secret: secret.into(),
         });
@@ -295,39 +297,43 @@ mod test {
         // pass to a function accepting the trait to avoid
         // "creates a temporary which is freed while still in use"
         tunnel_test(
-            HTTPEndpoint::default()
-                .with_allow_cidr_string(ALLOW_CIDR)
-                .with_deny_cidr_string(DENY_CIDR)
-                .with_proxy_proto(ProxyProto::V2)
-                .with_metadata(METADATA)
-                .with_scheme(Scheme::HTTPS)
-                .with_domain(DOMAIN)
-                .with_mutual_tlsca(CA_CERT.into())
-                .with_mutual_tlsca(CA_CERT2.into())
-                .with_compression()
-                .with_websocket_tcp_conversion()
-                .with_circuit_breaker(0.5)
-                .with_request_header("X-Req-Yup", "true")
-                .with_response_header("X-Res-Yup", "true")
-                .with_remove_request_header("X-Req-Nope")
-                .with_remove_response_header("X-Res-Nope")
-                .with_oauth(OauthOptions::new("google"))
-                .with_oauth(
-                    OauthOptions::new("google")
-                        .with_allow_email("<user>@<domain>")
-                        .with_allow_domain("<domain>")
-                        .with_scope("<scope>"),
-                )
-                .with_oidc(OidcOptions::new("<url>", "<id>", "<secret>"))
-                .with_oidc(
-                    OidcOptions::new("<url>", "<id>", "<secret>")
-                        .with_allow_email("<user>@<domain>")
-                        .with_allow_domain("<domain>")
-                        .with_scope("<scope>"),
-                )
-                .with_webhook_verification("twilio", "asdf")
-                .with_basic_auth("ngrok", "online1line")
-                .with_forwards_to(TEST_FORWARD),
+            &HttpTunnelBuilder {
+                session: None,
+                options: Default::default(),
+            }
+            .allow_cidr_string(ALLOW_CIDR)
+            .deny_cidr_string(DENY_CIDR)
+            .proxy_proto(ProxyProto::V2)
+            .metadata(METADATA)
+            .scheme(Scheme::HTTPS)
+            .domain(DOMAIN)
+            .mutual_tlsca(CA_CERT.into())
+            .mutual_tlsca(CA_CERT2.into())
+            .compression()
+            .websocket_tcp_conversion()
+            .circuit_breaker(0.5)
+            .request_header("X-Req-Yup", "true")
+            .response_header("X-Res-Yup", "true")
+            .remove_request_header("X-Req-Nope")
+            .remove_response_header("X-Res-Nope")
+            .oauth(OauthOptions::new("google"))
+            .oauth(
+                OauthOptions::new("google")
+                    .allow_email("<user>@<domain>")
+                    .allow_domain("<domain>")
+                    .scope("<scope>"),
+            )
+            .oidc(OidcOptions::new("<url>", "<id>", "<secret>"))
+            .oidc(
+                OidcOptions::new("<url>", "<id>", "<secret>")
+                    .allow_email("<user>@<domain>")
+                    .allow_domain("<domain>")
+                    .scope("<scope>"),
+            )
+            .webhook_verification("twilio", "asdf")
+            .basic_auth("ngrok", "online1line")
+            .forwards_to(TEST_FORWARD)
+            .options,
         );
     }
 

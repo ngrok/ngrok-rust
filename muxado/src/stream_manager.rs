@@ -250,7 +250,7 @@ impl StreamT for StreamManager {
                 return Poll::Pending;
             }
         }
-        .with_stream_id(id);
+        .stream_id(id);
 
         Some(frame).into()
     }

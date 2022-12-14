@@ -1,11 +1,15 @@
 use std::collections::HashMap;
 
+use async_trait::async_trait;
 use prost::bytes::{
     self,
     Bytes,
 };
 
-use super::common::ProxyProto;
+use super::{
+    common::ProxyProto,
+    TunnelBuilder,
+};
 use crate::{
     config::common::{
         CommonOpts,
@@ -21,11 +25,14 @@ use crate::{
         BindExtra,
         BindOpts,
     },
+    session::RpcError,
+    tunnel::TlsTunnel,
+    Session,
 };
 
 /// The options for TLS edges.
-#[derive(Default)]
-pub struct TLSEndpoint {
+#[derive(Default, Clone)]
+struct TlsOptions {
     pub(crate) common_opts: CommonOpts,
     pub(crate) domain: Option<String>,
     pub(crate) mutual_tlsca: Vec<bytes::Bytes>,
@@ -33,7 +40,7 @@ pub struct TLSEndpoint {
     pub(crate) cert_pem: Option<bytes::Bytes>,
 }
 
-impl TunnelConfig for TLSEndpoint {
+impl TunnelConfig for TlsOptions {
     fn forwards_to(&self) -> String {
         self.common_opts
             .forwards_to
@@ -85,54 +92,59 @@ impl TunnelConfig for TLSEndpoint {
     }
 }
 
-impl TLSEndpoint {
+impl_builder! {
+    /// A builder for a tunnel backing a TCP endpoint.
+    TlsTunnelBuilder, TlsOptions, TlsTunnel
+}
+
+impl TlsTunnelBuilder {
     /// Restriction placed on the origin of incoming connections to the edge to only allow these CIDR ranges.
     /// Call multiple times to add additional CIDR ranges.
-    pub fn with_allow_cidr_string(&mut self, cidr: impl Into<String>) -> &mut Self {
-        self.common_opts.cidr_restrictions.allow(cidr);
+    pub fn allow_cidr_string(mut self, cidr: impl Into<String>) -> Self {
+        self.options.common_opts.cidr_restrictions.allow(cidr);
         self
     }
     /// Restriction placed on the origin of incoming connections to the edge to deny these CIDR ranges.
     /// Call multiple times to add additional CIDR ranges.
-    pub fn with_deny_cidr_string(&mut self, cidr: impl Into<String>) -> &mut Self {
-        self.common_opts.cidr_restrictions.deny(cidr);
+    pub fn deny_cidr_string(mut self, cidr: impl Into<String>) -> Self {
+        self.options.common_opts.cidr_restrictions.deny(cidr);
         self
     }
     /// The version of PROXY protocol to use with this tunnel, None if not using.
-    pub fn with_proxy_proto(&mut self, proxy_proto: ProxyProto) -> &mut Self {
-        self.common_opts.proxy_proto = proxy_proto;
+    pub fn proxy_proto(mut self, proxy_proto: ProxyProto) -> Self {
+        self.options.common_opts.proxy_proto = proxy_proto;
         self
     }
     /// Tunnel-specific opaque metadata. Viewable via the API.
-    pub fn with_metadata(&mut self, metadata: impl Into<String>) -> &mut Self {
-        self.common_opts.metadata = Some(metadata.into());
+    pub fn metadata(mut self, metadata: impl Into<String>) -> Self {
+        self.options.common_opts.metadata = Some(metadata.into());
         self
     }
     /// Tunnel backend metadata. Viewable via the dashboard and API, but has no
     /// bearing on tunnel behavior.
-    pub fn with_forwards_to(&mut self, forwards_to: impl Into<String>) -> &mut Self {
-        self.common_opts.forwards_to = Some(forwards_to.into());
+    pub fn forwards_to(mut self, forwards_to: impl Into<String>) -> Self {
+        self.options.common_opts.forwards_to = Some(forwards_to.into());
         self
     }
     /// The domain to request for this edge.
-    pub fn with_domain(&mut self, domain: impl Into<String>) -> &mut Self {
-        self.domain = Some(domain.into());
+    pub fn domain(mut self, domain: impl Into<String>) -> Self {
+        self.options.domain = Some(domain.into());
         self
     }
     /// Certificates to use for client authentication at the ngrok edge.
-    pub fn with_mutual_tlsca(&mut self, mutual_tlsca: Bytes) -> &mut Self {
-        self.mutual_tlsca.push(mutual_tlsca);
+    pub fn mutual_tlsca(mut self, mutual_tlsca: Bytes) -> Self {
+        self.options.mutual_tlsca.push(mutual_tlsca);
         self
     }
     /// The key to use for TLS termination at the ngrok edge in PEM format.
-    pub fn with_key_pem(&mut self, key_pem: Bytes) -> &mut Self {
-        self.key_pem = Some(key_pem);
+    pub fn key_pem(mut self, key_pem: Bytes) -> Self {
+        self.options.key_pem = Some(key_pem);
         self
     }
     /// The certificate to use for TLS termination at the ngrok edge in PEM
     /// format.
-    pub fn with_cert_pem(&mut self, cert_pem: Bytes) -> &mut Self {
-        self.cert_pem = Some(cert_pem);
+    pub fn cert_pem(mut self, cert_pem: Bytes) -> Self {
+        self.options.cert_pem = Some(cert_pem);
         self
     }
 }
@@ -156,17 +168,21 @@ mod test {
         // pass to a function accepting the trait to avoid
         // "creates a temporary which is freed while still in use"
         tunnel_test(
-            TLSEndpoint::default()
-                .with_allow_cidr_string(ALLOW_CIDR)
-                .with_deny_cidr_string(DENY_CIDR)
-                .with_proxy_proto(ProxyProto::V2)
-                .with_metadata(METADATA)
-                .with_domain(DOMAIN)
-                .with_mutual_tlsca(CA_CERT.into())
-                .with_mutual_tlsca(CA_CERT2.into())
-                .with_key_pem(KEY.into())
-                .with_cert_pem(CERT.into())
-                .with_forwards_to(TEST_FORWARD),
+            &TlsTunnelBuilder {
+                session: None,
+                options: Default::default(),
+            }
+            .allow_cidr_string(ALLOW_CIDR)
+            .deny_cidr_string(DENY_CIDR)
+            .proxy_proto(ProxyProto::V2)
+            .metadata(METADATA)
+            .domain(DOMAIN)
+            .mutual_tlsca(CA_CERT.into())
+            .mutual_tlsca(CA_CERT2.into())
+            .key_pem(KEY.into())
+            .cert_pem(CERT.into())
+            .forwards_to(TEST_FORWARD)
+            .options,
         );
     }
 
