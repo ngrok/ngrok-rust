@@ -91,11 +91,6 @@ impl TunnelConfig for HttpOptions {
         // fill out all the options, translating to proto here
         let mut http_endpoint = proto::HttpEndpoint::default();
 
-        if let Some(domain) = self.domain.as_ref() {
-            // note: hostname and subdomain are going away in favor of just domain
-            http_endpoint.hostname = domain.clone();
-        }
-
         http_endpoint.proxy_proto = self.common_opts.proxy_proto;
         http_endpoint.hostname = self.domain.clone().unwrap_or_default();
         http_endpoint.compression = self.compression.then_some(Compression);
