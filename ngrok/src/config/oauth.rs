@@ -1,4 +1,4 @@
-use crate::internals::proto::gen::middleware_configuration::OAuth;
+use crate::internals::proto::Oauth;
 
 /// Oauth Options configuration
 #[derive(Clone, Default)]
@@ -40,9 +40,9 @@ impl OauthOptions {
 }
 
 // transform into the wire protocol format
-impl From<OauthOptions> for OAuth {
+impl From<OauthOptions> for Oauth {
     fn from(o: OauthOptions) -> Self {
-        OAuth {
+        Oauth {
             provider: o.provider,
             client_id: Default::default(),     // unused in this context
             client_secret: Default::default(), // unused in this context

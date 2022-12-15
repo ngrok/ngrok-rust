@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use prost::bytes::{
+use bytes::{
     self,
     Bytes,
 };
@@ -23,19 +23,14 @@ use crate::{
         webhook_verification::WebhookVerification,
     },
     internals::proto::{
-        self,
-        gen::{
-            middleware_configuration::{
-                BasicAuth,
-                BasicAuthCredential,
-                CircuitBreaker,
-                Compression,
-                WebsocketTcpConverter,
-            },
-            HttpMiddleware,
-        },
+        BasicAuth,
+        BasicAuthCredential,
         BindExtra,
         BindOpts,
+        CircuitBreaker,
+        Compression,
+        HttpEndpoint,
+        WebsocketTcpConverter,
     },
     session::RpcError,
     tunnel::HttpTunnel,
@@ -93,17 +88,10 @@ impl TunnelConfig for HttpOptions {
         "https".into()
     }
     fn opts(&self) -> Option<BindOpts> {
-        // fill out all the options, translating to proto here
-        let mut http_endpoint = proto::HttpEndpoint::default();
-
-        if let Some(domain) = self.domain.as_ref() {
-            // note: hostname and subdomain are going away in favor of just domain
-            http_endpoint.hostname = domain.clone();
-        }
-        http_endpoint.proxy_proto = self.common_opts.proxy_proto;
-
-        http_endpoint.middleware = HttpMiddleware {
-            compression: self.compression.then_some(Compression {}),
+        let http_endpoint = HttpEndpoint {
+            proxy_proto: self.common_opts.proxy_proto,
+            hostname: self.domain.clone().unwrap_or_default(),
+            compression: self.compression.then_some(Compression),
             circuit_breaker: (self.circuit_breaker != 0f64).then_some(CircuitBreaker {
                 error_threshold: self.circuit_breaker,
             }),
@@ -112,7 +100,7 @@ impl TunnelConfig for HttpOptions {
             oauth: self.oauth.clone().map(From::from),
             oidc: self.oidc.clone().map(From::from),
             webhook_verification: self.webhook_verification.clone().map(From::from),
-            mutual_tls: (!self.mutual_tlsca.is_empty())
+            mutual_tls_ca: (!self.mutual_tlsca.is_empty())
                 .then_some(self.mutual_tlsca.as_slice().into()),
             request_headers: self
                 .request_headers
@@ -124,7 +112,8 @@ impl TunnelConfig for HttpOptions {
                 .then_some(self.response_headers.clone().into()),
             websocket_tcp_converter: self
                 .websocket_tcp_conversion
-                .then_some(WebsocketTcpConverter {}),
+                .then_some(WebsocketTcpConverter),
+            ..Default::default()
         };
 
         Some(BindOpts::Http(http_endpoint))
@@ -149,7 +138,7 @@ impl From<(String, String)> for BasicAuthCredential {
         BasicAuthCredential {
             username: b.0,
             cleartext_password: b.1,
-            hashed_password: Vec::new(), // unused in this context
+            hashed_password: vec![], // unused in this context
         }
     }
 }
@@ -357,40 +346,39 @@ mod test {
             assert_eq!(String::default(), endpoint.subdomain);
             assert!(matches!(endpoint.proxy_proto, ProxyProto::V2 { .. }));
 
-            let middleware = endpoint.middleware;
-            let ip_restriction = middleware.ip_restriction.unwrap();
+            let ip_restriction = endpoint.ip_restriction.unwrap();
             assert_eq!(Vec::from([ALLOW_CIDR]), ip_restriction.allow_cidrs);
             assert_eq!(Vec::from([DENY_CIDR]), ip_restriction.deny_cidrs);
 
-            let mutual_tls = middleware.mutual_tls.unwrap();
+            let mutual_tls = endpoint.mutual_tls_ca.unwrap();
             let mut agg = CA_CERT.to_vec();
             agg.extend(CA_CERT2.to_vec());
             assert_eq!(agg, mutual_tls.mutual_tls_ca);
 
-            assert!(middleware.compression.is_some());
-            assert!(middleware.websocket_tcp_converter.is_some());
-            assert_eq!(0.5f64, middleware.circuit_breaker.unwrap().error_threshold);
+            assert!(endpoint.compression.is_some());
+            assert!(endpoint.websocket_tcp_converter.is_some());
+            assert_eq!(0.5f64, endpoint.circuit_breaker.unwrap().error_threshold);
 
-            let request_headers = middleware.request_headers.unwrap();
+            let request_headers = endpoint.request_headers.unwrap();
             assert_eq!(["X-Req-Yup:true"].to_vec(), request_headers.add);
             assert_eq!(["X-Req-Nope"].to_vec(), request_headers.remove);
 
-            let response_headers = middleware.response_headers.unwrap();
+            let response_headers = endpoint.response_headers.unwrap();
             assert_eq!(["X-Res-Yup:true"].to_vec(), response_headers.add);
             assert_eq!(["X-Res-Nope"].to_vec(), response_headers.remove);
 
-            let webhook = middleware.webhook_verification.unwrap();
+            let webhook = endpoint.webhook_verification.unwrap();
             assert_eq!("twilio", webhook.provider);
             assert_eq!("asdf", webhook.secret);
             assert!(webhook.sealed_secret.is_empty());
 
-            let creds = middleware.basic_auth.unwrap().credentials;
+            let creds = endpoint.basic_auth.unwrap().credentials;
             assert_eq!(1, creds.len());
             assert_eq!("ngrok", creds[0].username);
             assert_eq!("online1line", creds[0].cleartext_password);
             assert!(creds[0].hashed_password.is_empty());
 
-            let oauth = middleware.oauth.unwrap();
+            let oauth = endpoint.oauth.unwrap();
             assert_eq!("google", oauth.provider);
             assert_eq!(["<user>@<domain>"].to_vec(), oauth.allow_emails);
             assert_eq!(["<domain>"].to_vec(), oauth.allow_domains);
@@ -399,7 +387,7 @@ mod test {
             assert_eq!(String::default(), oauth.client_secret);
             assert!(oauth.sealed_client_secret.is_empty());
 
-            let oidc = middleware.oidc.unwrap();
+            let oidc = endpoint.oidc.unwrap();
             assert_eq!("<url>", oidc.issuer_url);
             assert_eq!(["<user>@<domain>"].to_vec(), oidc.allow_emails);
             assert_eq!(["<domain>"].to_vec(), oidc.allow_domains);

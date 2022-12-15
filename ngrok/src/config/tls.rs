@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use prost::bytes::{
+use bytes::{
     self,
     Bytes,
 };
@@ -18,12 +18,9 @@ use crate::{
     },
     internals::proto::{
         self,
-        gen::{
-            middleware_configuration::TlsTermination,
-            TlsMiddleware,
-        },
         BindExtra,
         BindOpts,
+        TlsTermination,
     },
     session::RpcError,
     tunnel::TlsTunnel,
@@ -78,12 +75,10 @@ impl TunnelConfig for TlsOptions {
                 sealed_key: Vec::new(),
             });
 
-        tls_endpoint.middleware = TlsMiddleware {
-            ip_restriction: self.common_opts.ip_restriction(),
-            mutual_tls: (!self.mutual_tlsca.is_empty())
-                .then_some(self.mutual_tlsca.as_slice().into()),
-            tls_termination,
-        };
+        tls_endpoint.ip_restriction = self.common_opts.ip_restriction();
+        tls_endpoint.mutual_tls_at_edge =
+            (!self.mutual_tlsca.is_empty()).then_some(self.mutual_tlsca.as_slice().into());
+        tls_endpoint.tls_termination = tls_termination;
 
         Some(BindOpts::Tls(tls_endpoint))
     }
@@ -207,17 +202,16 @@ mod test {
             assert!(matches!(endpoint.proxy_proto, ProxyProto::V2 { .. }));
             assert!(!endpoint.mutual_tls_at_agent);
 
-            let middleware = endpoint.middleware;
-            let ip_restriction = middleware.ip_restriction.unwrap();
+            let ip_restriction = endpoint.ip_restriction.unwrap();
             assert_eq!(Vec::from([ALLOW_CIDR]), ip_restriction.allow_cidrs);
             assert_eq!(Vec::from([DENY_CIDR]), ip_restriction.deny_cidrs);
 
-            let tls_termination = middleware.tls_termination.unwrap();
+            let tls_termination = endpoint.tls_termination.unwrap();
             assert_eq!(CERT, tls_termination.cert);
             assert_eq!(KEY, tls_termination.key);
             assert!(tls_termination.sealed_key.is_empty());
 
-            let mutual_tls = middleware.mutual_tls.unwrap();
+            let mutual_tls = endpoint.mutual_tls_at_edge.unwrap();
             let mut agg = CA_CERT.to_vec();
             agg.extend(CA_CERT2.to_vec());
             assert_eq!(agg, mutual_tls.mutual_tls_ca);

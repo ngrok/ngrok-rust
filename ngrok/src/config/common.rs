@@ -1,17 +1,14 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use prost::bytes;
 
 pub use crate::internals::proto::ProxyProto;
 use crate::{
     internals::proto::{
-        gen::middleware_configuration::{
-            IpRestriction,
-            MutualTls,
-        },
         BindExtra,
         BindOpts,
+        IpRestriction,
+        MutualTls,
     },
     session::RpcError,
     Session,

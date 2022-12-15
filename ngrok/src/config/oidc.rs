@@ -1,4 +1,4 @@
-use crate::internals::proto::gen::middleware_configuration::Oidc;
+use crate::internals::proto::Oidc;
 
 /// Oidc Options configuration
 #[derive(Clone, Default)]

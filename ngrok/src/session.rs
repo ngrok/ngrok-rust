@@ -339,7 +339,7 @@ impl Session {
                 id: resp.client_id,
                 proto: resp.proto,
                 url: resp.url,
-                opts: resp.bind_opts,
+                opts: resp.bind_opts.into(),
                 token: resp.extra.token,
                 bind_extra: tunnel_cfg.extra(),
                 labels: HashMap::new(),
