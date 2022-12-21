@@ -40,6 +40,8 @@ pub mod session;
 /// Types for working with ngrok tunnels.
 pub mod tunnel;
 
+mod tunnel_ext;
+
 #[doc(inline)]
 pub use session::Session;
 #[doc(inline)]
@@ -59,5 +61,6 @@ pub mod prelude {
             Tunnel,
             UrlTunnel,
         },
+        tunnel_ext::TunnelExt,
     };
 }
