@@ -7,17 +7,29 @@ on:
 name: Continuous integration
 
 jobs:
+  udeps:
+    name: Udeps
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: cachix/install-nix-action@v18
+      - run: curl -sfL https://direnv.net/install.sh | bash
+      - run: direnv allow
+      - run: direnv export gha >> "$GITHUB_ENV"
+      - uses: actions-rs/cargo@v1
+        with:
+          command: udeps
+          args: --all
+
   fmt:
     name: Rustfmt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly
-          override: true
-      - run: rustup component add rustfmt
+      - uses: cachix/install-nix-action@v18
+      - run: curl -sfL https://direnv.net/install.sh | bash
+      - run: direnv allow
+      - run: direnv export gha >> "$GITHUB_ENV"
       - uses: actions-rs/cargo@v1
         with:
           command: fmt
@@ -28,21 +40,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly
-          override: true
-      - name: install protoc
-        run: sudo apt-get -o Acquire::Retries=3 install -y protobuf-compiler
-      - run: rustup component add clippy
+      - uses: cachix/install-nix-action@v18
+      - run: curl -sfL https://direnv.net/install.sh | bash
+      - run: direnv allow
+      - run: direnv export gha >> "$GITHUB_ENV"
       - uses: actions-rs/cargo@v1
         with:
           command: clippy
           args: --all-features --workspace --examples -- -D warnings
 
-  test:
-    name: Test Suite
+  test-nix:
+    name: Test Nix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: cachix/install-nix-action@v18
+      - run: curl -sfL https://direnv.net/install.sh | bash
+      - run: direnv allow
+      - run: direnv export gha >> "$GITHUB_ENV"
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --all-features --workspace --examples
+
+  test-stable:
+    name: Test Stable
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -51,8 +73,6 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
-      - name: install protoc
-        run: sudo apt-get -o Acquire::Retries=3 install -y protobuf-compiler
       - uses: actions-rs/cargo@v1
         with:
           command: test
