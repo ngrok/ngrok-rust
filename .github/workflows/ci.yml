@@ -13,7 +13,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: cachix/install-nix-action@v18
-      - uses: HatsuneMiku3939/direnv-action@v1
+      - run: curl -sfL https://direnv.net/install.sh | bash
+      - run: direnv allow
+      - run: direnv export gha >> "$GITHUB_ENV"
       - uses: actions-rs/cargo@v1
         with:
           command: udeps
@@ -25,7 +27,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: cachix/install-nix-action@v18
-      - uses: HatsuneMiku3939/direnv-action@v1
+      - run: curl -sfL https://direnv.net/install.sh | bash
+      - run: direnv allow
+      - run: direnv export gha >> "$GITHUB_ENV"
       - uses: actions-rs/cargo@v1
         with:
           command: fmt
@@ -37,7 +41,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: cachix/install-nix-action@v18
-      - uses: HatsuneMiku3939/direnv-action@v1
+      - run: curl -sfL https://direnv.net/install.sh | bash
+      - run: direnv allow
+      - run: direnv export gha >> "$GITHUB_ENV"
       - uses: actions-rs/cargo@v1
         with:
           command: clippy
@@ -49,7 +55,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: cachix/install-nix-action@v18
-      - uses: HatsuneMiku3939/direnv-action@v1
+      - run: curl -sfL https://direnv.net/install.sh | bash
+      - run: direnv allow
+      - run: direnv export gha >> "$GITHUB_ENV"
       - uses: actions-rs/cargo@v1
         with:
           command: test
