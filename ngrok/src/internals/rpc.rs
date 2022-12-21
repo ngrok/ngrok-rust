@@ -17,15 +17,15 @@ pub trait RpcRequest: Serialize + Debug {
 #[derive(Deserialize, Serialize, Debug)]
 pub struct RpcResult<T> {
     #[serde(flatten)]
-    ok: T,
-    #[serde(rename = "Error")]
+    ok: Option<T>,
+    #[serde(default, rename = "Error")]
     error: String,
 }
 
 impl<T> From<RpcResult<T>> for Result<T, RpcError> {
     fn from(res: RpcResult<T>) -> Self {
-        if res.error.is_empty() {
-            Ok(res.ok)
+        if res.error.is_empty() && res.ok.is_some() {
+            Ok(res.ok.unwrap())
         } else {
             Err(RpcError::Response(res.error))
         }
