@@ -35,7 +35,6 @@ use pin_utils::unsafe_pinned;
 use tracing::{
     debug,
     error,
-    info,
     instrument,
     trace,
 };
@@ -167,7 +166,7 @@ impl FusedStream for SharedStreamManager {
 impl StreamT for StreamManager {
     type Item = Frame;
 
-    #[instrument(level = "info", skip_all)]
+    #[instrument(level = "trace", skip_all)]
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         // There will only be no new frames if we've gone away.
         if self.sent_away {
@@ -208,7 +207,7 @@ impl StreamT for StreamManager {
         // or issued. It's only closed from the other end if this end has gone
         // away.
         if handle.sink_closer.is_closed() && !handle.needs_fin {
-            info!(needs_fin = handle.needs_fin, "removing stream without fin");
+            debug!(needs_fin = handle.needs_fin, "removing stream without fin");
             self.remove_stream(id);
             cx.waker().wake_by_ref();
             return Poll::Pending;
@@ -220,7 +219,7 @@ impl StreamT for StreamManager {
             }
 
             if frame.is_fin() {
-                info!(stream_id = debug(id), "setting needs_fin to false");
+                debug!(stream_id = debug(id), "setting needs_fin to false");
                 handle.needs_fin = false;
             }
 
@@ -238,12 +237,12 @@ impl StreamT for StreamManager {
             let needs_fin = handle.needs_fin;
             handle.needs_fin = false;
             self.remove_stream(id);
-            info!(needs_fin, "got none from stream, trying to send a fin");
+            debug!(needs_fin, "got none from stream, trying to send a fin");
             if needs_fin {
-                info!("removing stream and sending fin");
+                debug!("removing stream and sending fin");
                 Frame::from(Body::Data([][..].into())).fin()
             } else {
-                info!("removing stream that's already fin'd");
+                debug!("removing stream that's already fin'd");
                 // Could introduce a loop and `continue` here, or we could just
                 // return `Pending` and wake ourselves back up.
                 cx.waker().wake_by_ref();
@@ -469,7 +468,7 @@ impl StreamManager {
         self.tasks.push(recv.into_future().with_id(id));
     }
 
-    #[instrument(level = "info", skip(self))]
+    #[instrument(level = "debug", skip(self))]
     fn remove_stream(&mut self, id: StreamID) -> Option<StreamHandle> {
         self.streams.remove(&id)
     }
