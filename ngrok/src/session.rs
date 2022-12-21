@@ -79,6 +79,7 @@ use crate::{
 const CERT_BYTES: &[u8] = include_bytes!("../assets/ngrok.ca.crt");
 const NOT_IMPLEMENTED: &str = "the agent has not defined a callback for this operation";
 
+#[derive(Clone)]
 struct BoundTunnel {
     proto: String,
     opts: Option<BindOpts>,
@@ -549,23 +550,23 @@ async fn try_reconnect(inner: Arc<ArcSwap<SessionInner>>) -> Result<IncomingStre
         .await
         .map_err(|_| AcceptError::Transport(muxado::Error::SessionClosed))?;
     let mut client = new_inner.client.lock().await;
-    let mut old_tunnels = old_inner.tunnels.write().await;
     let mut new_tunnels = new_inner.tunnels.write().await;
+    let old_tunnels = old_inner.tunnels.read().await;
 
-    for (id, tun) in old_tunnels.drain() {
+    for (id, tun) in old_tunnels.iter() {
         if !tun.proto.is_empty() {
             let resp = client
                 .listen(
                     &tun.proto,
                     tun.opts.clone().unwrap(),
                     tun.extra.clone(),
-                    &id,
+                    id,
                     &tun.forwards_to,
                 )
                 .await
                 .map_err(|_| AcceptError::Transport(muxado::Error::ErrorUnknown))?;
             debug!(?resp, %id, %tun.proto, ?tun.opts, ?tun.extra, %tun.forwards_to, "rebound tunnel");
-            new_tunnels.insert(id, tun);
+            new_tunnels.insert(id.clone(), tun.clone());
         } else {
             let resp = client
                 .listen_label(tun.labels.clone(), &tun.extra.metadata, &tun.forwards_to)
@@ -573,15 +574,15 @@ async fn try_reconnect(inner: Arc<ArcSwap<SessionInner>>) -> Result<IncomingStre
                 .map_err(|_| AcceptError::Transport(muxado::Error::ErrorUnknown))?;
 
             if !resp.id.is_empty() {
-                new_tunnels.insert(resp.id, tun);
+                new_tunnels.insert(resp.id, tun.clone());
             } else {
-                new_tunnels.insert(id, tun);
+                new_tunnels.insert(id.clone(), tun.clone());
             }
         }
     }
 
-    drop(client);
     drop(old_tunnels);
+    drop(client);
     drop(new_tunnels);
     inner.store(new_inner.into());
 
