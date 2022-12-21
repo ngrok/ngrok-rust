@@ -173,7 +173,7 @@ fn serve_gateway_error(
                     service_fn(move |_req| {
                         debug!("serving bad gateway error");
                         let mut resp =
-                            Response::new(Body::from(format!("failed to dial backend: {}", err)));
+                            Response::new(Body::from(format!("failed to dial backend: {err}")));
                         *resp.status_mut() = StatusCode::BAD_GATEWAY;
                         futures::future::ok::<_, Infallible>(resp)
                     }),
