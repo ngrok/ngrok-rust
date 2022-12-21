@@ -102,10 +102,10 @@ fn join_streams(
     left: impl AsyncRead + AsyncWrite + Unpin + Send + 'static,
     right: impl AsyncRead + AsyncWrite + Unpin + Send + 'static,
 ) -> JoinHandle<()> {
-    let (t_rx, t_tx) = tokio::io::split(left);
-    let (l_rx, l_tx) = tokio::io::split(right);
+    let (l_rx, l_tx) = tokio::io::split(left);
+    let (r_rx, r_tx) = tokio::io::split(right);
 
-    let joined = futures::future::join(forward_bytes(t_rx, l_tx), forward_bytes(l_rx, t_tx));
+    let joined = futures::future::join(forward_bytes(r_rx, l_tx), forward_bytes(l_rx, r_tx));
     tokio::spawn(
         async move {
             let (to_tunnel, to_local) = joined.await;
@@ -152,9 +152,7 @@ where
     };
     span.record("local_addr", field::debug(local_conn.peer_addr().unwrap()));
 
-    trace!("established local connection");
-
-    debug!("forwarding tunnel connection to local address");
+    debug!("established local connection, joining streams");
 
     join_streams(tunnel_conn, local_conn);
     Ok(true)
