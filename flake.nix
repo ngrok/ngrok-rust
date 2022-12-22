@@ -39,12 +39,23 @@
           ${toolchain}/bin/cargo fmt
         '';
         pre-commit = pkgs.writeShellScript "pre-commit" ''
-          cargo clippy --all-targets -- -D warnings
+          cargo clippy --workspace --all-targets -- -D warnings
           result=$?
 
           if [[ ''${result} -ne 0 ]] ; then
               cat <<\EOF
           There are some linting issues, try `fix-n-fmt` to fix.
+          EOF
+              exit 1
+          fi
+
+          # Use a dedicated sub-target-dir for udeps. For some reason, it fights with clippy over the cache.
+          CARGO_TARGET_DIR=$(git rev-parse --show-toplevel)/target/udeps cargo udeps --workspace --all-targets
+          result=$?
+
+          if [[ ''${result} -ne 0 ]] ; then
+              cat <<\EOF
+          There are some unused dependencies.
           EOF
               exit 1
           fi
