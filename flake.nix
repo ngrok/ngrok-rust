@@ -86,6 +86,8 @@
         devShell = pkgs.mkShell {
           CHALK_OVERFLOW_DEPTH = 3000;
           CHALK_SOLVER_MAX_SIZE = 1500;
+          OPENSSL_LIB_DIR = "${pkgs.openssl.out}/lib";
+          OPENSSL_INCLUDE_DIR = "${pkgs.openssl.dev}/include";
           buildInputs = with pkgs; [
             toolchain
             fix-n-fmt
