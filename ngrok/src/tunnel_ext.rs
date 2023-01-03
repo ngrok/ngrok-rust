@@ -1,8 +1,9 @@
 use std::{
     convert::Infallible,
     fmt,
-    io,
+    io::{self,},
     net::SocketAddr,
+    path::Path,
 };
 
 use async_trait::async_trait;
@@ -24,6 +25,7 @@ use tokio::{
     net::{
         TcpStream,
         ToSocketAddrs,
+        UnixStream,
     },
     task::JoinHandle,
 };
@@ -60,6 +62,12 @@ pub trait TunnelExt: Tunnel {
     async fn forward_http(&mut self, addr: impl ToSocketAddrs + Send) -> Result<(), io::Error> {
         forward_conns(self, addr, |e, c| drop(serve_gateway_error(e, c))).await
     }
+
+    /// Forward incoming tunnel connections to the provided Unix socket path.
+    #[instrument(level = "debug", skip_all, fields(local_addrs))]
+    async fn forward_unix(&mut self, addr: String) -> Result<(), io::Error> {
+        forward_unix_conns(self, addr, |_, _| {}).await
+    }
 }
 
 async fn forward_conns<T, A, F>(this: &mut T, addr: A, mut on_err: F) -> Result<(), io::Error>
@@ -75,6 +83,29 @@ where
     loop {
         trace!("waiting for new tunnel connection");
         if !handle_one(this, addrs.as_slice(), &mut on_err).await? {
+            debug!("listener closed, exiting");
+            break;
+        }
+    }
+    Ok(())
+}
+
+async fn forward_unix_conns<T, F>(
+    this: &mut T,
+    addr: String,
+    mut on_err: F,
+) -> Result<(), io::Error>
+where
+    T: Tunnel + ?Sized,
+    F: FnMut(io::Error, Conn),
+{
+    let span = Span::current();
+    let path = Path::new(addr.as_str());
+    span.record("path", field::debug(&path));
+    trace!("looked up local path");
+    loop {
+        trace!("waiting for new tunnel connection");
+        if !handle_one_unix(this, path, &mut on_err).await? {
             debug!("listener closed, exiting");
             break;
         }
@@ -144,6 +175,45 @@ where
         Ok(conn) => conn,
         Err(error) => {
             warn!(%error, "error establishing local connection");
+
+            on_error(error, tunnel_conn);
+
+            return Ok(true);
+        }
+    };
+    span.record("local_addr", field::debug(local_conn.peer_addr().unwrap()));
+
+    debug!("established local connection, joining streams");
+
+    join_streams(tunnel_conn, local_conn);
+    Ok(true)
+}
+
+#[instrument(level = "debug", skip_all, fields(remote_addr, local_addr))]
+async fn handle_one_unix<T, F>(this: &mut T, addr: &Path, on_error: F) -> Result<bool, io::Error>
+where
+    T: Tunnel + ?Sized,
+    F: FnOnce(io::Error, Conn),
+{
+    let span = Span::current();
+    let tunnel_conn = if let Some(conn) = this
+        .try_next()
+        .await
+        .map_err(|err| io::Error::new(io::ErrorKind::NotConnected, err))?
+    {
+        conn
+    } else {
+        return Ok(false);
+    };
+
+    span.record("remote_addr", field::debug(tunnel_conn.remote_addr()));
+
+    trace!("accepted tunnel connection");
+
+    let local_conn = match UnixStream::connect(addr).await {
+        Ok(conn) => conn,
+        Err(error) => {
+            warn!(%error, "error establishing local unix connection");
 
             on_error(error, tunnel_conn);
 
