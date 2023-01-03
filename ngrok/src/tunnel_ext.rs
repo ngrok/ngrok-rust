@@ -64,7 +64,7 @@ pub trait TunnelExt: Tunnel {
     }
 
     /// Forward incoming tunnel connections to the provided Unix socket path.
-    #[instrument(level = "debug", skip_all, fields(local_addrs))]
+    #[instrument(level = "debug", skip_all, fields(path))]
     async fn forward_unix(&mut self, addr: String) -> Result<(), io::Error> {
         forward_unix_conns(self, addr, |_, _| {}).await
     }
@@ -102,7 +102,6 @@ where
     let span = Span::current();
     let path = Path::new(addr.as_str());
     span.record("path", field::debug(&path));
-    trace!("looked up local path");
     loop {
         trace!("waiting for new tunnel connection");
         if !handle_one_unix(this, path, &mut on_err).await? {
