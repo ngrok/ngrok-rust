@@ -50,6 +50,7 @@ pub(crate) struct TunnelInner {
     pub(crate) url: String,
     pub(crate) labels: HashMap<String, String>,
     pub(crate) forwards_to: String,
+    pub(crate) metadata: String,
     pub(crate) session: Session,
     pub(crate) incoming: Receiver<Result<Conn, AcceptError>>,
 }
@@ -69,6 +70,8 @@ pub trait Tunnel:
     fn id(&self) -> &str;
     /// Get the forwards_to metadata for this tunnel.
     fn forwards_to(&self) -> &str;
+    /// Get the user metadata for this tunnel.
+    fn metadata(&self) -> &str;
     /// Close the tunnel.
     ///
     /// This is an RPC call that must be `.await`ed.
@@ -157,6 +160,11 @@ impl TunnelInner {
     pub fn forwards_to(&self) -> &str {
         &self.forwards_to
     }
+
+    /// Get the user-supplied metadata for this tunnel.
+    pub fn metadata(&self) -> &str {
+        &self.metadata
+    }
 }
 
 impl Conn {
@@ -225,6 +233,9 @@ macro_rules! make_tunnel_type {
                 self.inner.forwards_to()
             }
 
+            fn metadata(&self) -> &str {
+                self.inner.metadata()
+            }
         }
 
         impl $wrapper {
