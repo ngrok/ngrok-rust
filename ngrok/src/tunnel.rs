@@ -9,8 +9,8 @@ use std::{
 };
 
 use async_trait::async_trait;
-use axum::extract::connect_info::Connected;
 use futures::Stream;
+#[cfg(feature = "hyper")]
 use hyper::server::accept::Accept;
 use muxado::{
     typed::TypedStream,
@@ -55,28 +55,41 @@ pub(crate) struct TunnelInner {
     pub(crate) incoming: Receiver<Result<Conn, AcceptError>>,
 }
 
-/// An ngrok tunnel.
-///
-/// This acts like a TCP listener and can be used as a [Stream] of [Result]<[Conn], [AcceptError]>.
-#[async_trait]
-pub trait Tunnel:
-    Stream<Item = Result<Conn, AcceptError>>
-    + Accept<Conn = Conn, Error = AcceptError>
-    + Unpin
-    + Send
-    + 'static
-{
-    /// The ID of this tunnel, assigned by the remote server.
-    fn id(&self) -> &str;
-    /// Get the forwards_to metadata for this tunnel.
-    fn forwards_to(&self) -> &str;
-    /// Get the user metadata for this tunnel.
-    fn metadata(&self) -> &str;
-    /// Close the tunnel.
-    ///
-    /// This is an RPC call that must be `.await`ed.
-    async fn close(&mut self) -> Result<(), RpcError>;
+// This codgen indirect is required to make the hyper "Accept" trait bound
+// dependent on the hyper feature. You can't put a #[cfg] on a single bound, so
+// we're putting the whole trait def in a macro. Gross, but gets the job done.
+macro_rules! tunnel_trait {
+    ($($hyper_bound:tt)*) => {
+        /// An ngrok tunnel.
+        ///
+        /// This acts like a TCP listener and can be used as a [Stream] of [Result]<[Conn], [AcceptError]>.
+        #[async_trait]
+        pub trait Tunnel:
+            Stream<Item = Result<Conn, AcceptError>>
+            $($hyper_bound)*
+            + Unpin
+            + Send
+            + 'static
+        {
+            /// The ID of this tunnel, assigned by the remote server.
+            fn id(&self) -> &str;
+            /// Get the forwards_to metadata for this tunnel.
+            fn forwards_to(&self) -> &str;
+            /// Get the user metadata for this tunnel.
+            fn metadata(&self) -> &str;
+            /// Close the tunnel.
+            ///
+            /// This is an RPC call that must be `.await`ed.
+            async fn close(&mut self) -> Result<(), RpcError>;
+        }
+    }
 }
+
+#[cfg(not(feature = "hyper"))]
+tunnel_trait!();
+
+#[cfg(feature = "hyper")]
+tunnel_trait!(+ Accept<Conn = Conn, Error = AcceptError>);
 
 /// An ngrok tunnel that supports getting the URL it was started for.
 pub trait UrlTunnel: Tunnel {
@@ -113,6 +126,7 @@ impl Stream for TunnelInner {
     }
 }
 
+#[cfg(feature = "hyper")]
 impl Accept for TunnelInner {
     type Conn = Conn;
     type Error = AcceptError;
@@ -206,6 +220,10 @@ impl AsyncWrite for Conn {
     }
 }
 
+// Support for axum's connection info trait.
+#[cfg(feature = "axum")]
+use axum::extract::connect_info::Connected;
+#[cfg(feature = "axum")]
 impl Connected<&Conn> for SocketAddr {
     fn connect_info(target: &Conn) -> Self {
         target.remote_addr
@@ -257,6 +275,7 @@ macro_rules! make_tunnel_type {
             }
         }
 
+        #[cfg(feature = "hyper")]
         impl Accept for $wrapper {
             type Conn = Conn;
             type Error = AcceptError;
