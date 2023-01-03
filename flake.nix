@@ -35,11 +35,11 @@
         ];
         fix-n-fmt = pkgs.writeShellScriptBin "fix-n-fmt" ''
           set -euf -o pipefail
-          ${toolchain}/bin/cargo clippy --fix --allow-staged --allow-dirty --all-targets
+          ${toolchain}/bin/cargo clippy --fix --allow-staged --allow-dirty --all-targets --all-features
           ${toolchain}/bin/cargo fmt
         '';
         pre-commit = pkgs.writeShellScript "pre-commit" ''
-          cargo clippy --workspace --all-targets -- -D warnings
+          cargo clippy --workspace --all-targets --all-features -- -D warnings
           result=$?
 
           if [[ ''${result} -ne 0 ]] ; then
@@ -50,7 +50,7 @@
           fi
 
           # Use a dedicated sub-target-dir for udeps. For some reason, it fights with clippy over the cache.
-          CARGO_TARGET_DIR=$(git rev-parse --show-toplevel)/target/udeps cargo udeps --workspace --all-targets
+          CARGO_TARGET_DIR=$(git rev-parse --show-toplevel)/target/udeps cargo udeps --workspace --all-targets --all-features
           result=$?
 
           if [[ ''${result} -ne 0 ]] ; then

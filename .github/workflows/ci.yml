@@ -19,7 +19,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: udeps
-          args: --all
+          args: --workspace --all-targets --all-features
 
   fmt:
     name: Rustfmt
@@ -47,7 +47,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: --all-features --workspace --examples -- -D warnings
+          args: --all-targets --all-features --workspace -- -D warnings
 
   test-nix:
     name: Test Nix
