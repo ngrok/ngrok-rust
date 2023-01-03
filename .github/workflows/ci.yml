@@ -61,7 +61,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --all-features --workspace --all-targets
+          args: --features=online-tests --workspace --all-targets
 
   test-stable:
     name: Test Stable
@@ -76,4 +76,4 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --all-features --workspace --all-targets
+          args: --features=online-tests --workspace --all-targets
