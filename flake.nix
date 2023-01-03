@@ -91,7 +91,7 @@
             fix-n-fmt
             setup-hooks
             cargo-udeps
-          ];
+          ] ++ lib.optionals stdenv.isDarwin [ pkgs.darwin.apple_sdk.frameworks.Security ];
         };
       });
 }
