@@ -91,7 +91,7 @@ impl TunnelConfig for HttpOptions {
         let http_endpoint = HttpEndpoint {
             proxy_proto: self.common_opts.proxy_proto,
             hostname: self.domain.clone().unwrap_or_default(),
-            compression: self.compression.then_some(Compression),
+            compression: self.compression.then_some(Compression {}),
             circuit_breaker: (self.circuit_breaker != 0f64).then_some(CircuitBreaker {
                 error_threshold: self.circuit_breaker,
             }),
@@ -112,7 +112,7 @@ impl TunnelConfig for HttpOptions {
                 .then_some(self.response_headers.clone().into()),
             websocket_tcp_converter: self
                 .websocket_tcp_conversion
-                .then_some(WebsocketTcpConverter),
+                .then_some(WebsocketTcpConverter {}),
             ..Default::default()
         };
 

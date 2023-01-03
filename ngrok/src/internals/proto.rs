@@ -330,7 +330,7 @@ rpc_req!(Update, UpdateResp, UPDATE_REQ);
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Default)]
 #[serde(rename_all = "PascalCase")]
-pub struct SrvInfo;
+pub struct SrvInfo {}
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
@@ -457,96 +457,120 @@ pub struct HttpEndpoint {
     pub webhook_verification: Option<WebhookVerification>,
     #[serde(rename = "MutualTLSCA")]
     pub mutual_tls_ca: Option<MutualTls>,
+    #[serde(default)]
     pub request_headers: Option<Headers>,
+    #[serde(default)]
     pub response_headers: Option<Headers>,
     #[serde(rename = "WebsocketTCPConverter")]
     pub websocket_tcp_converter: Option<WebsocketTcpConverter>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct Compression;
+pub struct Compression {}
+
+fn is_default<T>(v: &T) -> bool
+where
+    T: PartialEq<T> + Default,
+{
+    T::default() == *v
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
 pub struct CircuitBreaker {
+    #[serde(default, skip_serializing_if = "is_default")]
     pub error_threshold: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
 pub struct BasicAuth {
+    #[serde(default, skip_serializing_if = "is_default")]
     pub credentials: Vec<BasicAuthCredential>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct BasicAuthCredential {
     pub username: String,
+    #[serde(default, skip_serializing_if = "is_default")]
     pub cleartext_password: String,
+    #[serde(default, skip_serializing_if = "is_default")]
     #[serde(with = "base64bytes")]
     pub hashed_password: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
 pub struct IpRestriction {
+    #[serde(default, skip_serializing_if = "is_default")]
     pub allow_cidrs: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_default")]
     pub deny_cidrs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
 pub struct Oauth {
     pub provider: String,
+    #[serde(default, skip_serializing_if = "is_default")]
     pub client_id: String,
+    #[serde(default, skip_serializing_if = "is_default")]
     pub client_secret: String,
+    #[serde(default, skip_serializing_if = "is_default")]
     #[serde(with = "base64bytes")]
     pub sealed_client_secret: Vec<u8>,
+    #[serde(default, skip_serializing_if = "is_default")]
     pub allow_emails: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_default")]
     pub allow_domains: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_default")]
     pub scopes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
 pub struct Oidc {
     pub issuer_url: String,
+    #[serde(default, skip_serializing_if = "is_default")]
     pub client_id: String,
+    #[serde(default, skip_serializing_if = "is_default")]
     pub client_secret: String,
+    #[serde(default, skip_serializing_if = "is_default")]
     #[serde(with = "base64bytes")]
     pub sealed_client_secret: Vec<u8>,
+    #[serde(default, skip_serializing_if = "is_default")]
     pub allow_emails: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_default")]
     pub allow_domains: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_default")]
     pub scopes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
 pub struct WebhookVerification {
     pub provider: String,
+    #[serde(default, skip_serializing_if = "is_default")]
     pub secret: String,
+    #[serde(default, skip_serializing_if = "is_default")]
     #[serde(with = "base64bytes")]
     pub sealed_secret: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
 pub struct MutualTls {
+    #[serde(default, skip_serializing_if = "is_default")]
     #[serde(with = "base64bytes")]
     pub mutual_tls_ca: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
+#[serde(rename_all = "camelCase")]
 pub struct Headers {
+    #[serde(default, skip_serializing_if = "is_default")]
     pub add: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_default")]
     pub remove: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_default")]
     pub add_parsed: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
-pub struct WebsocketTcpConverter;
+pub struct WebsocketTcpConverter {}
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
@@ -571,13 +595,12 @@ pub struct TlsEndpoint {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
-#[serde(rename_all = "PascalCase")]
 pub struct TlsTermination {
-    #[serde(with = "base64bytes")]
+    #[serde(with = "base64bytes", skip_serializing_if = "is_default")]
     pub cert: Vec<u8>,
-    #[serde(with = "base64bytes")]
+    #[serde(with = "base64bytes", skip_serializing_if = "is_default")]
     pub key: Vec<u8>,
-    #[serde(with = "base64bytes")]
+    #[serde(with = "base64bytes", skip_serializing_if = "is_default")]
     pub sealed_key: Vec<u8>,
 }
 
@@ -598,14 +621,12 @@ mod base64bytes {
     };
 
     pub fn serialize<S: Serializer>(v: &Vec<u8>, s: S) -> Result<S::Ok, S::Error> {
-        let base64 = base64::encode(v);
-        String::serialize(&base64, s)
+        base64::encode(v).serialize(s)
     }
 
     pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
-        let base64 = String::deserialize(d)?;
-        let bytes = base64::decode(base64.as_bytes()).map_err(serde::de::Error::custom)?;
-        Ok(bytes)
+        let s = String::deserialize(d)?;
+        base64::decode(s.as_bytes()).map_err(serde::de::Error::custom)
     }
 }
 
