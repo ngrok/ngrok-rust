@@ -3,15 +3,24 @@ use std::{
     net::SocketAddr,
 };
 
-use anyhow::Error;
+use anyhow::{
+    anyhow,
+    Error,
+};
 use axum::{
     routing::get,
     Router,
 };
 use flate2::read::GzDecoder;
 use futures::channel::oneshot;
-use hyper::header;
-use tokio::test;
+use hyper::{
+    header,
+    HeaderMap,
+};
+use tokio::{
+    sync::mpsc,
+    test,
+};
 
 use crate::{
     config::{
@@ -132,7 +141,7 @@ async fn http() -> Result<(), Error> {
     Ok(())
 }
 
-#[cfg_attr(not(feature = "authenticated-tests"), ignore)]
+#[cfg_attr(not(feature = "paid-tests"), ignore)]
 #[test]
 async fn http_compression() -> Result<(), Error> {
     let tun = serve_http(defaults, |tun| tun.compression(), hello_router()).await?;
@@ -157,6 +166,75 @@ async fn http_compression() -> Result<(), Error> {
     decoder.read_to_string(&mut body_string).unwrap();
 
     assert_eq!(body_string, "Hello, world!");
+
+    Ok(())
+}
+
+#[cfg_attr(not(feature = "paid-tests"), ignore)]
+#[test]
+async fn http_headers() -> Result<(), Error> {
+    let (tx, mut rx) = mpsc::channel::<Error>(16);
+    // For some reason, the hyper machinery keeps a clone of the `tx`, which
+    // causes it to never look closed, even when we drop the tunnel guard, which
+    // shuts down the hyper server. Maybe a leaked task? Work around it by
+    // keeping only one RAII tx here, and only give the handler a weak ref to
+    // it.
+    let weak = tx.downgrade();
+    let tun = serve_http(
+        defaults,
+        |tun| {
+            tun.request_header("foo", "bar")
+                .remove_request_header("baz")
+                .response_header("spam", "eggs")
+                .remove_response_header("python")
+        },
+        Router::new().route(
+            "/",
+            get(move |headers: HeaderMap| async move {
+                let tx = weak
+                    .upgrade()
+                    .expect("no more requests after server shutdown");
+
+                if let Some(bar) = headers.get("foo") {
+                    if bar != "bar" {
+                        let _ = tx
+                            .send(anyhow!(
+                                "unexpected value for 'foo' request header: {:?}",
+                                bar
+                            ))
+                            .await;
+                    }
+                } else {
+                    let _ = tx.send(anyhow!("missing 'foo' request header")).await;
+                }
+                if headers.get("baz").is_some() {
+                    let _ = tx.send(anyhow!("got 'baz' request header")).await;
+                }
+
+                ([("python", "lolnope")], "Hello, world!")
+            }),
+        ),
+    )
+    .await?;
+    let url = &tun.url;
+
+    let client = reqwest::Client::new();
+    let resp = client.get(url).header("baz", "bad header").send().await?;
+
+    assert_eq!(
+        resp.headers()
+            .get("spam")
+            .expect("'spam' header should exist"),
+        "eggs"
+    );
+    assert!(resp.headers().get("python").is_none(),);
+
+    drop(tun);
+    drop(tx);
+
+    if let Some(err) = rx.recv().await {
+        return Err(err);
+    }
 
     Ok(())
 }
