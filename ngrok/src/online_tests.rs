@@ -17,14 +17,21 @@ use hyper::{
     header,
     HeaderMap,
 };
+use rand::{
+    distributions::Alphanumeric,
+    thread_rng,
+    Rng,
+};
 use tokio::{
     sync::mpsc,
     test,
 };
+use tracing_test::traced_test;
 
 use crate::{
     config::{
         HttpTunnelBuilder,
+        OauthOptions,
         Scheme,
     },
     prelude::*,
@@ -111,6 +118,12 @@ fn hello_router() -> Router {
     Router::new().route("/", get(|| async { "Hello, world!" }))
 }
 
+async fn check_body(url: impl AsRef<str>, expected: impl AsRef<str>) -> Result<(), Error> {
+    let body: String = reqwest::get(url.as_ref()).await?.text().await?;
+    assert_eq!(body, expected.as_ref());
+    Ok(())
+}
+
 #[cfg_attr(not(feature = "online-tests"), ignore)]
 #[test]
 async fn https() -> Result<(), Error> {
@@ -119,9 +132,7 @@ async fn https() -> Result<(), Error> {
 
     assert!(url.starts_with("https://"));
 
-    let body: String = reqwest::get(url).await?.text().await?;
-
-    assert_eq!(body, "Hello, world!");
+    check_body(url, "Hello, world!").await?;
 
     Ok(())
 }
@@ -134,9 +145,7 @@ async fn http() -> Result<(), Error> {
 
     assert!(url.starts_with("http://"));
 
-    let body: String = reqwest::get(url).await?.text().await?;
-
-    assert_eq!(body, "Hello, world!");
+    check_body(url, "Hello, world!").await?;
 
     Ok(())
 }
@@ -180,6 +189,29 @@ async fn http_headers() -> Result<(), Error> {
     // keeping only one RAII tx here, and only give the handler a weak ref to
     // it.
     let weak = tx.downgrade();
+    let handler = move |headers: HeaderMap| async move {
+        let tx = weak
+            .upgrade()
+            .expect("no more requests after server shutdown");
+
+        if let Some(bar) = headers.get("foo") {
+            if bar != "bar" {
+                let _ = tx
+                    .send(anyhow!(
+                        "unexpected value for 'foo' request header: {:?}",
+                        bar
+                    ))
+                    .await;
+            }
+        } else {
+            let _ = tx.send(anyhow!("missing 'foo' request header")).await;
+        }
+        if headers.get("baz").is_some() {
+            let _ = tx.send(anyhow!("got 'baz' request header")).await;
+        }
+
+        ([("python", "lolnope")], "Hello, world!")
+    };
     let tun = serve_http(
         defaults,
         |tun| {
@@ -188,32 +220,7 @@ async fn http_headers() -> Result<(), Error> {
                 .response_header("spam", "eggs")
                 .remove_response_header("python")
         },
-        Router::new().route(
-            "/",
-            get(move |headers: HeaderMap| async move {
-                let tx = weak
-                    .upgrade()
-                    .expect("no more requests after server shutdown");
-
-                if let Some(bar) = headers.get("foo") {
-                    if bar != "bar" {
-                        let _ = tx
-                            .send(anyhow!(
-                                "unexpected value for 'foo' request header: {:?}",
-                                bar
-                            ))
-                            .await;
-                    }
-                } else {
-                    let _ = tx.send(anyhow!("missing 'foo' request header")).await;
-                }
-                if headers.get("baz").is_some() {
-                    let _ = tx.send(anyhow!("got 'baz' request header")).await;
-                }
-
-                ([("python", "lolnope")], "Hello, world!")
-            }),
-        ),
+        Router::new().route("/", get(handler)),
     )
     .await?;
     let url = &tun.url;
@@ -235,6 +242,74 @@ async fn http_headers() -> Result<(), Error> {
     if let Some(err) = rx.recv().await {
         return Err(err);
     }
+
+    Ok(())
+}
+
+#[traced_test]
+#[cfg_attr(not(feature = "paid-tests"), ignore)]
+#[test]
+async fn basic_auth() -> Result<(), Error> {
+    let tun = serve_http(
+        defaults,
+        |tun| tun.basic_auth("user", "foobarbaz"),
+        hello_router(),
+    )
+    .await?;
+
+    let client = reqwest::Client::new();
+    let resp = client.get(&tun.url).send().await?;
+    assert_eq!(resp.status(), hyper::StatusCode::UNAUTHORIZED);
+
+    let resp = client
+        .get(&tun.url)
+        .basic_auth("user", "foobarbaz".into())
+        .send()
+        .await?;
+    assert_eq!(resp.status(), hyper::StatusCode::OK);
+    assert_eq!(resp.text().await?, "Hello, world!");
+
+    Ok(())
+}
+
+#[traced_test]
+#[cfg_attr(not(feature = "paid-tests"), ignore)]
+#[test]
+async fn oauth() -> Result<(), Error> {
+    let tun = serve_http(
+        defaults,
+        |tun| tun.oauth(OauthOptions::new("google")),
+        hello_router(),
+    )
+    .await?;
+
+    let client = reqwest::Client::new();
+    let resp = client.get(&tun.url).send().await?;
+    assert_eq!(resp.status(), hyper::StatusCode::OK);
+    let body = resp.text().await?;
+    assert_ne!(body, "Hello, world!");
+    assert!(body.contains("google-site-verification"));
+
+    Ok(())
+}
+
+#[traced_test]
+#[cfg_attr(not(feature = "paid-tests"), ignore)]
+#[test]
+async fn custom_domain() -> Result<(), Error> {
+    let mut rng = thread_rng();
+    let subdomain = (0..7)
+        .map(|_| rng.sample(Alphanumeric) as char)
+        .collect::<String>()
+        .to_lowercase();
+    let _tun = serve_http(
+        defaults,
+        |tun| tun.domain(format!("{subdomain}.ngrok.io")),
+        hello_router(),
+    )
+    .await?;
+
+    check_body(format!("https://{subdomain}.ngrok.io"), "Hello, world!").await?;
 
     Ok(())
 }
