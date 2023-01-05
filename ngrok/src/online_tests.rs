@@ -533,3 +533,24 @@ async fn websocket_conversion() -> Result<(), Error> {
 
     Ok(())
 }
+
+#[traced_test]
+#[test]
+#[cfg_attr(not(feature = "authenticated-tests"), ignore)]
+async fn tcp() -> Result<(), Error> {
+    let tun = Session::builder()
+        .authtoken_from_env()
+        .connect()
+        .await?
+        .tcp_endpoint()
+        .listen()
+        .await?;
+
+    let tun = start_http_server(tun, hello_router());
+
+    let url = tun.url.replacen("tcp", "http", 1);
+
+    check_body(url, "Hello, world!").await?;
+
+    Ok(())
+}
