@@ -1,13 +1,17 @@
+#[cfg(feature = "hyper")]
 use std::{
     convert::Infallible,
     fmt,
-    io::{self,},
+};
+use std::{
+    io,
     net::SocketAddr,
     path::Path,
 };
 
 use async_trait::async_trait;
 use futures::stream::TryStreamExt;
+#[cfg(feature = "hyper")]
 use hyper::{
     server::conn::Http,
     service::service_fn,
@@ -58,6 +62,7 @@ pub trait TunnelExt: Tunnel {
     /// Forward incoming tunnel connections to the provided TCP address.
     ///
     /// Provides slightly nicer errors when the backend is unavailable.
+    #[cfg(feature = "hyper")]
     #[instrument(level = "debug", skip_all, fields(local_addrs))]
     async fn forward_http(&mut self, addr: impl ToSocketAddrs + Send) -> Result<(), io::Error> {
         forward_conns(self, addr, |e, c| drop(serve_gateway_error(e, c))).await
@@ -227,6 +232,7 @@ where
     Ok(true)
 }
 
+#[cfg(feature = "hyper")]
 #[allow(dead_code)]
 fn serve_gateway_error(
     err: impl fmt::Display + Send + 'static,
