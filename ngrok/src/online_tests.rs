@@ -1,6 +1,7 @@
 use std::{
     io::prelude::*,
     net::SocketAddr,
+    str::FromStr,
     sync::{
         atomic::{
             AtomicUsize,
@@ -21,12 +22,13 @@ use axum::{
 use flate2::read::GzDecoder;
 use futures::{
     channel::oneshot,
-    TryStreamExt,
+    prelude::*,
 };
 use hyper::{
     header,
     HeaderMap,
     StatusCode,
+    Uri,
 };
 use paste::paste;
 use rand::{
@@ -35,9 +37,16 @@ use rand::{
     Rng,
 };
 use tokio::{
-    io::AsyncReadExt,
+    io::{
+        AsyncReadExt,
+        AsyncWriteExt,
+    },
     sync::mpsc,
     test,
+};
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::Message,
 };
 use tracing_test::traced_test;
 
@@ -376,17 +385,17 @@ where
 }
 
 macro_rules! proxy_proto_test {
-    (genone: $ept:ident, $ivers:ident, $tun:ident, $req:expr, $cont:expr) => {
+    (genone: $ept:ident, $vers:ident, $tun:ident, $req:expr, $cont:expr) => {
         paste! {
             #[traced_test]
             #[cfg_attr(not(feature = "paid-tests"), ignore)]
             #[test]
             #[allow(non_snake_case)]
-            async fn [<proxy_proto_ $ept _ $ivers>]() -> Result<(), Error> {
+            async fn [<proxy_proto_ $ept _ $vers>]() -> Result<(), Error> {
                 let sess = Session::builder().authtoken_from_env().connect().await?;
                 let mut $tun = sess
                     .[<$ept _endpoint>]()
-                    .proxy_proto(ProxyProto::$ivers).listen().await?;
+                    .proxy_proto(ProxyProto::$vers).listen().await?;
 
                 let req = $req;
                 tokio::spawn(req);
@@ -431,3 +440,96 @@ proxy_proto_test!(
         })
     ]
 );
+
+#[traced_test]
+#[test]
+#[cfg_attr(not(feature = "paid-tests"), ignore)]
+async fn http_ip_restriction() -> Result<(), Error> {
+    let tun = serve_http(
+        defaults,
+        |tun| {
+            tun.allow_cidr_string("127.0.0.1/32")
+                .deny_cidr_string("0.0.0.0/0")
+        },
+        hello_router(),
+    )
+    .await?;
+
+    let resp = reqwest::get(&tun.url).await?;
+
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    Ok(())
+}
+
+#[traced_test]
+#[test]
+#[cfg_attr(not(feature = "paid-tests"), ignore)]
+async fn tcp_ip_restriction() -> Result<(), Error> {
+    let tun = Session::builder()
+        .authtoken_from_env()
+        .connect()
+        .await?
+        .tcp_endpoint()
+        .allow_cidr_string("127.0.0.1/32")
+        .deny_cidr_string("0.0.0.0/0")
+        .listen()
+        .await?;
+
+    let tun = start_http_server(tun, hello_router());
+
+    let url = tun.url.replacen("tcp", "http", 1);
+
+    assert!(reqwest::get(&url).await.is_err());
+
+    Ok(())
+}
+
+#[traced_test]
+#[test]
+#[cfg_attr(not(feature = "paid-tests"), ignore)]
+async fn websocket_conversion() -> Result<(), Error> {
+    let mut tun = Session::builder()
+        .authtoken_from_env()
+        .connect()
+        .await?
+        .http_endpoint()
+        .websocket_tcp_conversion()
+        .listen()
+        .await?;
+
+    let url = Uri::from_str(&tun.url().replacen("https", "wss", 1))?;
+
+    tokio::spawn(async move {
+        while let Some(mut conn) = tun.try_next().await? {
+            conn.write_all("Hello, websockets!".as_bytes()).await?;
+        }
+        Result::<_, Error>::Ok(())
+    });
+
+    let mut wss = connect_async(url).await.expect("connect").0;
+
+    loop {
+        let msg = wss.try_next().await.expect("read").expect("message");
+
+        match msg {
+            Message::Binary(bs) => {
+                assert_eq!(String::from_utf8_lossy(&bs), "Hello, websockets!");
+                break;
+            }
+            Message::Text(t) => {
+                assert_eq!(t, "Hello, websockets!");
+                break;
+            }
+            Message::Ping(b) => {
+                wss.send(Message::Pong(b)).await?;
+            }
+            Message::Close(_) => {
+                anyhow::bail!("didn't get message before close");
+            }
+            _ => {}
+        }
+    }
+
+    Ok(())
+}
