@@ -179,12 +179,7 @@ impl RpcClient {
             .await
             .map_err(RpcError::Receive)?;
 
-        debug!(
-            resp_string = String::from_utf8_lossy(&buf).as_ref(),
-            "read rpc response"
-        );
-
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         struct ErrResp {
             #[serde(rename = "Error")]
             error: String,
@@ -195,9 +190,12 @@ impl RpcClient {
 
         if let Ok(err) = err_resp {
             if !err.error.is_empty() {
+                debug!(?err, "decoded rpc error response");
                 return Err(RpcError::Response(err.error));
             }
         }
+
+        debug!(resp = ?ok_resp, "decoded rpc response");
 
         Ok(ok_resp?)
     }

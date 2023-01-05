@@ -60,6 +60,7 @@ use crate::{
             AuthExtra,
             BindExtra,
             BindOpts,
+            SecretString,
         },
         raw_session::{
             AcceptError as RawAcceptError,
@@ -153,14 +154,14 @@ fn default_connect() -> ConnectCallback {
 /// The builder for an ngrok [Session].
 #[derive(Clone)]
 pub struct SessionBuilder {
-    authtoken: Option<String>,
+    authtoken: Option<SecretString>,
     metadata: Option<String>,
     heartbeat_interval: Option<Duration>,
     heartbeat_tolerance: Option<Duration>,
     server_addr: String,
     tls_config: rustls::ClientConfig,
     connect_callback: ConnectCallback,
-    cookie: Option<String>,
+    cookie: Option<SecretString>,
     id: Option<String>,
 }
 
@@ -244,14 +245,14 @@ impl Default for SessionBuilder {
 impl SessionBuilder {
     /// Authenticate the ngrok session with the given authtoken.
     pub fn authtoken(mut self, authtoken: impl Into<String>) -> Self {
-        self.authtoken = Some(authtoken.into());
+        self.authtoken = Some(authtoken.into().into());
         self
     }
 
     /// Authenticate using the authtoken in the `NGROK_AUTHTOKEN` environment
     /// variable.
     pub fn authtoken_from_env(mut self) -> Self {
-        self.authtoken = env::var("NGROK_AUTHTOKEN").ok();
+        self.authtoken = env::var("NGROK_AUTHTOKEN").ok().map(From::from);
         self
     }
 

@@ -71,7 +71,7 @@ impl TunnelConfig for TlsOptions {
             .zip(self.key_pem.as_ref())
             .map(|(c, k)| TlsTermination {
                 cert: c.to_vec(),
-                key: k.to_vec(),
+                key: k.to_vec().into(),
                 sealed_key: Vec::new(),
             });
 
@@ -188,7 +188,7 @@ mod test {
         assert_eq!(TEST_FORWARD, tunnel_cfg.forwards_to());
 
         let extra = tunnel_cfg.extra();
-        assert_eq!(String::default(), extra.token);
+        assert_eq!(String::default(), *extra.token);
         assert_eq!(METADATA, extra.metadata);
         assert_eq!(String::default(), extra.ip_policy_ref);
 
@@ -208,7 +208,7 @@ mod test {
 
             let tls_termination = endpoint.tls_termination.unwrap();
             assert_eq!(CERT, tls_termination.cert);
-            assert_eq!(KEY, tls_termination.key);
+            assert_eq!(KEY, *tls_termination.key);
             assert!(tls_termination.sealed_key.is_empty());
 
             let mutual_tls = endpoint.mutual_tls_at_edge.unwrap();

@@ -99,7 +99,7 @@ mod test {
         assert_eq!(FORWARDS_TO, tunnel_cfg.forwards_to());
 
         let extra = tunnel_cfg.extra();
-        assert_eq!(String::default(), extra.token);
+        assert_eq!(String::default(), *extra.token);
         assert_eq!(METADATA, extra.metadata);
         assert_eq!(String::default(), extra.ip_policy_ref);
 

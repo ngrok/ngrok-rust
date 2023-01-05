@@ -1,6 +1,11 @@
 use std::{
     collections::HashMap,
+    fmt,
     io,
+    ops::{
+        Deref,
+        DerefMut,
+    },
     str::FromStr,
     string::FromUtf8Error,
 };
@@ -41,18 +46,100 @@ pub struct Auth {
     pub extra: AuthExtra,     // clients may add whatever data the like to auth messages
 }
 
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize, Default)]
+#[serde(transparent)]
+pub struct SecretBytes(#[serde(with = "base64bytes")] Vec<u8>);
+
+impl Deref for SecretBytes {
+    type Target = Vec<u8>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for SecretBytes {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> From<&'a [u8]> for SecretBytes {
+    fn from(other: &'a [u8]) -> Self {
+        SecretBytes(other.into())
+    }
+}
+
+impl From<Vec<u8>> for SecretBytes {
+    fn from(other: Vec<u8>) -> Self {
+        SecretBytes(other)
+    }
+}
+
+impl fmt::Display for SecretBytes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "********")
+    }
+}
+
+impl fmt::Debug for SecretBytes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "********")
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize, Default)]
+#[serde(transparent)]
+pub struct SecretString(String);
+
+impl Deref for SecretString {
+    type Target = String;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for SecretString {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> From<&'a str> for SecretString {
+    fn from(other: &'a str) -> Self {
+        SecretString(other.into())
+    }
+}
+
+impl From<String> for SecretString {
+    fn from(other: String) -> Self {
+        SecretString(other)
+    }
+}
+
+impl fmt::Display for SecretString {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "********")
+    }
+}
+
+impl fmt::Debug for SecretString {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "********")
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct AuthExtra {
     #[serde(rename = "OS")]
     pub os: String,
     pub arch: String,
-    pub auth_token: String,
+    pub auth_token: SecretString,
     pub version: String,
     pub hostname: String,
     pub user_agent: String,
     pub metadata: String,
-    pub cookie: String,
+    pub cookie: SecretString,
     pub heartbeat_interval: i64,
     pub heartbeat_tolerance: i64,
 
@@ -99,7 +186,7 @@ rpc_req!(Auth, AuthResp, AUTH_REQ);
 pub struct AuthRespExtra {
     pub version: Option<String>,
     pub region: Option<String>,
-    pub cookie: Option<String>,
+    pub cookie: Option<SecretString>,
     pub account_name: Option<String>,
     pub session_duration: Option<i64>,
     pub plan_name: Option<String>,
@@ -129,7 +216,7 @@ pub enum BindOpts {
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct BindExtra {
-    pub token: String,
+    pub token: SecretString,
     #[serde(rename = "IPPolicyRef")]
     pub ip_policy_ref: String,
     pub metadata: String,
@@ -151,7 +238,7 @@ pub struct BindResp<T> {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct BindRespExtra {
-    pub token: String,
+    pub token: SecretString,
 }
 
 rpc_req!(Bind<T>, BindResp<T>, BIND_REQ; T: std::fmt::Debug + Serialize + DeserializeOwned + Clone);
@@ -511,7 +598,7 @@ pub struct Oauth {
     #[serde(default, skip_serializing_if = "is_default")]
     pub client_id: String,
     #[serde(default, skip_serializing_if = "is_default")]
-    pub client_secret: String,
+    pub client_secret: SecretString,
     #[serde(default, skip_serializing_if = "is_default")]
     #[serde(with = "base64bytes")]
     pub sealed_client_secret: Vec<u8>,
@@ -529,7 +616,7 @@ pub struct Oidc {
     #[serde(default, skip_serializing_if = "is_default")]
     pub client_id: String,
     #[serde(default, skip_serializing_if = "is_default")]
-    pub client_secret: String,
+    pub client_secret: SecretString,
     #[serde(default, skip_serializing_if = "is_default")]
     #[serde(with = "base64bytes")]
     pub sealed_client_secret: Vec<u8>,
@@ -545,7 +632,7 @@ pub struct Oidc {
 pub struct WebhookVerification {
     pub provider: String,
     #[serde(default, skip_serializing_if = "is_default")]
-    pub secret: String,
+    pub secret: SecretString,
     #[serde(default, skip_serializing_if = "is_default")]
     #[serde(with = "base64bytes")]
     pub sealed_secret: Vec<u8>,
@@ -598,8 +685,8 @@ pub struct TlsEndpoint {
 pub struct TlsTermination {
     #[serde(with = "base64bytes", skip_serializing_if = "is_default")]
     pub cert: Vec<u8>,
-    #[serde(with = "base64bytes", skip_serializing_if = "is_default")]
-    pub key: Vec<u8>,
+    #[serde(skip_serializing_if = "is_default")]
+    pub key: SecretBytes,
     #[serde(with = "base64bytes", skip_serializing_if = "is_default")]
     pub sealed_key: Vec<u8>,
 }

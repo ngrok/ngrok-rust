@@ -263,7 +263,7 @@ impl HttpTunnelBuilder {
     ) -> Self {
         self.options.webhook_verification = Some(WebhookVerification {
             provider: provider.into(),
-            secret: secret.into(),
+            secret: secret.into().into(),
         });
         self
     }
@@ -333,7 +333,7 @@ mod test {
         assert_eq!(TEST_FORWARD, tunnel_cfg.forwards_to());
 
         let extra = tunnel_cfg.extra();
-        assert_eq!(String::default(), extra.token);
+        assert_eq!(String::default(), *extra.token);
         assert_eq!(METADATA, extra.metadata);
         assert_eq!(String::default(), extra.ip_policy_ref);
 
@@ -369,7 +369,7 @@ mod test {
 
             let webhook = endpoint.webhook_verification.unwrap();
             assert_eq!("twilio", webhook.provider);
-            assert_eq!("asdf", webhook.secret);
+            assert_eq!("asdf", *webhook.secret);
             assert!(webhook.sealed_secret.is_empty());
 
             let creds = endpoint.basic_auth.unwrap().credentials;
@@ -384,7 +384,7 @@ mod test {
             assert_eq!(["<domain>"].to_vec(), oauth.allow_domains);
             assert_eq!(["<scope>"].to_vec(), oauth.scopes);
             assert_eq!(String::default(), oauth.client_id);
-            assert_eq!(String::default(), oauth.client_secret);
+            assert_eq!(String::default(), *oauth.client_secret);
             assert!(oauth.sealed_client_secret.is_empty());
 
             let oidc = endpoint.oidc.unwrap();
@@ -393,7 +393,7 @@ mod test {
             assert_eq!(["<domain>"].to_vec(), oidc.allow_domains);
             assert_eq!(["<scope>"].to_vec(), oidc.scopes);
             assert_eq!("<id>", oidc.client_id);
-            assert_eq!("<secret>", oidc.client_secret);
+            assert_eq!("<secret>", *oidc.client_secret);
             assert!(oidc.sealed_client_secret.is_empty());
         }
 
