@@ -1,6 +1,13 @@
 use std::{
     io::prelude::*,
     net::SocketAddr,
+    sync::{
+        atomic::{
+            AtomicUsize,
+            Ordering,
+        },
+        Arc,
+    },
 };
 
 use anyhow::{
@@ -12,17 +19,23 @@ use axum::{
     Router,
 };
 use flate2::read::GzDecoder;
-use futures::channel::oneshot;
+use futures::{
+    channel::oneshot,
+    TryStreamExt,
+};
 use hyper::{
     header,
     HeaderMap,
+    StatusCode,
 };
+use paste::paste;
 use rand::{
     distributions::Alphanumeric,
     thread_rng,
     Rng,
 };
 use tokio::{
+    io::AsyncReadExt,
     sync::mpsc,
     test,
 };
@@ -32,6 +45,7 @@ use crate::{
     config::{
         HttpTunnelBuilder,
         OauthOptions,
+        ProxyProto,
         Scheme,
     },
     prelude::*,
@@ -98,6 +112,10 @@ async fn serve_http(
 
     let tun = build_tunnel(sess.http_endpoint()).listen().await?;
 
+    Ok(start_http_server(tun, router))
+}
+
+fn start_http_server(tun: impl UrlTunnel, router: Router) -> TunnelGuard {
     let url = tun.url().into();
 
     let (tx, rx) = oneshot::channel::<()>();
@@ -107,7 +125,7 @@ async fn serve_http(
             .serve(router.into_make_service_with_connect_info::<SocketAddr>()),
         rx,
     ));
-    Ok(TunnelGuard { tx: tx.into(), url })
+    TunnelGuard { tx: tx.into(), url }
 }
 
 fn defaults<T>(opts: T) -> T {
@@ -259,14 +277,14 @@ async fn basic_auth() -> Result<(), Error> {
 
     let client = reqwest::Client::new();
     let resp = client.get(&tun.url).send().await?;
-    assert_eq!(resp.status(), hyper::StatusCode::UNAUTHORIZED);
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
     let resp = client
         .get(&tun.url)
         .basic_auth("user", "foobarbaz".into())
         .send()
         .await?;
-    assert_eq!(resp.status(), hyper::StatusCode::OK);
+    assert_eq!(resp.status(), StatusCode::OK);
     assert_eq!(resp.text().await?, "Hello, world!");
 
     Ok(())
@@ -285,7 +303,7 @@ async fn oauth() -> Result<(), Error> {
 
     let client = reqwest::Client::new();
     let resp = client.get(&tun.url).send().await?;
-    assert_eq!(resp.status(), hyper::StatusCode::OK);
+    assert_eq!(resp.status(), StatusCode::OK);
     let body = resp.text().await?;
     assert_ne!(body, "Hello, world!");
     assert!(body.contains("google-site-verification"));
@@ -313,3 +331,103 @@ async fn custom_domain() -> Result<(), Error> {
 
     Ok(())
 }
+
+#[traced_test]
+#[cfg_attr(not(all(feature = "paid-tests", feature = "long-tests")), ignore)]
+#[test]
+async fn circuit_breaker() -> Result<(), Error> {
+    let ctr = Arc::new(AtomicUsize::new(0));
+    let tun = serve_http(
+        defaults,
+        |tun| tun.circuit_breaker(0.1),
+        Router::new().route(
+            "/",
+            get({
+                let ctr = ctr.clone();
+                move || {
+                    ctr.fetch_add(1, Ordering::SeqCst);
+                    async { StatusCode::INTERNAL_SERVER_ERROR }
+                }
+            }),
+        ),
+    )
+    .await?;
+
+    let mut last_status: Option<StatusCode> = None;
+    for _ in 0..50 {
+        let resp = reqwest::get(&tun.url).await?;
+        last_status = Some(resp.status());
+    }
+
+    assert!(ctr.load(Ordering::SeqCst) < 50);
+    assert_eq!(last_status, Some(StatusCode::SERVICE_UNAVAILABLE));
+    Ok(())
+}
+
+// Shamelessly ripped from stackoverflow:
+// https://stackoverflow.com/questions/35901547/how-can-i-find-a-subsequence-in-a-u8-slice
+fn find_subsequence<T>(haystack: &[T], needle: &[T]) -> Option<usize>
+where
+    for<'a> &'a [T]: PartialEq,
+{
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
+
+macro_rules! proxy_proto_test {
+    (genone: $ept:ident, $ivers:ident, $tun:ident, $req:expr, $cont:expr) => {
+        paste! {
+            #[traced_test]
+            #[cfg_attr(not(feature = "paid-tests"), ignore)]
+            #[test]
+            #[allow(non_snake_case)]
+            async fn [<proxy_proto_ $ept _ $ivers>]() -> Result<(), Error> {
+                let sess = Session::builder().authtoken_from_env().connect().await?;
+                let mut $tun = sess
+                    .[<$ept _endpoint>]()
+                    .proxy_proto(ProxyProto::$ivers).listen().await?;
+
+                let req = $req;
+                tokio::spawn(req);
+
+
+                let mut buf = vec![0u8; 12];
+                let mut conn = $tun
+                    .try_next()
+                    .await?
+                    .ok_or_else(|| anyhow!("tunnel closed"))?;
+
+                conn.read_exact(&mut buf).await?;
+
+                assert!(find_subsequence(&buf, $cont).is_some());
+
+                Ok(())
+            }
+        }
+    };
+
+    ($vers:ident, $ex:expr, [$(($ept:ident, |$tun:ident| $req:expr)),*]) => {
+        $(
+            proxy_proto_test!(genone: $ept, $vers, $tun, $req, $ex);
+        )*
+    };
+
+    ([$(($vers:ident, $ex:expr)),*] $rest:tt) => {
+        $(
+            proxy_proto_test!($vers, $ex, $rest);
+        )*
+    };
+}
+
+proxy_proto_test!(
+    [(V1, &b"PROXY TCP4"[..]), (V2, &b"\x0D\x0A\x0D\x0A\x00\x0D\x0A\x51\x55\x49\x54\x0A"[..])]
+    [
+        (http, |tun| {
+            reqwest::get(tun.url().to_string())
+        }),
+        (tcp, |tun| {
+            reqwest::get(tun.url().to_string().replacen("tcp", "http", 1))
+        })
+    ]
+);
