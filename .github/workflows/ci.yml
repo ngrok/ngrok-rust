@@ -59,9 +59,11 @@ jobs:
       - run: direnv allow
       - run: direnv export gha >> "$GITHUB_ENV"
       - uses: actions-rs/cargo@v1
+        env:
+          NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
         with:
           command: test
-          args: --features=online-tests --workspace --all-targets
+          args: --features=paid-tests,long-tests --workspace --all-targets
 
   test-stable:
     name: Test Stable
@@ -74,6 +76,8 @@ jobs:
           toolchain: stable
           override: true
       - uses: actions-rs/cargo@v1
+        env:
+          NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
         with:
           command: test
-          args: --features=online-tests --workspace --all-targets
+          args: --features=paid-tests,long-tests --workspace --all-targets
