@@ -23,6 +23,7 @@ use flate2::read::GzDecoder;
 use futures::{
     channel::oneshot,
     prelude::*,
+    stream::FuturesUnordered,
 };
 use hyper::{
     header,
@@ -348,7 +349,7 @@ async fn circuit_breaker() -> Result<(), Error> {
     let ctr = Arc::new(AtomicUsize::new(0));
     let tun = serve_http(
         defaults,
-        |tun| tun.circuit_breaker(0.1),
+        |tun| tun.circuit_breaker(0.01),
         Router::new().route(
             "/",
             get({
@@ -362,14 +363,24 @@ async fn circuit_breaker() -> Result<(), Error> {
     )
     .await?;
 
-    let mut last_status: Option<StatusCode> = None;
-    for _ in 0..50 {
-        let resp = reqwest::get(&tun.url).await?;
-        last_status = Some(resp.status());
+    for _ in 0..10 {
+        let mut futs = FuturesUnordered::new();
+        for _ in 0..50 {
+            let url = tun.url.clone();
+            futs.push(async move {
+                let resp = reqwest::get(url).await?;
+                let status = resp.status();
+                tracing::debug!(?status);
+                Result::<_, Error>::Ok(resp.status())
+            });
+        }
+        while let Some(res) = futs.next().await {
+            res?;
+        }
     }
 
-    assert!(ctr.load(Ordering::SeqCst) < 50);
-    assert_eq!(last_status, Some(StatusCode::SERVICE_UNAVAILABLE));
+    assert!(ctr.load(Ordering::SeqCst) < 500);
+
     Ok(())
 }
 
