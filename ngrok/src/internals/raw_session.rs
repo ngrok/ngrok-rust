@@ -21,6 +21,7 @@ use muxado::{
     Error as MuxadoError,
     SessionBuilder,
 };
+use serde::Deserialize;
 use thiserror::Error;
 use tokio::io::{
     AsyncRead,
@@ -54,10 +55,7 @@ use super::{
         UPDATE_REQ,
         VERSION,
     },
-    rpc::{
-        RpcRequest,
-        RpcResult,
-    },
+    rpc::RpcRequest,
 };
 
 /// Errors arising from tunneling protocol RPC calls.
@@ -181,16 +179,25 @@ impl RpcClient {
             .await
             .map_err(RpcError::Receive)?;
 
-        debug!(
-            resp_string = String::from_utf8_lossy(&buf).as_ref(),
-            "read rpc response"
-        );
+        #[derive(Debug, Deserialize)]
+        struct ErrResp {
+            #[serde(rename = "Error")]
+            error: String,
+        }
 
-        let resp: RpcResult<R::Response> = serde_json::from_slice(&buf)?;
+        let ok_resp = serde_json::from_slice::<R::Response>(&buf);
+        let err_resp = serde_json::from_slice::<ErrResp>(&buf);
 
-        debug!(?resp, "decoded rpc response");
+        if let Ok(err) = err_resp {
+            if !err.error.is_empty() {
+                debug!(?err, "decoded rpc error response");
+                return Err(RpcError::Response(err.error));
+            }
+        }
 
-        resp.into()
+        debug!(resp = ?ok_resp, "decoded rpc response");
+
+        Ok(ok_resp?)
     }
 
     #[instrument(level = "debug", skip(self))]

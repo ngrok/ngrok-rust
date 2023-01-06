@@ -1,11 +1,14 @@
-use crate::internals::proto::Oidc;
+use crate::internals::proto::{
+    Oidc,
+    SecretString,
+};
 
 /// Oidc Options configuration
 #[derive(Clone, Default)]
 pub struct OidcOptions {
     issuer_url: String,
     client_id: String,
-    client_secret: String,
+    client_secret: SecretString,
     allow_emails: Vec<String>,
     allow_domains: Vec<String>,
     scopes: Vec<String>,
@@ -21,7 +24,7 @@ impl OidcOptions {
         OidcOptions {
             issuer_url: issuer_url.into(),
             client_id: client_id.into(),
-            client_secret: client_secret.into(),
+            client_secret: client_secret.into().into(),
             ..Default::default()
         }
     }
