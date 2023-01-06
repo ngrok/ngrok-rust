@@ -22,9 +22,14 @@
 
 **Note: This is alpha-quality software. Interfaces may change without warning.**
 
-ngrok is a globally distributed reverse proxy commonly used for quickly getting a public URL to a service running inside a private network, such as on your local laptop. The ngrok agent is usually deployed inside a private network and is used to communicate with the ngrok cloud service.
+ngrok is a globally distributed reverse proxy commonly used for quickly getting
+a public URL to a service running inside a private network, such as on your
+local laptop. The ngrok agent is usually deployed inside a private network and
+is used to communicate with the ngrok cloud service.
 
-This is the ngrok agent in library form, suitable for integrating directly into Rust applications. This allows you to quickly build ngrok into your application with no separate process to manage.
+This is the ngrok agent in library form, suitable for integrating directly into
+Rust applications. This allows you to quickly build ngrok into your application
+with no separate process to manage.
 
 If you're looking for the agent wrapper, it's over
 [here](https://github.com/nkconnor/ngrok). See [UPGRADING.md](./UPGRADING.md)
