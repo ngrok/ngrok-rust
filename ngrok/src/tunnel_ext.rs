@@ -1,3 +1,5 @@
+#[cfg(not(target_os = "windows"))]
+use std::path::Path;
 #[cfg(feature = "hyper")]
 use std::{
     convert::Infallible,
@@ -6,7 +8,6 @@ use std::{
 use std::{
     io,
     net::SocketAddr,
-    path::Path,
 };
 
 use async_trait::async_trait;
@@ -19,6 +20,8 @@ use hyper::{
     Response,
     StatusCode,
 };
+#[cfg(not(target_os = "windows"))]
+use tokio::net::UnixStream;
 use tokio::{
     io::{
         AsyncRead,
@@ -29,7 +32,6 @@ use tokio::{
     net::{
         TcpStream,
         ToSocketAddrs,
-        UnixStream,
     },
     task::JoinHandle,
 };
@@ -69,6 +71,7 @@ pub trait TunnelExt: Tunnel {
     }
 
     /// Forward incoming tunnel connections to the provided Unix socket path.
+    #[cfg(not(target_os = "windows"))]
     #[instrument(level = "debug", skip_all, fields(path))]
     async fn forward_unix(&mut self, addr: String) -> Result<(), io::Error> {
         forward_unix_conns(self, addr, |_, _| {}).await
@@ -95,6 +98,7 @@ where
     Ok(())
 }
 
+#[cfg(not(target_os = "windows"))]
 async fn forward_unix_conns<T, F>(
     this: &mut T,
     addr: String,
@@ -193,6 +197,7 @@ where
     Ok(true)
 }
 
+#[cfg(not(target_os = "windows"))]
 #[instrument(level = "debug", skip_all, fields(remote_addr, local_addr))]
 async fn handle_one_unix<T, F>(this: &mut T, addr: &Path, on_error: F) -> Result<bool, io::Error>
 where
