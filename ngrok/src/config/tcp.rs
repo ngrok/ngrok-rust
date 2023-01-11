@@ -1,6 +1,11 @@
 use std::collections::HashMap;
 
-use super::common::ProxyProto;
+use async_trait::async_trait;
+
+use super::{
+    common::ProxyProto,
+    TunnelBuilder,
+};
 use crate::{
     config::common::{
         CommonOpts,
@@ -9,20 +14,22 @@ use crate::{
     },
     internals::proto::{
         self,
-        gen::TcpMiddleware,
         BindExtra,
         BindOpts,
     },
+    session::RpcError,
+    tunnel::TcpTunnel,
+    Session,
 };
 
 /// The options for a TCP edge.
-#[derive(Default)]
-pub struct TCPEndpoint {
+#[derive(Default, Clone)]
+struct TcpOptions {
     pub(crate) common_opts: CommonOpts,
     pub(crate) remote_addr: Option<String>,
 }
 
-impl TunnelConfig for TCPEndpoint {
+impl TunnelConfig for TcpOptions {
     fn forwards_to(&self) -> String {
         self.common_opts
             .forwards_to
@@ -48,9 +55,7 @@ impl TunnelConfig for TCPEndpoint {
         }
         tcp_endpoint.proxy_proto = self.common_opts.proxy_proto;
 
-        tcp_endpoint.middleware = TcpMiddleware {
-            ip_restriction: self.common_opts.ip_restriction(),
-        };
+        tcp_endpoint.ip_restriction = self.common_opts.ip_restriction();
 
         Some(BindOpts::Tcp(tcp_endpoint))
     }
@@ -59,39 +64,44 @@ impl TunnelConfig for TCPEndpoint {
     }
 }
 
+impl_builder! {
+    /// A builder for a tunnel backing a TCP endpoint.
+    TcpTunnelBuilder, TcpOptions, TcpTunnel
+}
+
 /// The options for a TCP edge.
-impl TCPEndpoint {
+impl TcpTunnelBuilder {
     /// Restriction placed on the origin of incoming connections to the edge to only allow these CIDR ranges.
     /// Call multiple times to add additional CIDR ranges.
-    pub fn with_allow_cidr_string(&mut self, cidr: impl Into<String>) -> &mut Self {
-        self.common_opts.cidr_restrictions.allow(cidr);
+    pub fn allow_cidr_string(mut self, cidr: impl Into<String>) -> Self {
+        self.options.common_opts.cidr_restrictions.allow(cidr);
         self
     }
     /// Restriction placed on the origin of incoming connections to the edge to deny these CIDR ranges.
     /// Call multiple times to add additional CIDR ranges.
-    pub fn with_deny_cidr_string(&mut self, cidr: impl Into<String>) -> &mut Self {
-        self.common_opts.cidr_restrictions.deny(cidr);
+    pub fn deny_cidr_string(mut self, cidr: impl Into<String>) -> Self {
+        self.options.common_opts.cidr_restrictions.deny(cidr);
         self
     }
     /// The version of PROXY protocol to use with this tunnel, None if not using.
-    pub fn with_proxy_proto(&mut self, proxy_proto: ProxyProto) -> &mut Self {
-        self.common_opts.proxy_proto = proxy_proto;
+    pub fn proxy_proto(mut self, proxy_proto: ProxyProto) -> Self {
+        self.options.common_opts.proxy_proto = proxy_proto;
         self
     }
     /// Tunnel-specific opaque metadata. Viewable via the API.
-    pub fn with_metadata(&mut self, metadata: impl Into<String>) -> &mut Self {
-        self.common_opts.metadata = Some(metadata.into());
+    pub fn metadata(mut self, metadata: impl Into<String>) -> Self {
+        self.options.common_opts.metadata = Some(metadata.into());
         self
     }
     /// Tunnel backend metadata. Viewable via the dashboard and API, but has no
     /// bearing on tunnel behavior.
-    pub fn with_forwards_to(&mut self, forwards_to: impl Into<String>) -> &mut Self {
-        self.common_opts.forwards_to = Some(forwards_to.into());
+    pub fn forwards_to(mut self, forwards_to: impl Into<String>) -> Self {
+        self.options.common_opts.forwards_to = Some(forwards_to.into());
         self
     }
     /// The TCP address to request for this edge.
-    pub fn with_remote_addr(&mut self, remote_addr: impl Into<String>) -> &mut Self {
-        self.remote_addr = Some(remote_addr.into());
+    pub fn remote_addr(mut self, remote_addr: impl Into<String>) -> Self {
+        self.options.remote_addr = Some(remote_addr.into());
         self
     }
 }
@@ -111,13 +121,17 @@ mod test {
         // pass to a function accepting the trait to avoid
         // "creates a temporary which is freed while still in use"
         tunnel_test(
-            TCPEndpoint::default()
-                .with_allow_cidr_string(ALLOW_CIDR)
-                .with_deny_cidr_string(DENY_CIDR)
-                .with_proxy_proto(ProxyProto::V2)
-                .with_metadata(METADATA)
-                .with_remote_addr(REMOTE_ADDR)
-                .with_forwards_to(TEST_FORWARD),
+            TcpTunnelBuilder {
+                session: None,
+                options: Default::default(),
+            }
+            .allow_cidr_string(ALLOW_CIDR)
+            .deny_cidr_string(DENY_CIDR)
+            .proxy_proto(ProxyProto::V2)
+            .metadata(METADATA)
+            .remote_addr(REMOTE_ADDR)
+            .forwards_to(TEST_FORWARD)
+            .options,
         );
     }
 
@@ -128,7 +142,7 @@ mod test {
         assert_eq!(TEST_FORWARD, tunnel_cfg.forwards_to());
 
         let extra = tunnel_cfg.extra();
-        assert_eq!(String::default(), extra.token);
+        assert_eq!(String::default(), *extra.token);
         assert_eq!(METADATA, extra.metadata);
         assert_eq!(String::default(), extra.ip_policy_ref);
 
@@ -140,7 +154,7 @@ mod test {
             assert_eq!(REMOTE_ADDR, endpoint.addr);
             assert!(matches!(endpoint.proxy_proto, ProxyProto::V2 { .. }));
 
-            let ip_restriction = endpoint.middleware.ip_restriction.unwrap();
+            let ip_restriction = endpoint.ip_restriction.unwrap();
             assert_eq!(Vec::from([ALLOW_CIDR]), ip_restriction.allow_cidrs);
             assert_eq!(Vec::from([DENY_CIDR]), ip_restriction.deny_cidrs);
         }

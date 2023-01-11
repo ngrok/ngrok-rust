@@ -5,11 +5,7 @@ use axum::{
     routing::get,
     Router,
 };
-use ngrok::{
-    config::LabeledTunnel,
-    Session,
-    Tunnel,
-};
+use ngrok::prelude::*;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -34,21 +30,20 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn start_tunnel() -> anyhow::Result<Tunnel> {
-    let sess = Session::builder()
-        .with_authtoken_from_env()
+async fn start_tunnel() -> anyhow::Result<impl Tunnel> {
+    let sess = ngrok::Session::builder()
+        .authtoken_from_env()
         .connect()
         .await?;
 
     let tun = sess
-        .start_tunnel(
-            LabeledTunnel::default()
-                .with_label("edge", "edghts_<edge_id>")
-                .with_metadata("example tunnel metadata from rust"),
-        )
+        .labeled_tunnel()
+        .label("edge", "edghts_<edge_id>")
+        .metadata("example tunnel metadata from rust")
+        .listen()
         .await?;
 
-    println!("Tunnel started on URL: {:?}", tun.url());
+    println!("Labeled tunnel started!");
 
     Ok(tun)
 }

@@ -1,11 +1,14 @@
-use crate::internals::proto::gen::middleware_configuration::Oidc;
+use crate::internals::proto::{
+    Oidc,
+    SecretString,
+};
 
 /// Oidc Options configuration
 #[derive(Clone, Default)]
 pub struct OidcOptions {
     issuer_url: String,
     client_id: String,
-    client_secret: String,
+    client_secret: SecretString,
     allow_emails: Vec<String>,
     allow_domains: Vec<String>,
     scopes: Vec<String>,
@@ -21,23 +24,23 @@ impl OidcOptions {
         OidcOptions {
             issuer_url: issuer_url.into(),
             client_id: client_id.into(),
-            client_secret: client_secret.into(),
+            client_secret: client_secret.into().into(),
             ..Default::default()
         }
     }
 
     /// Allow the oidc user with the given email to access the tunnel.
-    pub fn with_allow_email(mut self, email: impl Into<String>) -> Self {
+    pub fn allow_email(mut self, email: impl Into<String>) -> Self {
         self.allow_emails.push(email.into());
         self
     }
     /// Allow the oidc user with the given email domain to access the tunnel.
-    pub fn with_allow_domain(mut self, domain: impl Into<String>) -> Self {
+    pub fn allow_domain(mut self, domain: impl Into<String>) -> Self {
         self.allow_domains.push(domain.into());
         self
     }
     /// Request the given scope from the oidc provider.
-    pub fn with_scope(mut self, scope: impl Into<String>) -> Self {
+    pub fn scope(mut self, scope: impl Into<String>) -> Self {
         self.scopes.push(scope.into());
         self
     }

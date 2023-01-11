@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    fmt::Debug,
     io,
     ops::{
         Deref,
@@ -20,12 +21,17 @@ use muxado::{
     Error as MuxadoError,
     SessionBuilder,
 };
+use serde::Deserialize;
 use thiserror::Error;
 use tokio::io::{
     AsyncRead,
     AsyncReadExt,
     AsyncWrite,
     AsyncWriteExt,
+};
+use tracing::{
+    debug,
+    instrument,
 };
 
 use super::{
@@ -49,31 +55,27 @@ use super::{
         UPDATE_REQ,
         VERSION,
     },
-    rpc::{
-        RemoteError,
-        RpcRequest,
-        RpcResult,
-    },
+    rpc::RpcRequest,
 };
 
+/// Errors arising from tunneling protocol RPC calls.
 #[derive(Error, Debug)]
 pub enum RpcError {
+    /// Failed to open a new stream to start the RPC call.
     #[error("failed to open muxado stream")]
     Open(#[from] MuxadoError),
-    #[error("error reading rpc response")]
-    Send(#[source] io::Error),
+    /// Failed to send the request over the stream.
     #[error("error sending rpc request")]
+    Send(#[source] io::Error),
+    /// Failed to read the RPC response from the stream.
+    #[error("error reading rpc response")]
     Receive(#[source] io::Error),
+    /// The RPC response was invalid.
     #[error("failed to deserialize rpc response")]
     InvalidResponse(#[from] serde_json::Error),
+    /// There was an error in the RPC response.
     #[error("rpc error response: {0}")]
     Response(String),
-}
-
-impl From<RemoteError> for RpcError {
-    fn from(other: RemoteError) -> Self {
-        Self::Response(other.error)
-    }
 }
 
 #[derive(Error, Debug)]
@@ -156,32 +158,52 @@ impl RawSession {
 }
 
 impl RpcClient {
+    #[instrument(level = "debug", skip(self))]
     async fn rpc<R: RpcRequest>(&mut self, req: R) -> Result<R::Response, RpcError> {
         let mut stream = self.open.open_typed(R::TYPE).await?;
-        let s = serde_json::to_vec(&req)
+        let s = serde_json::to_string(&req)
             // This should never happen, since we control the request types and
             // know that they will always serialize correctly. Just in case
             // though, call them "Send" errors.
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
             .map_err(RpcError::Send)?;
-        stream.write_all(&s).await.map_err(RpcError::Send)?;
+
+        stream
+            .write_all(s.as_bytes())
+            .await
+            .map_err(RpcError::Send)?;
+
         let mut buf = Vec::new();
         stream
             .read_to_end(&mut buf)
             .await
             .map_err(RpcError::Receive)?;
 
-        let resp: RpcResult<R::Response> = serde_json::from_slice(&buf)?;
-
-        match resp {
-            RpcResult::Ok(resp) => Ok(resp),
-            RpcResult::Err(e) => Err(e.into()),
+        #[derive(Debug, Deserialize)]
+        struct ErrResp {
+            #[serde(rename = "Error")]
+            error: String,
         }
+
+        let ok_resp = serde_json::from_slice::<R::Response>(&buf);
+        let err_resp = serde_json::from_slice::<ErrResp>(&buf);
+
+        if let Ok(err) = err_resp {
+            if !err.error.is_empty() {
+                debug!(?err, "decoded rpc error response");
+                return Err(RpcError::Response(err.error));
+            }
+        }
+
+        debug!(resp = ?ok_resp, "decoded rpc response");
+
+        Ok(ok_resp?)
     }
 
+    #[instrument(level = "debug", skip(self))]
     pub async fn auth(
         &mut self,
-        id: impl Into<String>,
+        id: impl Into<String> + Debug,
         extra: AuthExtra,
     ) -> Result<AuthResp, RpcError> {
         let id = id.into();
@@ -196,31 +218,56 @@ impl RpcClient {
         Ok(resp)
     }
 
+    #[instrument(level = "debug", skip(self))]
     pub async fn listen(
         &mut self,
-        protocol: impl Into<String>,
+        protocol: impl Into<String> + Debug,
         opts: BindOpts,
         extra: BindExtra,
-        id: impl Into<String>,
-        forwards_to: impl Into<String>,
-    ) -> Result<BindResp, RpcError> {
-        let req = Bind {
-            client_id: id.into(),
-            proto: protocol.into(),
-            forwards_to: forwards_to.into(),
-            opts,
-            extra,
-        };
+        id: impl Into<String> + Debug,
+        forwards_to: impl Into<String> + Debug,
+    ) -> Result<BindResp<BindOpts>, RpcError> {
+        // Sorry, this is awful. Serde untagged unions are pretty fraught and
+        // hard to debug, so we're using this macro to specialize this call
+        // based on the enum variant. It drops down to the type wrapped in the
+        // enum for the actual request/response, and then re-wraps it on the way
+        // back out in the same variant.
+        // It's probably an artifact of the go -> rust translation, and could be
+        // fixed with enough refactoring and rearchitecting. But it works well
+        // enough for now and is pretty localized.
+        macro_rules! match_variant {
+            ($v:expr, $($var:tt),*) => {
+                match opts {
+                    $(BindOpts::$var (opts) => {
+                        let req = Bind {
+                            client_id: id.into(),
+                            proto: protocol.into(),
+                            forwards_to: forwards_to.into(),
+                            opts,
+                            extra,
+                        };
 
-        self.rpc(req).await
+                        let resp = self.rpc(req).await?;
+                        BindResp {
+                            bind_opts: BindOpts::$var(resp.bind_opts),
+                            client_id: resp.client_id,
+                            url: resp.url,
+                            extra: resp.extra,
+                            proto: resp.proto,
+                        }
+                    })*
+                }
+            };
+        }
+        Ok(match_variant!(opts, Http, Tcp, Tls))
     }
 
-    #[allow(dead_code)]
+    #[instrument(level = "debug", skip(self))]
     pub async fn listen_label(
         &mut self,
         labels: HashMap<String, String>,
-        metadata: impl Into<String>,
-        forwards_to: impl Into<String>,
+        metadata: impl Into<String> + Debug,
+        forwards_to: impl Into<String> + Debug,
     ) -> Result<StartTunnelWithLabelResp, RpcError> {
         let req = StartTunnelWithLabel {
             labels,
@@ -231,7 +278,11 @@ impl RpcClient {
         self.rpc(req).await
     }
 
-    pub async fn unlisten(&mut self, id: impl Into<String>) -> Result<UnbindResp, RpcError> {
+    #[instrument(level = "debug", skip(self))]
+    pub async fn unlisten(
+        &mut self,
+        id: impl Into<String> + Debug,
+    ) -> Result<UnbindResp, RpcError> {
         self.rpc(Unbind {
             client_id: id.into(),
         })

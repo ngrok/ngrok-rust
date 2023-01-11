@@ -1,13 +1,21 @@
 use std::{
     collections::HashMap,
+    fmt,
     io,
+    ops::{
+        Deref,
+        DerefMut,
+    },
     str::FromStr,
     string::FromUtf8Error,
 };
 
 use muxado::typed::StreamType;
 use serde::{
-    de::Visitor,
+    de::{
+        DeserializeOwned,
+        Visitor,
+    },
     Deserialize,
     Serialize,
 };
@@ -17,16 +25,6 @@ use tokio::io::{
     AsyncReadExt,
 };
 use tracing::debug;
-
-pub mod gen {
-    include!(concat!(env!("OUT_DIR"), "/agent.rs"));
-}
-
-use gen::{
-    HttpMiddleware,
-    TcpMiddleware,
-    TlsMiddleware,
-};
 
 pub const AUTH_REQ: StreamType = StreamType::clamp(0);
 pub const BIND_REQ: StreamType = StreamType::clamp(1);
@@ -48,18 +46,100 @@ pub struct Auth {
     pub extra: AuthExtra,     // clients may add whatever data the like to auth messages
 }
 
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize, Default)]
+#[serde(transparent)]
+pub struct SecretBytes(#[serde(with = "base64bytes")] Vec<u8>);
+
+impl Deref for SecretBytes {
+    type Target = Vec<u8>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for SecretBytes {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> From<&'a [u8]> for SecretBytes {
+    fn from(other: &'a [u8]) -> Self {
+        SecretBytes(other.into())
+    }
+}
+
+impl From<Vec<u8>> for SecretBytes {
+    fn from(other: Vec<u8>) -> Self {
+        SecretBytes(other)
+    }
+}
+
+impl fmt::Display for SecretBytes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "********")
+    }
+}
+
+impl fmt::Debug for SecretBytes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "********")
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize, Default)]
+#[serde(transparent)]
+pub struct SecretString(String);
+
+impl Deref for SecretString {
+    type Target = String;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for SecretString {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> From<&'a str> for SecretString {
+    fn from(other: &'a str) -> Self {
+        SecretString(other.into())
+    }
+}
+
+impl From<String> for SecretString {
+    fn from(other: String) -> Self {
+        SecretString(other)
+    }
+}
+
+impl fmt::Display for SecretString {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "********")
+    }
+}
+
+impl fmt::Debug for SecretString {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "********")
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct AuthExtra {
     #[serde(rename = "OS")]
     pub os: String,
     pub arch: String,
-    pub auth_token: String,
+    pub auth_token: SecretString,
     pub version: String,
     pub hostname: String,
     pub user_agent: String,
     pub metadata: String,
-    pub cookie: String,
+    pub cookie: SecretString,
     pub heartbeat_interval: i64,
     pub heartbeat_tolerance: i64,
 
@@ -106,7 +186,7 @@ rpc_req!(Auth, AuthResp, AUTH_REQ);
 pub struct AuthRespExtra {
     pub version: Option<String>,
     pub region: Option<String>,
-    pub cookie: Option<String>,
+    pub cookie: Option<SecretString>,
     pub account_name: Option<String>,
     pub session_duration: Option<i64>,
     pub plan_name: Option<String>,
@@ -115,18 +195,16 @@ pub struct AuthRespExtra {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
-pub struct Bind {
+pub struct Bind<T> {
     #[serde(rename = "Id")]
     pub client_id: String,
     pub proto: String,
     pub forwards_to: String,
-    pub opts: BindOpts,
+    pub opts: T,
     pub extra: BindExtra,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(rename_all = "PascalCase")]
-#[serde(untagged)]
+#[derive(Debug, Clone)]
 // allowing this since these aren't persistent values.
 #[allow(clippy::large_enum_variant)]
 pub enum BindOpts {
@@ -138,7 +216,7 @@ pub enum BindOpts {
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct BindExtra {
-    pub token: String,
+    pub token: SecretString,
     #[serde(rename = "IPPolicyRef")]
     pub ip_policy_ref: String,
     pub metadata: String,
@@ -146,23 +224,24 @@ pub struct BindExtra {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
-pub struct BindResp {
+pub struct BindResp<T> {
     #[serde(rename = "Id")]
     pub client_id: String,
     #[serde(rename = "URL")]
     pub url: String,
     pub proto: String,
-    pub bind_opts: Option<BindOpts>,
+    #[serde(rename = "Opts")]
+    pub bind_opts: T,
     pub extra: BindRespExtra,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct BindRespExtra {
-    pub token: String,
+    pub token: SecretString,
 }
 
-rpc_req!(Bind, BindResp, BIND_REQ);
+rpc_req!(Bind<T>, BindResp<T>, BIND_REQ; T: std::fmt::Debug + Serialize + DeserializeOwned + Clone);
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
@@ -338,7 +417,7 @@ rpc_req!(Update, UpdateResp, UPDATE_REQ);
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Default)]
 #[serde(rename_all = "PascalCase")]
-pub struct SrvInfo;
+pub struct SrvInfo {}
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
@@ -443,65 +522,153 @@ impl<'de> Deserialize<'de> for ProxyProto {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct HttpEndpoint {
     pub hostname: String,
     pub auth: String,
     pub subdomain: String,
     pub host_header_rewrite: bool,
-    pub local_url_scheme: String,
+    pub local_url_scheme: Option<String>,
     pub proxy_proto: ProxyProto,
 
-    // must always be true, only here for serialization purposes.
-    proto_middleware: bool,
-
-    // Uses the Go byte slice json representation, which is base64
-    #[serde(rename = "MiddlewareBytes")]
-    #[serde(with = "base64proto")]
-    pub middleware: HttpMiddleware,
+    pub compression: Option<Compression>,
+    pub circuit_breaker: Option<CircuitBreaker>,
+    #[serde(rename = "IPRestriction")]
+    pub ip_restriction: Option<IpRestriction>,
+    pub basic_auth: Option<BasicAuth>,
+    #[serde(rename = "OAuth")]
+    pub oauth: Option<Oauth>,
+    #[serde(rename = "OIDC")]
+    pub oidc: Option<Oidc>,
+    pub webhook_verification: Option<WebhookVerification>,
+    #[serde(rename = "MutualTLSCA")]
+    pub mutual_tls_ca: Option<MutualTls>,
+    #[serde(default)]
+    pub request_headers: Option<Headers>,
+    #[serde(default)]
+    pub response_headers: Option<Headers>,
+    #[serde(rename = "WebsocketTCPConverter")]
+    pub websocket_tcp_converter: Option<WebsocketTcpConverter>,
 }
 
-impl Default for HttpEndpoint {
-    fn default() -> Self {
-        HttpEndpoint {
-            hostname: Default::default(),
-            auth: Default::default(),
-            subdomain: Default::default(),
-            host_header_rewrite: false,
-            local_url_scheme: Default::default(),
-            proxy_proto: ProxyProto::None,
-            proto_middleware: true,
-            middleware: Default::default(),
-        }
-    }
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct Compression {}
+
+fn is_default<T>(v: &T) -> bool
+where
+    T: PartialEq<T> + Default,
+{
+    T::default() == *v
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct CircuitBreaker {
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub error_threshold: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BasicAuth {
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub credentials: Vec<BasicAuthCredential>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct BasicAuthCredential {
+    pub username: String,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub cleartext_password: String,
+    #[serde(default, skip_serializing_if = "is_default")]
+    #[serde(with = "base64bytes")]
+    pub hashed_password: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IpRestriction {
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub allow_cidrs: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub deny_cidrs: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Oauth {
+    pub provider: String,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub client_id: String,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub client_secret: SecretString,
+    #[serde(default, skip_serializing_if = "is_default")]
+    #[serde(with = "base64bytes")]
+    pub sealed_client_secret: Vec<u8>,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub allow_emails: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub allow_domains: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub scopes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Oidc {
+    pub issuer_url: String,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub client_id: String,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub client_secret: SecretString,
+    #[serde(default, skip_serializing_if = "is_default")]
+    #[serde(with = "base64bytes")]
+    pub sealed_client_secret: Vec<u8>,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub allow_emails: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub allow_domains: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub scopes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookVerification {
+    pub provider: String,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub secret: SecretString,
+    #[serde(default, skip_serializing_if = "is_default")]
+    #[serde(with = "base64bytes")]
+    pub sealed_secret: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MutualTls {
+    #[serde(default, skip_serializing_if = "is_default")]
+    #[serde(with = "base64bytes")]
+    pub mutual_tls_ca: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Headers {
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub add: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub remove: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub add_parsed: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct WebsocketTcpConverter {}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct TcpEndpoint {
     pub addr: String,
     pub proxy_proto: ProxyProto,
 
-    proto_middleware: bool,
-
-    #[serde(rename = "MiddlewareBytes")]
-    #[serde(with = "base64proto")]
-    pub middleware: TcpMiddleware,
+    pub ip_restriction: Option<IpRestriction>,
 }
 
-impl Default for TcpEndpoint {
-    fn default() -> Self {
-        TcpEndpoint {
-            addr: Default::default(),
-            proxy_proto: ProxyProto::None,
-            proto_middleware: true,
-            middleware: Default::default(),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct TlsEndpoint {
     pub hostname: String,
@@ -509,24 +676,19 @@ pub struct TlsEndpoint {
     pub proxy_proto: ProxyProto,
     pub mutual_tls_at_agent: bool,
 
-    proto_middleware: bool,
-
-    #[serde(rename = "MiddlewareBytes")]
-    #[serde(with = "base64proto")]
-    pub middleware: TlsMiddleware,
+    pub mutual_tls_at_edge: Option<MutualTls>,
+    pub tls_termination: Option<TlsTermination>,
+    pub ip_restriction: Option<IpRestriction>,
 }
 
-impl Default for TlsEndpoint {
-    fn default() -> Self {
-        TlsEndpoint {
-            hostname: Default::default(),
-            subdomain: Default::default(),
-            proxy_proto: ProxyProto::None,
-            mutual_tls_at_agent: false,
-            proto_middleware: true,
-            middleware: Default::default(),
-        }
-    }
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct TlsTermination {
+    #[serde(with = "base64bytes", skip_serializing_if = "is_default")]
+    pub cert: Vec<u8>,
+    #[serde(skip_serializing_if = "is_default")]
+    pub key: SecretBytes,
+    #[serde(with = "base64bytes", skip_serializing_if = "is_default")]
+    pub sealed_key: Vec<u8>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -535,10 +697,9 @@ pub struct LabelEndpoint {
     pub labels: HashMap<String, String>,
 }
 
-// These are helpers to facilitate the struct <-> base64-encoded protobuf
+// These are helpers to facilitate the Vec<u8> <-> base64-encoded bytes
 // representation that the Go messages use
-mod base64proto {
-    use prost::Message;
+mod base64bytes {
     use serde::{
         Deserialize,
         Deserializer,
@@ -546,18 +707,13 @@ mod base64proto {
         Serializer,
     };
 
-    pub fn serialize<M: Message, S: Serializer>(v: &M, s: S) -> Result<S::Ok, S::Error> {
-        let bytes = v.encode_to_vec();
-        let base64 = base64::encode(bytes);
-        String::serialize(&base64, s)
+    pub fn serialize<S: Serializer>(v: &Vec<u8>, s: S) -> Result<S::Ok, S::Error> {
+        base64::encode(v).serialize(s)
     }
 
-    pub fn deserialize<'de, M: Message + Default, D: Deserializer<'de>>(
-        d: D,
-    ) -> Result<M, D::Error> {
-        let base64 = String::deserialize(d)?;
-        let bytes = base64::decode(base64.as_bytes()).map_err(serde::de::Error::custom)?;
-        M::decode(bytes.as_slice()).map_err(serde::de::Error::custom)
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
+        let s = String::deserialize(d)?;
+        base64::decode(s.as_bytes()).map_err(serde::de::Error::custom)
     }
 }
 
