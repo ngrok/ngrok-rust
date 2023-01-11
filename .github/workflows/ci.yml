@@ -13,7 +13,8 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: cachix/install-nix-action@v18
-      - run: curl --retry 5 --retry-all-errors -sfL https://direnv.net/install.sh | bash
+      - run: |
+          curl -v --retry 5 --retry-all-errors -sfL https://direnv.net/install.sh | sed 's/curl/curl -v --retry 5 --retry-all-errors --header "authorization: Bearer ${{ secrets.GITHUB_TOKEN }}"/g' | bash
       - run: direnv allow
       - run: direnv export gha >> "$GITHUB_ENV"
       - uses: actions-rs/cargo@v1
@@ -27,7 +28,8 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: cachix/install-nix-action@v18
-      - run: curl --retry 5 --retry-all-errors -sfL https://direnv.net/install.sh | bash
+      - run: |
+          curl -v --retry 5 --retry-all-errors -sfL https://direnv.net/install.sh | sed 's/curl/curl -v --retry 5 --retry-all-errors --header "authorization: Bearer ${{ secrets.GITHUB_TOKEN }}"/g' | bash
       - run: direnv allow
       - run: direnv export gha >> "$GITHUB_ENV"
       - uses: actions-rs/cargo@v1
@@ -41,7 +43,8 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: cachix/install-nix-action@v18
-      - run: curl --retry 5 --retry-all-errors -sfL https://direnv.net/install.sh | bash
+      - run: |
+          curl -v --retry 5 --retry-all-errors -sfL https://direnv.net/install.sh | sed 's/curl/curl -v --retry 5 --retry-all-errors --header "authorization: Bearer ${{ secrets.GITHUB_TOKEN }}"/g' | bash
       - run: direnv allow
       - run: direnv export gha >> "$GITHUB_ENV"
       - uses: actions-rs/cargo@v1
@@ -55,7 +58,8 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: cachix/install-nix-action@v18
-      - run: curl --retry 5 --retry-all-errors -sfL https://direnv.net/install.sh | bash
+      - run: |
+          curl -v --retry 5 --retry-all-errors -sfL https://direnv.net/install.sh | sed 's/curl/curl -v --retry 5 --retry-all-errors --header "authorization: Bearer ${{ secrets.GITHUB_TOKEN }}"/g' | bash
       - run: direnv allow
       - run: direnv export gha >> "$GITHUB_ENV"
       - uses: actions-rs/cargo@v1
