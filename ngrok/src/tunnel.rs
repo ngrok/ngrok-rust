@@ -320,7 +320,7 @@ make_tunnel_type! {
     TcpTunnel, TcpTunnelBuilder, url, proto
 }
 make_tunnel_type! {
-    /// An ngrok tunnel bcking a TLS endpoint.
+    /// An ngrok tunnel backing a TLS endpoint.
     TlsTunnel, TlsTunnelBuilder, url, proto
 }
 make_tunnel_type! {
