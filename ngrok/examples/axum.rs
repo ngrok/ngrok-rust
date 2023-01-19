@@ -44,6 +44,7 @@ async fn start_tunnel() -> anyhow::Result<impl UrlTunnel> {
         // .compression()
         // .deny_cidr_string("10.1.1.1/32")
         // .domain("<somedomain>.ngrok.io")
+        // .forwards_to("example rust")
         // .mutual_tlsca(CA_CERT.into())
         // .oauth(
         //     OauthOptions::new("google")

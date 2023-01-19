@@ -1,10 +1,14 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    str::FromStr,
+};
 
 use async_trait::async_trait;
 use bytes::{
     self,
     Bytes,
 };
+use thiserror::Error;
 
 use super::{
     common::ProxyProto,
@@ -37,6 +41,11 @@ use crate::{
     Session,
 };
 
+/// Error representing invalid string for Scheme
+#[derive(Debug, Clone, Error)]
+#[error("invalid scheme string: {}", .0)]
+pub struct InvalidSchemeString(String);
+
 /// The URL scheme for this HTTP endpoint.
 ///
 /// [Scheme::HTTPS] will enable TLS termination at the ngrok edge.
@@ -47,6 +56,18 @@ pub enum Scheme {
     /// The `https` URL scheme.
     #[default]
     HTTPS,
+}
+
+impl FromStr for Scheme {
+    type Err = InvalidSchemeString;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        use Scheme::*;
+        Ok(match s.to_uppercase().as_str() {
+            "HTTP" => HTTP,
+            "HTTPS" => HTTPS,
+            _ => return Err(InvalidSchemeString(s.into())),
+        })
+    }
 }
 
 /// The options for a HTTP edge.
@@ -294,7 +315,7 @@ mod test {
             .deny_cidr_string(DENY_CIDR)
             .proxy_proto(ProxyProto::V2)
             .metadata(METADATA)
-            .scheme(Scheme::HTTPS)
+            .scheme(Scheme::from_str("hTtPs").unwrap())
             .domain(DOMAIN)
             .mutual_tlsca(CA_CERT.into())
             .mutual_tlsca(CA_CERT2.into())

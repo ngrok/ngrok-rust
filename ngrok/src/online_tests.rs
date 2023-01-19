@@ -565,3 +565,35 @@ async fn tcp() -> Result<(), Error> {
 
     Ok(())
 }
+
+const CERT: &[u8] = include_bytes!("../examples/domain.crt");
+const KEY: &[u8] = include_bytes!("../examples/domain.key");
+
+#[traced_test]
+#[test]
+#[cfg_attr(not(feature = "authenticated-tests"), ignore)]
+async fn tls() -> Result<(), Error> {
+    let tun = Session::builder()
+        .authtoken_from_env()
+        .connect()
+        .await?
+        .tls_endpoint()
+        .cert_pem(CERT.into())
+        .key_pem(KEY.into())
+        .listen()
+        .await?;
+
+    let tun = start_http_server(tun, hello_router());
+
+    let url = tun.url.replacen("tls", "http", 1);
+
+    let client = reqwest::Client::new();
+    let resp = client.get(url.clone()).send().await;
+
+    assert!(resp.is_err());
+    let err_str = resp.err().unwrap().to_string();
+    tracing::debug!(?err_str);
+    assert!(err_str.contains("certificate"));
+
+    Ok(())
+}
