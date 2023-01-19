@@ -62,7 +62,7 @@ impl FromStr for Scheme {
     type Err = InvalidSchemeString;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         use Scheme::*;
-        Ok(match s {
+        Ok(match s.to_uppercase().as_str() {
             "HTTP" => HTTP,
             "HTTPS" => HTTPS,
             _ => return Err(InvalidSchemeString(s.into())),
@@ -315,7 +315,7 @@ mod test {
             .deny_cidr_string(DENY_CIDR)
             .proxy_proto(ProxyProto::V2)
             .metadata(METADATA)
-            .scheme(Scheme::HTTPS)
+            .scheme(Scheme::from_str("hTtPs").unwrap())
             .domain(DOMAIN)
             .mutual_tlsca(CA_CERT.into())
             .mutual_tlsca(CA_CERT2.into())
