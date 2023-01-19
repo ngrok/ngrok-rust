@@ -642,6 +642,7 @@ pub struct WebhookVerification {
 pub struct MutualTls {
     #[serde(default, skip_serializing_if = "is_default")]
     #[serde(with = "base64bytes")]
+    // this is snake-case on the wire
     pub mutual_tls_ca: Vec<u8>,
 }
 
@@ -664,7 +665,7 @@ pub struct WebsocketTcpConverter {}
 pub struct TcpEndpoint {
     pub addr: String,
     pub proxy_proto: ProxyProto,
-
+    #[serde(rename = "IPRestriction")]
     pub ip_restriction: Option<IpRestriction>,
 }
 
@@ -674,10 +675,14 @@ pub struct TlsEndpoint {
     pub hostname: String,
     pub subdomain: String,
     pub proxy_proto: ProxyProto,
+    #[serde(rename = "MutualTLSAtAgent")]
     pub mutual_tls_at_agent: bool,
 
+    #[serde(rename = "MutualTLSAtEdge")]
     pub mutual_tls_at_edge: Option<MutualTls>,
+    #[serde(rename = "TLSTermination")]
     pub tls_termination: Option<TlsTermination>,
+    #[serde(rename = "IPRestriction")]
     pub ip_restriction: Option<IpRestriction>,
 }
 
@@ -685,7 +690,7 @@ pub struct TlsEndpoint {
 pub struct TlsTermination {
     #[serde(with = "base64bytes", skip_serializing_if = "is_default")]
     pub cert: Vec<u8>,
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(skip_serializing_if = "is_default", default)]
     pub key: SecretBytes,
     #[serde(with = "base64bytes", skip_serializing_if = "is_default")]
     pub sealed_key: Vec<u8>,
