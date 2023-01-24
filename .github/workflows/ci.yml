@@ -25,7 +25,6 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: jrobsonchase/direnv-action@v0.7
-      - uses: ./.github/workflows/sccache
       - uses: actions-rs/cargo@v1
         with:
           command: fmt
@@ -67,6 +66,9 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
+      # We don't actualy have sccache installed here (yet), but it still
+      # benefits from the cargo cache.
+      - uses: ./.github/workflows/sccache
       - uses: actions-rs/cargo@v1
         env:
           NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
