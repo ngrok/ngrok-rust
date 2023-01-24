@@ -1,11 +1,11 @@
-name: 'sccache setup'
-description: 'Set up sccache caches'
+name: 'rust cache setup'
+description: 'Set up cargo and sccache caches'
 inputs: {}
 outputs: {}
 runs:
   using: "composite"
   steps:
-    - name: Configure sccache
+    - name: configure sccache
       uses: actions/github-script@v6
       with:
         script: |
