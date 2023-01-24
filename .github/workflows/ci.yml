@@ -13,12 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: cachix/install-nix-action@v18
-      - run: |
-          curl -v --retry 5 --retry-all-errors -sfL https://direnv.net/install.sh \
-            | sed 's/curl/curl -v --retry 5 --retry-all-errors --header "authorization: Bearer ${{ secrets.GITHUB_TOKEN }}"/g' \
-            | bash
-      - run: direnv allow
-      - run: direnv export gha >> "$GITHUB_ENV"
+      - uses: jrobsonchase/direnv-action@v0.6
       - uses: actions-rs/cargo@v1
         with:
           command: udeps
@@ -30,12 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: cachix/install-nix-action@v18
-      - run: |
-          curl -v --retry 5 --retry-all-errors -sfL https://direnv.net/install.sh \
-            | sed 's/curl/curl -v --retry 5 --retry-all-errors --header "authorization: Bearer ${{ secrets.GITHUB_TOKEN }}"/g' \
-            | bash
-      - run: direnv allow
-      - run: direnv export gha >> "$GITHUB_ENV"
+      - uses: jrobsonchase/direnv-action@v0.6
       - uses: actions-rs/cargo@v1
         with:
           command: fmt
@@ -47,12 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: cachix/install-nix-action@v18
-      - run: |
-          curl -v --retry 5 --retry-all-errors -sfL https://direnv.net/install.sh \
-            | sed 's/curl/curl -v --retry 5 --retry-all-errors --header "authorization: Bearer ${{ secrets.GITHUB_TOKEN }}"/g' \
-            | bash
-      - run: direnv allow
-      - run: direnv export gha >> "$GITHUB_ENV"
+      - uses: jrobsonchase/direnv-action@v0.6
       - uses: actions-rs/cargo@v1
         with:
           command: clippy
@@ -64,12 +49,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: cachix/install-nix-action@v18
-      - run: |
-          curl -v --retry 5 --retry-all-errors -sfL https://direnv.net/install.sh \
-            | sed 's/curl/curl -v --retry 5 --retry-all-errors --header "authorization: Bearer ${{ secrets.GITHUB_TOKEN }}"/g' \
-            | bash
-      - run: direnv allow
-      - run: direnv export gha >> "$GITHUB_ENV"
+      - uses: jrobsonchase/direnv-action@v0.6
       - uses: actions-rs/cargo@v1
         env:
           NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
@@ -93,3 +73,44 @@ jobs:
         with:
           command: test
           args: --features=paid-tests,long-tests --workspace --all-targets
+
+  semver:
+    name: Semver Check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        crate: [muxado, ngrok]
+    steps:
+      - uses: actions/checkout@v2
+      - uses: cachix/install-nix-action@v18
+      - uses: jrobsonchase/direnv-action@v0.6
+      - uses: actions-rs/cargo@v1
+        name: semver checks
+        with:
+          command: semver-checks
+          args: check-release -p ${{ matrix.crate }}
+
+  # These are sequenced because the muxado version referenced by ngrok has to
+  # exist on crates.io before ngrok can be published.
+  publish-muxado:
+    name: Publish muxado
+    uses: ./.github/workflows/release.yml
+    needs: [udeps, fmt, clippy, test-nix, test-stable, semver]
+    if: github.ref_name == 'main' && github.repository == 'ngrok/ngrok-rs'
+    permissions:
+      contents: write
+    with:
+      crate: muxado
+    secrets:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  publish-ngrok:
+    name: Publish ngrok
+    uses: ./.github/workflows/release.yml
+    needs: [publish-muxado]
+    permissions:
+      contents: write
+    with:
+      crate: ngrok
+    secrets:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

@@ -1,0 +1,42 @@
+on:
+  workflow_dispatch:
+    inputs:
+      crate:
+        description: 'Crate to release'
+        required: true
+        default: 'ngrok'
+  workflow_call:
+    inputs:
+      crate:
+        description: 'Crate to release'
+        required: true
+        type: string
+    secrets:
+      CARGO_REGISTRY_TOKEN:
+        required: true
+
+name: Release
+
+jobs:
+  cargo-publish:
+    name: Publish and Tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v2
+      - uses: cachix/install-nix-action@v18
+      - uses: jrobsonchase/direnv-action@v0.6
+      - name: cargo publish
+        uses: actions-rs/cargo@v1
+        with:
+          command: publish
+          args: -p ${{ inputs.crate }} --token ${{secrets.CARGO_REGISTRY_TOKEN}}
+      - name: tag release
+        run: |
+          version="$(extract-crate-version ${{inputs.crate}})"
+          git config user.name "GitHub Action"
+          git config user.email noreply@ngrok.com
+          git tag -a -m "Version ${version}" ${{inputs.crate}}-v${version}
+          git push --tags
