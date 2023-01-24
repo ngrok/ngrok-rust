@@ -13,3 +13,13 @@ runs:
           core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
           core.exportVariable('SCCACHE_GHA_CACHE_TO', 'sccache-${{runner.os}}-${{github.ref_name}}');
           core.exportVariable('SCCACHE_GHA_CACHE_FROM', 'sccache-${{runner.os}}-main,sccache-${{runner.os}}-');
+    - name: cargo registry cache
+      uses: actions/cache@v3
+      with:
+        key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.toml') }}-${{ github.sha }}
+        restore-keys: |
+          cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.toml') }}-
+          cargo-${{ runner.os }}-
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
