@@ -46,7 +46,18 @@ use tracing::{
     warn,
 };
 
-pub use crate::internals::raw_session::RpcError;
+pub use crate::internals::{
+    proto::{
+        CommandResp,
+        Restart,
+        Stop,
+        Update,
+    },
+    raw_session::{
+        CommandHandler,
+        RpcError,
+    },
+};
 use crate::{
     config::{
         HttpTunnelBuilder,
@@ -64,10 +75,12 @@ use crate::{
         },
         raw_session::{
             AcceptError as RawAcceptError,
+            CommandHandlers,
             IncomingStreams,
             RawSession,
             RpcClient,
             StartSessionError,
+            NOT_IMPLEMENTED,
         },
     },
     tunnel::{
@@ -78,7 +91,6 @@ use crate::{
 };
 
 const CERT_BYTES: &[u8] = include_bytes!("../assets/ngrok.ca.crt");
-const NOT_IMPLEMENTED: &str = "the agent has not defined a callback for this operation";
 
 #[derive(Clone)]
 struct BoundTunnel {
@@ -116,7 +128,7 @@ impl<T> IoStream for T where T: AsyncRead + AsyncWrite + Unpin + Send + 'static 
 ///
 /// This is effectively `async |addr, tls_config| -> Result<IoStream>`, with all
 /// of the necessary boxing to turn the generics into trait objects.
-pub type ConnectCallback = Arc<
+pub type ConnectFn = Arc<
     dyn Fn(
             String,
             Arc<rustls::ClientConfig>,
@@ -126,7 +138,7 @@ pub type ConnectCallback = Arc<
         + 'static,
 >;
 
-fn default_connect() -> ConnectCallback {
+fn default_connect() -> ConnectFn {
     Arc::new(|addr, tls_config| {
         async move {
             let mut split = addr.split(':');
@@ -160,7 +172,8 @@ pub struct SessionBuilder {
     heartbeat_tolerance: Option<Duration>,
     server_addr: String,
     tls_config: rustls::ClientConfig,
-    connect_callback: ConnectCallback,
+    connector: ConnectFn,
+    handlers: CommandHandlers,
     cookie: Option<SecretString>,
     id: Option<String>,
 }
@@ -235,7 +248,8 @@ impl Default for SessionBuilder {
             heartbeat_tolerance: None,
             server_addr: "tunnel.ngrok.com:443".into(),
             tls_config,
-            connect_callback: default_connect(),
+            connector: default_connect(),
+            handlers: Default::default(),
             cookie: None,
             id: None,
         }
@@ -280,7 +294,7 @@ impl SessionBuilder {
     }
 
     /// Connect to the provided ngrok server address.
-    pub fn with_server_addr(&mut self, addr: impl Into<String>) -> &mut Self {
+    pub fn server_addr(&mut self, addr: impl Into<String>) -> &mut Self {
         self.server_addr = addr.into();
         self
     }
@@ -292,8 +306,26 @@ impl SessionBuilder {
     }
 
     /// Set the function used to establish the connection to the ngrok server.
-    pub fn with_connect_callback(&mut self, callback: ConnectCallback) -> &mut Self {
-        self.connect_callback = callback;
+    pub fn connector(&mut self, connect: ConnectFn) -> &mut Self {
+        self.connector = connect;
+        self
+    }
+
+    /// Use the provided function to handle "Stop" commands from the ngrok dashboard.
+    pub fn handle_stop_command(&mut self, handler: impl CommandHandler<Stop>) -> &mut Self {
+        self.handlers.on_stop = Some(Arc::new(handler));
+        self
+    }
+
+    /// Use the provided function to handle "Restart" commands from the ngrok dashboard.
+    pub fn handle_restart_command(&mut self, handler: impl CommandHandler<Restart>) -> &mut Self {
+        self.handlers.on_restart = Some(Arc::new(handler));
+        self
+    }
+
+    /// Use the provided function to handle "Update" commands from the ngrok dashboard.
+    pub fn handle_update_command(&mut self, handler: impl CommandHandler<Update>) -> &mut Self {
+        self.handlers.on_update = Some(Arc::new(handler));
         self
     }
 
@@ -310,8 +342,7 @@ impl SessionBuilder {
 
     async fn connect_inner(&self) -> Result<(SessionInner, IncomingStreams), ConnectError> {
         let conn =
-            (self.connect_callback)(self.server_addr.clone(), Arc::new(self.tls_config.clone()))
-                .await?;
+            (self.connector)(self.server_addr.clone(), Arc::new(self.tls_config.clone())).await?;
 
         let mut heartbeat_config = HeartbeatConfig::<fn(Duration)>::default();
         if let Some(interval) = self.heartbeat_interval {
@@ -328,7 +359,7 @@ impl SessionBuilder {
         let heartbeat_tolerance = i64::try_from(tolerance_nanos)
             .map_err(|_| ConnectError::InvalidHeartbeatTolerance(tolerance_nanos))?;
 
-        let mut raw = RawSession::start(conn, heartbeat_config)
+        let mut raw = RawSession::start(conn, heartbeat_config, self.handlers.clone())
             .await
             .map_err(ConnectError::Start)?;
 
@@ -349,9 +380,24 @@ impl SessionBuilder {
                     arch: std::env::consts::ARCH.into(),
                     heartbeat_interval,
                     heartbeat_tolerance,
-                    restart_unsupported_error: Some(NOT_IMPLEMENTED.into()),
-                    stop_unsupported_error: Some(NOT_IMPLEMENTED.into()),
-                    update_unsupported_error: Some(NOT_IMPLEMENTED.into()),
+                    restart_unsupported_error: self
+                        .handlers
+                        .on_restart
+                        .is_none()
+                        .then_some(NOT_IMPLEMENTED.into())
+                        .or(Some("".into())),
+                    stop_unsupported_error: self
+                        .handlers
+                        .on_stop
+                        .is_none()
+                        .then_some(NOT_IMPLEMENTED.into())
+                        .or(Some("".into())),
+                    update_unsupported_error: self
+                        .handlers
+                        .on_update
+                        .is_none()
+                        .then_some(NOT_IMPLEMENTED.into())
+                        .or(Some("".into())),
                     client_type: "library/official/rust".into(),
                     cookie: self.cookie.clone().unwrap_or_default(),
                     ..Default::default()

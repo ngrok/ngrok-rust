@@ -1,14 +1,17 @@
 use std::{
     collections::HashMap,
     fmt::Debug,
+    future::Future,
     io,
     ops::{
         Deref,
         DerefMut,
     },
+    sync::Arc,
     time::Duration,
 };
 
+use async_trait::async_trait;
 use muxado::{
     heartbeat::HeartbeatConfig,
     typed::{
@@ -21,7 +24,10 @@ use muxado::{
     Error as MuxadoError,
     SessionBuilder,
 };
-use serde::Deserialize;
+use serde::{
+    de::DeserializeOwned,
+    Deserialize,
+};
 use thiserror::Error;
 use tokio::io::{
     AsyncRead,
@@ -29,9 +35,11 @@ use tokio::io::{
     AsyncWrite,
     AsyncWriteExt,
 };
+use tokio_util::either::Either;
 use tracing::{
     debug,
     instrument,
+    warn,
 };
 
 use super::{
@@ -43,12 +51,16 @@ use super::{
         BindExtra,
         BindOpts,
         BindResp,
+        CommandResp,
         ProxyHeader,
         ReadHeaderError,
+        Restart,
         StartTunnelWithLabel,
         StartTunnelWithLabelResp,
+        Stop,
         Unbind,
         UnbindResp,
+        Update,
         PROXY_REQ,
         RESTART_REQ,
         STOP_REQ,
@@ -99,6 +111,7 @@ pub struct RpcClient {
 }
 
 pub struct IncomingStreams {
+    handlers: CommandHandlers,
     accept: Box<dyn TypedAccept + Send>,
 }
 
@@ -120,16 +133,46 @@ impl DerefMut for RawSession {
     }
 }
 
+/// Trait for a type that can handle a command from the ngrok dashboard.
+#[async_trait]
+pub trait CommandHandler<T>: Send + Sync + 'static {
+    /// Handle the remote command.
+    async fn handle_command(&self, req: T) -> Result<(), String>;
+}
+
+#[async_trait]
+impl<R, T, F> CommandHandler<R> for T
+where
+    R: Send + 'static,
+    T: Fn(R) -> F + Send + Sync + 'static,
+    F: Future<Output = Result<(), String>> + Send,
+{
+    async fn handle_command(&self, req: R) -> Result<(), String> {
+        self(req).await
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct CommandHandlers {
+    pub on_restart: Option<Arc<dyn CommandHandler<Restart>>>,
+    pub on_update: Option<Arc<dyn CommandHandler<Update>>>,
+    pub on_stop: Option<Arc<dyn CommandHandler<Stop>>>,
+}
+
 impl RawSession {
-    pub async fn start<S, F>(
+    pub async fn start<S, F, H>(
         io_stream: S,
         heartbeat: HeartbeatConfig<F>,
+        handlers: H,
     ) -> Result<Self, StartSessionError>
     where
         S: AsyncRead + AsyncWrite + Send + 'static,
         F: FnMut(Duration) + Send + 'static,
+        H: Into<Option<CommandHandlers>>,
     {
         let mux_sess = SessionBuilder::new(io_stream).start();
+
+        let handlers = handlers.into().unwrap_or_default();
 
         let typed = muxado::typed::Typed::new(mux_sess);
         let (heartbeat, _) = muxado::heartbeat::Heartbeat::start(typed, heartbeat).await?;
@@ -140,6 +183,7 @@ impl RawSession {
                 open: Box::new(open),
             },
             incoming: IncomingStreams {
+                handlers,
                 accept: Box::new(accept),
             },
         };
@@ -290,15 +334,72 @@ impl RpcClient {
     }
 }
 
+pub const NOT_IMPLEMENTED: &str = "the agent has not defined a callback for this operation";
+
+async fn handle_req<T>(
+    handler: Option<Arc<dyn CommandHandler<T>>>,
+    mut stream: TypedStream,
+) -> Result<(), Either<io::Error, serde_json::Error>>
+where
+    T: DeserializeOwned + Debug + 'static,
+{
+    let res = async {
+        debug!("reading request from stream");
+        let mut buf = vec![];
+        let req = serde_json::from_value(loop {
+            let mut tmp = vec![0u8; 256];
+            let bytes = stream.read(&mut tmp).await.map_err(Either::Left)?;
+            buf.extend_from_slice(&tmp[..bytes]);
+
+            if let Ok(obj) = serde_json::from_slice::<serde_json::Value>(&buf) {
+                break obj;
+            }
+        })
+        .map_err(Either::Right)?;
+        debug!(?req, "read request from stream");
+
+        let resp = if let Some(handler) = handler {
+            debug!("running command handler");
+            handler.handle_command(req).await.err()
+        } else {
+            Some(NOT_IMPLEMENTED.into())
+        };
+
+        debug!(?resp, "writing response to stream");
+
+        let resp_json = serde_json::to_vec(&CommandResp { error: resp }).map_err(Either::Right)?;
+
+        stream
+            .write_all(resp_json.as_slice())
+            .await
+            .map_err(Either::Left)?;
+
+        Ok(())
+    }
+    .await;
+
+    if let Err(e) = &res {
+        warn!(?e, "error when handling dashboard command");
+    }
+
+    res
+}
+
 impl IncomingStreams {
     pub async fn accept(&mut self) -> Result<TunnelStream, AcceptError> {
         Ok(loop {
             let mut stream = self.accept.accept_typed().await?;
 
             match stream.typ() {
-                RESTART_REQ => {}
-                STOP_REQ => {}
-                UPDATE_REQ => {}
+                RESTART_REQ => {
+                    tokio::spawn(handle_req(self.handlers.on_restart.clone(), stream));
+                }
+                UPDATE_REQ => {
+                    tokio::spawn(handle_req(self.handlers.on_update.clone(), stream));
+                }
+                STOP_REQ => {
+                    tokio::spawn(handle_req(self.handlers.on_stop.clone(), stream));
+                }
                 PROXY_REQ => {
                     let header = ProxyHeader::read_from_stream(&mut *stream).await?;
 

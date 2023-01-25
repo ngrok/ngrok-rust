@@ -231,22 +231,22 @@ impl HttpTunnelBuilder {
         self
     }
 
-    /// with_request_header adds a header to all requests to this edge.
+    /// request_header adds a header to all requests to this edge.
     pub fn request_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
         self.options.request_headers.add(name, value);
         self
     }
-    /// with_response_header adds a header to all responses coming from this edge.
+    /// response_header adds a header to all responses coming from this edge.
     pub fn response_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
         self.options.response_headers.add(name, value);
         self
     }
-    /// with_remove_request_header removes a header from requests to this edge.
+    /// remove_request_header removes a header from requests to this edge.
     pub fn remove_request_header(mut self, name: impl Into<String>) -> Self {
         self.options.request_headers.remove(name);
         self
     }
-    /// with_remove_response_header removes a header from responses from this edge.
+    /// remove_response_header removes a header from responses from this edge.
     pub fn remove_response_header(mut self, name: impl Into<String>) -> Self {
         self.options.response_headers.remove(name);
         self
