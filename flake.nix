@@ -104,6 +104,7 @@
           CHALK_SOLVER_MAX_SIZE = 1500;
           OPENSSL_LIB_DIR = "${pkgs.openssl.out}/lib";
           OPENSSL_INCLUDE_DIR = "${pkgs.openssl.dev}/include";
+          RUSTC_WRAPPER="${pkgs.sccache}/bin/sccache";
           buildInputs = with pkgs; [
             toolchain
             fix-n-fmt
