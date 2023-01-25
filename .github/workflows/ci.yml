@@ -116,3 +116,14 @@ jobs:
       crate: ngrok
     secrets:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  publish-cargo-doc-ngrok:
+    name: Publish cargo-doc-ngrok
+    uses: ./.github/workflows/release.yml
+    needs: [publish-ngrok]
+    permissions:
+      contents: write
+    with:
+      crate: cargo-doc-ngrok
+    secrets:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
