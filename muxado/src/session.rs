@@ -19,6 +19,7 @@ use tokio_util::codec::Framed;
 use tracing::{
     debug,
     instrument,
+    trace,
 };
 
 use crate::{
@@ -252,7 +253,10 @@ where
         let _e: Result<(), _> = async {
             loop {
                 match self.io.try_next().await {
-                    Ok(Some(frame)) => self.handle_frame(frame).await?,
+                    Ok(Some(frame)) => {
+                        trace!(?frame, "received frame from remote");
+                        self.handle_frame(frame).await?
+                    }
                     Ok(None) | Err(_) => {
                         return Err(Error::SessionClosed);
                     }
@@ -286,6 +290,7 @@ where
             select! {
                 frame = self.manager.next() => {
                     if let Some(frame) = frame {
+                        trace!(?frame, "sending frame to remote");
                         if let Err(_e) = self.io.send(frame).await {
                             return Err(Error::SessionClosed);
                         }

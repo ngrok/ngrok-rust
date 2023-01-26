@@ -73,7 +73,7 @@ pub trait TunnelExt: Tunnel {
     /// Forward incoming tunnel connections to the provided Unix socket path.
     #[cfg(not(target_os = "windows"))]
     #[instrument(level = "debug", skip_all, fields(path))]
-    async fn forward_unix(&mut self, addr: String) -> Result<(), io::Error> {
+    async fn forward_unix(&mut self, addr: impl AsRef<Path> + Send) -> Result<(), io::Error> {
         forward_unix_conns(self, addr, |_, _| {}).await
     }
 }
@@ -101,7 +101,7 @@ where
 #[cfg(not(target_os = "windows"))]
 async fn forward_unix_conns<T, F>(
     this: &mut T,
-    addr: String,
+    addr: impl AsRef<Path>,
     mut on_err: F,
 ) -> Result<(), io::Error>
 where
@@ -109,7 +109,7 @@ where
     F: FnMut(io::Error, Conn),
 {
     let span = Span::current();
-    let path = Path::new(addr.as_str());
+    let path = addr.as_ref();
     span.record("path", field::debug(&path));
     loop {
         trace!("waiting for new tunnel connection");

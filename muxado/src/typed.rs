@@ -18,6 +18,7 @@ use tokio::io::{
     AsyncReadExt,
     AsyncWriteExt,
 };
+use tracing::debug;
 
 use crate::{
     constrained::*,
@@ -136,6 +137,8 @@ where
             .map_err(|_| Error::StreamClosed)?;
 
         let typ = StreamType::clamp((&buf[..]).get_u32());
+
+        debug!(?typ, "read stream type");
 
         Ok(TypedStream { typ, inner: stream })
     }

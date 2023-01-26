@@ -382,37 +382,44 @@ impl<'de> Deserialize<'de> for EdgeType {
     }
 }
 
+/// A request from the ngrok dashboard for the agent to stop.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Default)]
 #[serde(rename_all = "PascalCase")]
-pub struct Stop;
+pub struct Stop {}
 
+/// Common response structure for all remote commands originating from the ngrok
+/// dashboard.
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
-pub struct StopResp {}
+pub struct CommandResp {
+    /// The error arising from command handling, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+pub type StopResp = CommandResp;
 
 rpc_req!(Stop, StopResp, STOP_REQ);
 
+/// A request from the ngrok dashboard for the agent to restart.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Default)]
 #[serde(rename_all = "PascalCase")]
-pub struct Restart;
+pub struct Restart {}
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-#[serde(rename_all = "PascalCase")]
-pub struct RestartResp {}
-
+pub type RestartResp = CommandResp;
 rpc_req!(Restart, RestartResp, RESTART_REQ);
 
+/// A request from the ngrok dashboard for the agent to update itself.
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct Update {
+    /// The version that the agent is requested to update to.
     pub version: String,
+    /// Whether or not updating to the same major version is sufficient.
     pub permit_major_version: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-#[serde(rename_all = "PascalCase")]
-pub struct UpdateResp {}
-
+pub type UpdateResp = CommandResp;
 rpc_req!(Update, UpdateResp, UPDATE_REQ);
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Default)]
