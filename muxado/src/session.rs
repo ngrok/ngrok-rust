@@ -18,8 +18,10 @@ use tokio::io::{
 use tokio_util::codec::Framed;
 use tracing::{
     debug,
+    debug_span,
     instrument,
     trace,
+    Instrument,
 };
 
 use crate::{
@@ -143,12 +145,34 @@ where
             open_reqs: open_rx,
         };
 
-        tokio::spawn(read_task.run());
-        tokio::spawn(write_task.run());
+        let (dropref, waiter) = awaitdrop::awaitdrop();
+
+        tokio::spawn(
+            futures::future::select(
+                async move {
+                    let result = read_task.run().await;
+                    debug!(?result, "read_task exited");
+                }
+                .boxed(),
+                waiter.wait(),
+            )
+            .instrument(debug_span!("read_task")),
+        );
+        tokio::spawn(
+            futures::future::select(
+                async move {
+                    let result = write_task.run().await;
+                    debug!(?result, "write_task exited");
+                }
+                .boxed(),
+                waiter.wait(),
+            )
+            .instrument(debug_span!("write_task")),
+        );
 
         MuxadoSession {
-            incoming: MuxadoAccept(accept_rx),
-            outgoing: MuxadoOpen(open_tx),
+            incoming: MuxadoAccept(dropref.clone(), accept_rx),
+            outgoing: MuxadoOpen(dropref, open_tx),
         }
     }
 }
@@ -169,6 +193,7 @@ impl<R> Reader<R>
 where
     R: futures::stream::Stream<Item = Result<Frame, io::Error>> + Unpin,
 {
+    /// Handle an incoming frame from the remote
     #[instrument(level = "trace", skip(self))]
     async fn handle_frame(&mut self, frame: Frame) -> Result<(), Error> {
         // If the remote sent a syn, create a new stream and add it to the accept channel.
@@ -248,7 +273,6 @@ where
     }
 
     // The actual read/process loop
-    #[instrument(level = "trace", skip(self))]
     async fn run(mut self) -> Result<(), Error> {
         let _e: Result<(), _> = async {
             loop {
@@ -284,10 +308,11 @@ impl<W> Writer<W>
 where
     W: Sink<Frame, Error = io::Error> + Unpin + Send + 'static,
 {
-    #[instrument(level = "trace", skip(self))]
     async fn run(mut self) -> Result<(), Error> {
         loop {
             select! {
+                // The stream manager produced a frame that needs to be sent to
+                // the remote.
                 frame = self.manager.next() => {
                     if let Some(frame) = frame {
                         trace!(?frame, "sending frame to remote");
@@ -345,14 +370,18 @@ pub trait Open {
 }
 
 /// The [Open] half of a muxado session.
-pub struct MuxadoOpen(mpsc::Sender<oneshot::Sender<Result<Stream, Error>>>);
+#[derive(Clone)]
+pub struct MuxadoOpen(
+    awaitdrop::Ref,
+    mpsc::Sender<oneshot::Sender<Result<Stream, Error>>>,
+);
 /// The [Accept] half of a muxado session.
-pub struct MuxadoAccept(mpsc::Receiver<Stream>);
+pub struct MuxadoAccept(awaitdrop::Ref, mpsc::Receiver<Stream>);
 
 #[async_trait]
 impl Accept for MuxadoAccept {
     async fn accept(&mut self) -> Option<Stream> {
-        self.0.next().await
+        self.1.next().await
     }
 }
 
@@ -361,15 +390,21 @@ impl Open for MuxadoOpen {
     async fn open(&mut self) -> Result<Stream, Error> {
         let (resp_tx, resp_rx) = oneshot::channel();
 
-        self.0
+        self.1
             .send(resp_tx)
             .await
             .map_err(|_| Error::SessionClosed)?;
 
-        resp_rx
+        let mut res = resp_rx
             .await
             .map_err(|_| Error::SessionClosed)
-            .and_then(|r| r)
+            .and_then(|r| r);
+
+        if let Ok(ref mut stream) = &mut res {
+            stream.dropref = self.0.clone().into();
+        }
+
+        res
     }
 }
 

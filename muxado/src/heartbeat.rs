@@ -18,7 +18,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use futures::FutureExt;
+use futures::prelude::*;
 use tokio::{
     io::{
         AsyncReadExt,
