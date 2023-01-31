@@ -17,7 +17,10 @@ use futures::{
     future::BoxFuture,
     FutureExt,
 };
-use muxado::heartbeat::HeartbeatConfig;
+use muxado::heartbeat::{
+    HeartbeatConfig,
+    HeartbeatHandler,
+};
 use rustls_pemfile::Item;
 use thiserror::Error;
 use tokio::{
@@ -178,6 +181,7 @@ pub struct SessionBuilder {
     metadata: Option<String>,
     heartbeat_interval: Option<Duration>,
     heartbeat_tolerance: Option<Duration>,
+    heartbeat_handler: Option<Arc<dyn HeartbeatHandler>>,
     server_addr: String,
     tls_config: rustls::ClientConfig,
     connector: ConnectFn,
@@ -254,6 +258,7 @@ impl Default for SessionBuilder {
             metadata: None,
             heartbeat_interval: None,
             heartbeat_tolerance: None,
+            heartbeat_handler: None,
             server_addr: "tunnel.ngrok.com:443".into(),
             tls_config,
             connector: default_connect(),
@@ -403,6 +408,15 @@ impl SessionBuilder {
         self
     }
 
+    /// Call the provided handler whenever a heartbeat response is received.
+    ///
+    /// If the handler returns an error, the heartbeat task will exit, resulting
+    /// in the session eventually dying as well.
+    pub fn handle_heartbeat(&mut self, callback: impl HeartbeatHandler) -> &mut Self {
+        self.heartbeat_handler = Some(Arc::new(callback));
+        self
+    }
+
     /// Begins a new ngrok [Session] by connecting to the ngrok service.
     /// `connect` blocks until the session is successfully established or fails with
     /// an error.
@@ -424,13 +438,14 @@ impl SessionBuilder {
         let conn =
             (self.connector)(self.server_addr.clone(), Arc::new(self.tls_config.clone())).await?;
 
-        let mut heartbeat_config = HeartbeatConfig::<fn(Duration)>::default();
+        let mut heartbeat_config = HeartbeatConfig::default();
         if let Some(interval) = self.heartbeat_interval {
             heartbeat_config.interval = interval;
         }
         if let Some(tolerance) = self.heartbeat_tolerance {
             heartbeat_config.tolerance = tolerance;
         }
+        heartbeat_config.handler = self.heartbeat_handler.clone();
         // convert these while we have ownership
         let interval_nanos = heartbeat_config.interval.as_nanos();
         let heartbeat_interval = i64::try_from(interval_nanos)

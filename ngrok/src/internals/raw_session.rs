@@ -8,7 +8,6 @@ use std::{
         DerefMut,
     },
     sync::Arc,
-    time::Duration,
 };
 
 use async_trait::async_trait;
@@ -167,14 +166,13 @@ pub struct CommandHandlers {
 }
 
 impl RawSession {
-    pub async fn start<S, F, H>(
+    pub async fn start<S, H>(
         io_stream: S,
-        heartbeat: HeartbeatConfig<F>,
+        heartbeat: HeartbeatConfig,
         handlers: H,
     ) -> Result<Self, StartSessionError>
     where
         S: AsyncRead + AsyncWrite + Send + 'static,
-        F: FnMut(Duration) + Send + 'static,
         H: Into<Option<CommandHandlers>>,
     {
         let mux_sess = SessionBuilder::new(io_stream).start();
