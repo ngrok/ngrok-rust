@@ -25,7 +25,7 @@ use crate::{
     errors::Error,
     session::{
         Accept,
-        Open,
+        OpenClose,
         Session,
     },
     stream::Stream,
@@ -93,11 +93,11 @@ impl TypedStream {
 }
 
 /// Typed analogue to the [Session] trait.
-pub trait TypedSession: TypedAccept + TypedOpen {
+pub trait TypedSession: TypedAccept + TypedOpenClose {
     /// The component implementing [TypedAccept].
     type TypedAccept: TypedAccept;
     /// The component implementing [TypedOpen].
-    type TypedOpen: TypedOpen;
+    type TypedOpen: TypedOpenClose;
 
     /// Split the typed session into open/accept components.
     fn split_typed(self) -> (Self::TypedOpen, Self::TypedAccept);
@@ -116,9 +116,11 @@ pub trait TypedAccept {
 
 /// Typed analogue to the [Open] trait.
 #[async_trait]
-pub trait TypedOpen {
+pub trait TypedOpenClose {
     /// Open a typed stream with the given type.
     async fn open_typed(&mut self, typ: StreamType) -> Result<TypedStream, Error>;
+    /// Close the session by sending a GOAWAY
+    async fn close(&mut self, error: Error, msg: String) -> Result<(), Error>;
 }
 
 #[async_trait]
@@ -144,9 +146,9 @@ where
     }
 }
 #[async_trait]
-impl<S> TypedOpen for Typed<S>
+impl<S> TypedOpenClose for Typed<S>
 where
-    S: Open + Send,
+    S: OpenClose + Send,
 {
     async fn open_typed(&mut self, typ: StreamType) -> Result<TypedStream, Error> {
         let mut stream = self.open().await?;
@@ -161,16 +163,20 @@ where
 
         Ok(TypedStream { inner: stream, typ })
     }
+
+    async fn close(&mut self, error: Error, msg: String) -> Result<(), Error> {
+        self.inner.close(error, msg).await
+    }
 }
 
 impl<S> TypedSession for Typed<S>
 where
     S: Session + Send,
     S::Accept: Send,
-    S::Open: Send,
+    S::OpenClose: Send,
 {
     type TypedAccept = Typed<S::Accept>;
-    type TypedOpen = Typed<S::Open>;
+    type TypedOpen = Typed<S::OpenClose>;
     fn split_typed(self) -> (Self::TypedOpen, Self::TypedAccept) {
         let (open, accept) = self.inner.split();
         (Typed { inner: open }, Typed { inner: accept })

@@ -41,7 +41,7 @@ use crate::{
     typed::{
         StreamType,
         TypedAccept,
-        TypedOpen,
+        TypedOpenClose,
         TypedSession,
         TypedStream,
     },
@@ -348,9 +348,9 @@ where
 }
 
 #[async_trait]
-impl<S> TypedOpen for Heartbeat<S>
+impl<S> TypedOpenClose for Heartbeat<S>
 where
-    S: TypedOpen + Send,
+    S: TypedOpenClose + Send,
 {
     async fn open_typed(&mut self, typ: StreamType) -> Result<TypedStream, Error> {
         // Don't open a heartbeat stream manually
@@ -359,6 +359,10 @@ where
         }
 
         self.inner.open_typed(typ).await
+    }
+
+    async fn close(&mut self, error: Error, msg: String) -> Result<(), Error> {
+        self.inner.close(error, msg).await
     }
 }
 
