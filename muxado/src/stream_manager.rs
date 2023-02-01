@@ -163,6 +163,9 @@ impl FusedStream for SharedStreamManager {
     }
 }
 
+// Stream implementation for StreamManager
+// This is used as the "output" from all of the streams and will produce frames
+// that need to be sent to the remote via the underlying IO stream.
 impl StreamT for StreamManager {
     type Item = Frame;
 
@@ -180,6 +183,7 @@ impl StreamT for StreamManager {
 
         // Handle system frames first, but don't return if it's not ready, or
         // it's somehow closed (shouldn't happen).
+        // TODO: handle locally-generated GOAWAYs by closing all streams, etc.
         if let Poll::Ready(Some(frame)) = self.as_mut().sys_rx().poll_next(cx) {
             return Some(frame).into();
         }

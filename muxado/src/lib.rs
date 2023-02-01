@@ -20,3 +20,6 @@ pub use session::*;
 pub use stream::Stream;
 
 pub mod heartbeat;
+
+#[cfg(test)]
+mod cancellation_test;

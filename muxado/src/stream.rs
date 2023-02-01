@@ -44,6 +44,8 @@ use crate::{
 /// session.
 #[pin_project(project = StreamProj, PinnedDrop)]
 pub struct Stream {
+    pub(crate) dropref: Option<awaitdrop::Ref>,
+
     window: Window,
 
     read_buf: BytesMut,
@@ -87,6 +89,7 @@ impl Stream {
         needs_syn: bool,
     ) -> Self {
         Self {
+            dropref: None,
             window: Window::new(window_size),
             fin,
             fout,

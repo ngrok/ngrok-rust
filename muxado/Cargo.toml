@@ -18,6 +18,7 @@ pin-project = "1.0.12"
 tracing = "0.1.37"
 async-trait = "0.1.59"
 rand = "0.8.5"
+awaitdrop = "0.1.1"
 
 [dev-dependencies]
 anyhow = { version = "1.0.66" }
