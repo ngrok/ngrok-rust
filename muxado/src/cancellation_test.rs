@@ -19,10 +19,8 @@ async fn test_cancellation() -> Result<(), Box<dyn Error>> {
 
     let (dropref, waiter) = awaitdrop::awaitdrop();
 
-    let mut server = info_span!("muxado", side = "server").in_scope(move || {
-        tracing::info!("foo");
-        SessionBuilder::new(left).server().start()
-    });
+    let mut server = info_span!("muxado", side = "server")
+        .in_scope(move || SessionBuilder::new(left).server().start());
     let mut client = info_span!("muxado", side = "client")
         .in_scope(|| SessionBuilder::new(right).client().start());
 
