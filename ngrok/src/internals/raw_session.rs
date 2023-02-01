@@ -13,7 +13,10 @@ use std::{
 
 use async_trait::async_trait;
 use muxado::{
-    heartbeat::HeartbeatConfig,
+    heartbeat::{
+        HeartbeatConfig,
+        HeartbeatCtl,
+    },
     typed::{
         StreamType,
         TypedAccept,
@@ -107,6 +110,10 @@ pub enum AcceptError {
 }
 
 pub struct RpcClient {
+    // This is held so that the heartbeat task doesn't get shutdown. Eventually
+    // we may use it to request heartbeats via the `Session`.
+    #[allow(dead_code)]
+    heartbeat: HeartbeatCtl,
     open: Box<dyn TypedOpen + Send>,
 }
 
@@ -175,11 +182,12 @@ impl RawSession {
         let handlers = handlers.into().unwrap_or_default();
 
         let typed = muxado::typed::Typed::new(mux_sess);
-        let (heartbeat, _) = muxado::heartbeat::Heartbeat::start(typed, heartbeat).await?;
+        let (heartbeat, hbctl) = muxado::heartbeat::Heartbeat::start(typed, heartbeat).await?;
         let (open, accept) = heartbeat.split_typed();
 
         let sess = RawSession {
             client: RpcClient {
+                heartbeat: hbctl,
                 open: Box::new(open),
             },
             incoming: IncomingStreams {
