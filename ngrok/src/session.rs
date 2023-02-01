@@ -13,6 +13,7 @@ use async_rustls::rustls::{
     client::InvalidDnsNameError,
 };
 use futures::{
+    future,
     future::BoxFuture,
     FutureExt,
 };
@@ -107,6 +108,10 @@ type TunnelConns = HashMap<String, BoundTunnel>;
 /// An ngrok session.
 #[derive(Clone)]
 pub struct Session {
+    // Note: this is implicitly used to detect when the session (and its
+    // tunnels) have been dropped in order to shut down the accept loop.
+    #[allow(dead_code)]
+    dropref: awaitdrop::Ref,
     inner: Arc<ArcSwap<SessionInner>>,
 }
 
@@ -331,13 +336,17 @@ impl SessionBuilder {
 
     /// Attempt to establish an ngrok session using the current configuration.
     pub async fn connect(&self) -> Result<Session, ConnectError> {
+        let (dropref, dropped) = awaitdrop::awaitdrop();
         let (inner, incoming) = self.connect_inner().await?;
 
         let inner = Arc::new(ArcSwap::new(inner.into()));
 
-        tokio::spawn(accept_incoming(incoming, inner.clone()));
+        tokio::spawn(future::select(
+            accept_incoming(incoming, inner.clone()).boxed(),
+            dropped.wait(),
+        ));
 
-        Ok(Session { inner })
+        Ok(Session { dropref, inner })
     }
 
     async fn connect_inner(&self) -> Result<(SessionInner, IncomingStreams), ConnectError> {
