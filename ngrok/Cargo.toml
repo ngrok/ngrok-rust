@@ -61,3 +61,7 @@ online-tests = ["axum", "hyper"]
 long-tests = ["online-tests"]
 authenticated-tests = ["online-tests"]
 paid-tests = ["authenticated-tests"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

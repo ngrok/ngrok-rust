@@ -228,6 +228,7 @@ impl AsyncWrite for Conn {
 // Support for axum's connection info trait.
 #[cfg(feature = "axum")]
 use axum::extract::connect_info::Connected;
+#[cfg_attr(docsrs, doc(cfg(feature = "axum")))]
 #[cfg(feature = "axum")]
 impl Connected<&Conn> for SocketAddr {
     fn connect_info(target: &Conn) -> Self {
@@ -281,6 +282,7 @@ macro_rules! make_tunnel_type {
         }
 
         #[cfg(feature = "hyper")]
+        #[cfg_attr(all(feature = "hyper", docsrs), doc(cfg(feature = "hyper")))]
         impl Accept for $wrapper {
             type Conn = Conn;
             type Error = AcceptError;
