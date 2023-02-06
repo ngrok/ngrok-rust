@@ -50,7 +50,7 @@ const HEARTBEAT_TYPE: StreamType = StreamType::clamp(0xFFFFFFFF);
 /// Wrapper for a muxado [TypedSession] that adds heartbeating over a dedicated
 /// typed stream.
 pub struct Heartbeat<S> {
-    dropped: awaitdrop::Waiter,
+    drop_waiter: awaitdrop::Waiter,
     typ: StreamType,
     inner: S,
 }
@@ -101,10 +101,10 @@ where
     where
         F: FnMut(Duration) + Send + 'static,
     {
-        let (dropref, dropped) = awaitdrop::awaitdrop();
+        let (dropref, drop_waiter) = awaitdrop::awaitdrop();
 
         let mut hb = Heartbeat {
-            dropped: dropped.clone(),
+            drop_waiter: drop_waiter.clone(),
             typ: HEARTBEAT_TYPE,
             inner: sess,
         };
@@ -126,9 +126,9 @@ where
             .await
             .map_err(|_| io::ErrorKind::ConnectionReset)?;
 
-        ctl.start_requester(stream, drx, mtx, dropped.wait())
+        ctl.start_requester(stream, drx, mtx, drop_waiter.wait())
             .await?;
-        ctl.start_check(mrx, cfg.callback, dropped.wait())?;
+        ctl.start_check(mrx, cfg.callback, drop_waiter.wait())?;
 
         Ok((hb, ctl))
     }
@@ -218,7 +218,7 @@ impl HeartbeatCtl {
         mut stream: TypedStream,
         mut on_demand: mpsc::Receiver<oneshot::Sender<Duration>>,
         mark: mpsc::Sender<Duration>,
-        dropped: awaitdrop::WaitFuture,
+        drop_waiter: awaitdrop::WaitFuture,
     ) -> Result<(), io::Error> {
         let (interval, _) = self.get_durations();
         let mut ticker = tokio::time::interval(interval);
@@ -276,7 +276,7 @@ impl HeartbeatCtl {
                     }
                 }
                 .boxed(),
-                dropped,
+                drop_waiter,
             )
             .then(|_| async move {
                 tracing::debug!("requester exited");
@@ -291,7 +291,7 @@ impl HeartbeatCtl {
     }
 }
 
-fn start_responder(mut stream: TypedStream, dropped: awaitdrop::WaitFuture) {
+fn start_responder(mut stream: TypedStream, drop_waiter: awaitdrop::WaitFuture) {
     tokio::spawn(select(
         async move {
             loop {
@@ -307,7 +307,7 @@ fn start_responder(mut stream: TypedStream, dropped: awaitdrop::WaitFuture) {
             }
         }
         .boxed(),
-        dropped,
+        drop_waiter,
     ));
 }
 
@@ -322,7 +322,7 @@ where
             let typ = stream.typ();
 
             if typ == self.typ {
-                start_responder(stream, self.dropped.wait());
+                start_responder(stream, self.drop_waiter.wait());
                 continue;
             }
 
@@ -356,17 +356,17 @@ where
     type TypedOpen = Heartbeat<S::TypedOpen>;
 
     fn split_typed(self) -> (Self::TypedOpen, Self::TypedAccept) {
-        let dropped = self.dropped;
+        let drop_waiter = self.drop_waiter;
         let typ = self.typ;
         let (open, accept) = self.inner.split_typed();
         (
             Heartbeat {
-                dropped: dropped.clone(),
+                drop_waiter: drop_waiter.clone(),
                 typ,
                 inner: open,
             },
             Heartbeat {
-                dropped,
+                drop_waiter,
                 typ,
                 inner: accept,
             },
