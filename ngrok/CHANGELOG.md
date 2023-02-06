@@ -1,3 +1,11 @@
+## 0.8.1
+
+* Fix cancellation bugs causing leaked muxado/ngrok sessions.
+
+## 0.8.0
+
+* Some breaking changes to builder method naming for consistency.
+* Add dashboard command handlers
 
 ## 0.7.0
 
