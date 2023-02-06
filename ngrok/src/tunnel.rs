@@ -51,8 +51,13 @@ pub(crate) struct TunnelInner {
     pub(crate) labels: HashMap<String, String>,
     pub(crate) forwards_to: String,
     pub(crate) metadata: String,
-    pub(crate) session: Session,
     pub(crate) incoming: Receiver<Result<Conn, AcceptError>>,
+
+    // Note: this session field is also used to detect tunnel liveness for the
+    // purposes of shutting down the accept loop. If it's ever removed, an
+    // awaitdrop::Ref field needs to be added that's derived from the one
+    // belonging to the session.
+    pub(crate) session: Session,
 }
 
 // This codgen indirect is required to make the hyper "Accept" trait bound
