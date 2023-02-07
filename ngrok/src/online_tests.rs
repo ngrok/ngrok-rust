@@ -458,10 +458,7 @@ proxy_proto_test!(
 async fn http_ip_restriction() -> Result<(), Error> {
     let tun = serve_http(
         defaults,
-        |tun| {
-            tun.allow_cidr_string("127.0.0.1/32")
-                .deny_cidr_string("0.0.0.0/0")
-        },
+        |tun| tun.allow_cidr("127.0.0.1/32").deny_cidr("0.0.0.0/0"),
         hello_router(),
     )
     .await?;
@@ -482,8 +479,8 @@ async fn tcp_ip_restriction() -> Result<(), Error> {
         .connect()
         .await?
         .tcp_endpoint()
-        .allow_cidr_string("127.0.0.1/32")
-        .deny_cidr_string("0.0.0.0/0")
+        .allow_cidr("127.0.0.1/32")
+        .deny_cidr("0.0.0.0/0")
         .listen()
         .await?;
 
@@ -578,8 +575,7 @@ async fn tls() -> Result<(), Error> {
         .connect()
         .await?
         .tls_endpoint()
-        .cert_pem(CERT.into())
-        .key_pem(KEY.into())
+        .termination(CERT.into(), KEY.into())
         .listen()
         .await?;
 

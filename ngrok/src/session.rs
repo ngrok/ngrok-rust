@@ -106,6 +106,9 @@ struct BoundTunnel {
 type TunnelConns = HashMap<String, BoundTunnel>;
 
 /// An ngrok session.
+///
+/// Encapsulates an established session with the ngrok service. Sessions recover
+/// from network failures by automatically reconnecting.
 #[derive(Clone)]
 pub struct Session {
     // Note: this is implicitly used to detect when the session (and its
@@ -262,79 +265,147 @@ impl Default for SessionBuilder {
 }
 
 impl SessionBuilder {
-    /// Authenticate the ngrok session with the given authtoken.
+    /// Configures the session to authenticate with the provided authtoken. You
+    /// can [find your existing authtoken] or [create a new one] in the ngrok
+    /// dashboard.
+    ///
+    /// See the [authtoken parameter in the ngrok docs] for additional details.
+    ///
+    /// [find your existing authtoken]: https://dashboard.ngrok.com/get-started/your-authtoken
+    /// [create a new one]: https://dashboard.ngrok.com/tunnels/authtokens
+    /// [authtoken parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#authtoken
     pub fn authtoken(mut self, authtoken: impl Into<String>) -> Self {
         self.authtoken = Some(authtoken.into().into());
         self
     }
-
-    /// Authenticate using the authtoken in the `NGROK_AUTHTOKEN` environment
-    /// variable.
+    /// Shortcut for calling [SessionBuilder::authtoken] with the value of the
+    /// NGROK_AUTHTOKEN environment variable.
     pub fn authtoken_from_env(mut self) -> Self {
         self.authtoken = env::var("NGROK_AUTHTOKEN").ok().map(From::from);
         self
     }
 
-    /// Set the heartbeat interval for the session.
-    /// This value determines how often we send application level
-    /// heartbeats to the server go check connection liveness.
+    /// Configures how often the session will send heartbeat messages to the ngrok
+    /// service to check session liveness.
+    ///
+    /// See the [heartbeat_interval parameter in the ngrok docs] for additional
+    /// details.
+    ///
+    /// [heartbeat_interval parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#heartbeat_interval
     pub fn heartbeat_interval(mut self, heartbeat_interval: Duration) -> Self {
         self.heartbeat_interval = Some(heartbeat_interval);
         self
     }
 
-    /// Set the heartbeat tolerance for the session.
-    /// If the session's heartbeats are outside of their interval by this duration,
-    /// the server will assume the session is dead and close it.
+    /// Configures the duration to wait for a response to a heartbeat before
+    /// assuming the session connection is dead and attempting to reconnect.
+    ///
+    /// See the [heartbeat_tolerance parameter in the ngrok docs] for additional
+    /// details.
+    ///
+    /// [heartbeat_tolerance parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#heartbeat_tolerance
     pub fn heartbeat_tolerance(mut self, heartbeat_tolerance: Duration) -> Self {
         self.heartbeat_tolerance = Some(heartbeat_tolerance);
         self
     }
 
-    /// Use the provided opaque metadata string for this session.
-    /// Viewable from the ngrok dashboard or API.
+    /// Configures the opaque, machine-readable metadata string for this session.
+    /// Metadata is made available to you in the ngrok dashboard and the Agents API
+    /// resource. It is a useful way to allow you to uniquely identify sessions. We
+    /// suggest encoding the value in a structured format like JSON.
+    ///
+    /// See the [metdata parameter in the ngrok docs] for additional details.
+    ///
+    /// [metdata parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#metadata
     pub fn metadata(mut self, metadata: impl Into<String>) -> Self {
         self.metadata = Some(metadata.into());
         self
     }
 
-    /// Connect to the provided ngrok server address.
+    /// Configures the network address to dial to connect to the ngrok service.
+    /// Use this option only if you are connecting to a custom agent ingress.
+    ///
+    /// See the [server_addr parameter in the ngrok docs] for additional details.
+    ///
+    /// [server_addr parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#server_addr
     pub fn server_addr(&mut self, addr: impl Into<String>) -> &mut Self {
         self.server_addr = addr.into();
         self
     }
 
-    /// Use the provided tls config when connecting to the ngrok server.
+    /// Configures the TLS client used to connect to the ngrok service while
+    /// establishing the session. Use this option only if you are connecting through
+    /// a man-in-the-middle or deep packet inspection proxy. Passed to the
+    /// connect callback set with `SessionBuilder::connect`.
+    ///
+    /// Roughly corresponds to the [root_cas parameter in the ngrok docs], but allows
+    /// for deeper TLS configuration.
+    ///
+    /// [root_cas parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#root_cas
     pub fn tls_config(mut self, config: rustls::ClientConfig) -> Self {
         self.tls_config = config;
         self
     }
 
-    /// Set the function used to establish the connection to the ngrok server.
+    /// Configures a function which is called to establish the connection to the
+    /// ngrok service. Use this option if you need to connect through an outbound
+    /// proxy. In the event of network disruptions, it will be called each time
+    /// the session reconnects.
     pub fn connector(&mut self, connect: ConnectFn) -> &mut Self {
         self.connector = connect;
         self
     }
 
-    /// Use the provided function to handle "Stop" commands from the ngrok dashboard.
+    /// Configures a function which is called when the ngrok service requests that
+    /// this [Session] stops. Your application may choose to interpret this callback
+    /// as a request to terminate the [Session] or the entire process.
+    ///
+    /// Errors returned by this function will be visible to the ngrok dashboard or
+    /// API as the response to the Stop operation.
+    ///
+    /// Do not block inside this callback. It will cause the Dashboard or API
+    /// stop operation to time out. Do not call [std::process::exit] inside this
+    /// callback, it will also cause the operation to time out.
     pub fn handle_stop_command(&mut self, handler: impl CommandHandler<Stop>) -> &mut Self {
         self.handlers.on_stop = Some(Arc::new(handler));
         self
     }
 
-    /// Use the provided function to handle "Restart" commands from the ngrok dashboard.
+    /// Configures a function which is called when the ngrok service requests
+    /// that this [Session] updates. Your application may choose to interpret
+    /// this callback as a request to restart the [Session] or the entire
+    /// process.
+    ///
+    /// Errors returned by this function will be visible to the ngrok dashboard or
+    /// API as the response to the Restart operation.
+    ///
+    /// Do not block inside this callback. It will cause the Dashboard or API
+    /// stop operation to time out. Do not call [std::process::exit] inside this
+    /// callback, it will also cause the operation to time out.
     pub fn handle_restart_command(&mut self, handler: impl CommandHandler<Restart>) -> &mut Self {
         self.handlers.on_restart = Some(Arc::new(handler));
         self
     }
 
-    /// Use the provided function to handle "Update" commands from the ngrok dashboard.
+    /// Configures a function which is called when the ngrok service requests
+    /// that this [Session] updates. Your application may choose to interpret
+    /// this callback as a request to update its configuration, itself, or to
+    /// invoke some other application-specific behavior.
+    ///
+    /// Errors returned by this function will be visible to the ngrok dashboard or
+    /// API as the response to the Restart operation.
+    ///
+    /// Do not block inside this callback. It will cause the Dashboard or API
+    /// stop operation to time out. Do not call [std::process::exit] inside this
+    /// callback, it will also cause the operation to time out.
     pub fn handle_update_command(&mut self, handler: impl CommandHandler<Update>) -> &mut Self {
         self.handlers.on_update = Some(Arc::new(handler));
         self
     }
 
-    /// Attempt to establish an ngrok session using the current configuration.
+    /// Begins a new ngrok [Session] by connecting to the ngrok service.
+    /// `connect` blocks until the session is successfully established or fails with
+    /// an error.
     pub async fn connect(&self) -> Result<Session, ConnectError> {
         let (dropref, dropped) = awaitdrop::awaitdrop();
         let (inner, incoming) = self.connect_inner().await?;
@@ -440,17 +511,17 @@ impl Session {
         SessionBuilder::default()
     }
 
-    /// Start building a tunnel backing an HTTP endpoint.
+    /// Start building a tunnel for an HTTP endpoint.
     pub fn http_endpoint(&self) -> HttpTunnelBuilder {
         self.clone().into()
     }
 
-    /// Start building a tunnel backing a TCP endpoint.
+    /// Start building a tunnel for a TCP endpoint.
     pub fn tcp_endpoint(&self) -> TcpTunnelBuilder {
         self.clone().into()
     }
 
-    /// Start building a tunnel backing a TLS endpoint.
+    /// Start building a tunnel for a TLS endpoint.
     pub fn tls_endpoint(&self) -> TlsTunnelBuilder {
         self.clone().into()
     }

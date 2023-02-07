@@ -42,14 +42,13 @@ async fn start_tunnel() -> anyhow::Result<impl Tunnel> {
 
     let tun = sess
         .tls_endpoint()
-        // .allow_cidr_string("0.0.0.0/0")
-        // .deny_cidr_string("10.1.1.1/32")
+        // .allow_cidr("0.0.0.0/0")
+        // .deny_cidr("10.1.1.1/32")
         // .domain("<somedomain>.ngrok.io")
         // .forwards_to("example rust"),
         // .mutual_tlsca(CA_CERT.into())
         // .proxy_proto(ProxyProto::None)
-        .cert_pem(CERT.into())
-        .key_pem(KEY.into())
+        .termination(CERT.into(), KEY.into())
         .metadata("example tunnel metadata from rust")
         .listen()
         .await?;
