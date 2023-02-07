@@ -22,17 +22,17 @@ impl OauthOptions {
         }
     }
 
-    /// Allow the oauth user with the given email to access the tunnel.
+    /// Append an email address to the list of allowed emails.
     pub fn allow_email(mut self, email: impl Into<String>) -> Self {
         self.allow_emails.push(email.into());
         self
     }
-    /// Allow the oauth user with the given email domain to access the tunnel.
+    /// Append an email domain to the list of allowed domains.
     pub fn allow_domain(mut self, domain: impl Into<String>) -> Self {
         self.allow_domains.push(domain.into());
         self
     }
-    /// Request the given scope from the oauth provider.
+    /// Append a scope to the list of scopes to request.
     pub fn scope(mut self, scope: impl Into<String>) -> Self {
         self.scopes.push(scope.into());
         self

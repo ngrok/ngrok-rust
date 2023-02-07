@@ -1,6 +1,6 @@
 [package]
 name = "ngrok"
-version = "0.8.1"
+version = "0.9.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "The ngrok agent SDK"
@@ -61,3 +61,7 @@ online-tests = ["axum", "hyper"]
 long-tests = ["online-tests"]
 authenticated-tests = ["online-tests"]
 paid-tests = ["authenticated-tests"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

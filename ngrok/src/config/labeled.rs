@@ -56,7 +56,8 @@ impl_builder! {
 }
 
 impl LabeledTunnelBuilder {
-    /// Tunnel-specific opaque metadata. Viewable via the API.
+    /// Sets the opaque metadata string for this tunnel.
+    /// Viewable via the API.
     pub fn metadata(mut self, metadata: impl Into<String>) -> Self {
         self.options.common_opts.metadata = Some(metadata.into());
         self

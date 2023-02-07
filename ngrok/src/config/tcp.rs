@@ -71,35 +71,33 @@ impl_builder! {
 
 /// The options for a TCP edge.
 impl TcpTunnelBuilder {
-    /// Restriction placed on the origin of incoming connections to the edge to only allow these CIDR ranges.
-    /// Call multiple times to add additional CIDR ranges.
-    pub fn allow_cidr_string(mut self, cidr: impl Into<String>) -> Self {
+    /// Add the provided CIDR to the allowlist.
+    pub fn allow_cidr(mut self, cidr: impl Into<String>) -> Self {
         self.options.common_opts.cidr_restrictions.allow(cidr);
         self
     }
-    /// Restriction placed on the origin of incoming connections to the edge to deny these CIDR ranges.
-    /// Call multiple times to add additional CIDR ranges.
-    pub fn deny_cidr_string(mut self, cidr: impl Into<String>) -> Self {
+    /// Add the provided CIDR to the denylist.
+    pub fn deny_cidr(mut self, cidr: impl Into<String>) -> Self {
         self.options.common_opts.cidr_restrictions.deny(cidr);
         self
     }
-    /// The version of PROXY protocol to use with this tunnel, None if not using.
+    /// Sets the PROXY protocol version for connections over this tunnel.
     pub fn proxy_proto(mut self, proxy_proto: ProxyProto) -> Self {
         self.options.common_opts.proxy_proto = proxy_proto;
         self
     }
-    /// Tunnel-specific opaque metadata. Viewable via the API.
+    /// Sets the opaque metadata string for this tunnel.
     pub fn metadata(mut self, metadata: impl Into<String>) -> Self {
         self.options.common_opts.metadata = Some(metadata.into());
         self
     }
-    /// Tunnel backend metadata. Viewable via the dashboard and API, but has no
-    /// bearing on tunnel behavior.
+    /// Sets the ForwardsTo string for this tunnel. This can be viewed via the
+    /// API or dashboard.
     pub fn forwards_to(mut self, forwards_to: impl Into<String>) -> Self {
         self.options.common_opts.forwards_to = Some(forwards_to.into());
         self
     }
-    /// The TCP address to request for this edge.
+    /// Sets the TCP address to request for this edge.
     pub fn remote_addr(mut self, remote_addr: impl Into<String>) -> Self {
         self.options.remote_addr = Some(remote_addr.into());
         self
@@ -125,8 +123,8 @@ mod test {
                 session: None,
                 options: Default::default(),
             }
-            .allow_cidr_string(ALLOW_CIDR)
-            .deny_cidr_string(DENY_CIDR)
+            .allow_cidr(ALLOW_CIDR)
+            .deny_cidr(DENY_CIDR)
             .proxy_proto(ProxyProto::V2)
             .metadata(METADATA)
             .remote_addr(REMOTE_ADDR)

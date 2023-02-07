@@ -60,6 +60,14 @@ pub(crate) struct TunnelInner {
     pub(crate) session: Session,
 }
 
+impl Drop for TunnelInner {
+    fn drop(&mut self) {
+        let id = self.id().to_string();
+        let sess = self.session.clone();
+        tokio::spawn(async move { sess.close_tunnel(&id).await });
+    }
+}
+
 // This codgen indirect is required to make the hyper "Accept" trait bound
 // dependent on the hyper feature. You can't put a #[cfg] on a single bound, so
 // we're putting the whole trait def in a macro. Gross, but gets the job done.
@@ -67,7 +75,9 @@ macro_rules! tunnel_trait {
     ($($hyper_bound:tt)*) => {
         /// An ngrok tunnel.
         ///
-        /// This acts like a TCP listener and can be used as a [Stream] of [Result]<[Conn], [AcceptError]>.
+        /// ngrok [Tunnel]s act like TCP listeners and can be used as a
+        /// [futures::stream::TryStream] of [Conn]ections from endpoints created on the ngrok
+        /// service.
         #[async_trait]
         pub trait Tunnel:
             Stream<Item = Result<Conn, AcceptError>>
@@ -76,15 +86,23 @@ macro_rules! tunnel_trait {
             + Send
             + 'static
         {
-            /// The ID of this tunnel, assigned by the remote server.
+            /// Returns a tunnel's unique ID.
             fn id(&self) -> &str;
-            /// Get the forwards_to metadata for this tunnel.
+            /// Returns a human-readable string presented in the ngrok dashboard
+            /// and the Tunnels API. Use the [HttpTunnelBuilder::forwards_to],
+            /// [TcpTunnelBuilder::forwards_to], etc. to set this value
+            /// explicitly.
             fn forwards_to(&self) -> &str;
-            /// Get the user metadata for this tunnel.
+            /// Returns the arbitrary metadata string for this tunnel.
             fn metadata(&self) -> &str;
             /// Close the tunnel.
             ///
             /// This is an RPC call that must be `.await`ed.
+            /// It is equivalent to calling `Session::close_tunnel` with this
+            /// tunnel's ID.
+            ///
+            /// If the tunnel is dropped, a task will be spawned to close it
+            /// asynchronously.
             async fn close(&mut self) -> Result<(), RpcError>;
         }
     }
@@ -98,19 +116,19 @@ tunnel_trait!(+ Accept<Conn = Conn, Error = AcceptError>);
 
 /// An ngrok tunnel that supports getting the URL it was started for.
 pub trait UrlTunnel: Tunnel {
-    /// The URL that this tunnel backs.
+    /// Returns the tunnel endpoint's URL.
     fn url(&self) -> &str;
 }
 
 /// An ngrok tunnel that supports getting the protocol it uses at the ngrok edge.
 pub trait ProtoTunnel: Tunnel {
-    /// The protocol of the endpoint that this tunnel backs.
+    /// Returns the protocol of the tunnel's endpoint.
     fn proto(&self) -> &str;
 }
 
 /// An ngrok tunnel that supports getting the labels it was started with.
 pub trait LabelsTunnel: Tunnel {
-    /// The labels this tunnel was started with.
+    /// Returns the labels that the tunnel was started with.
     fn labels(&self) -> &HashMap<String, String>;
 }
 
@@ -187,7 +205,8 @@ impl TunnelInner {
 }
 
 impl Conn {
-    /// Get the client address that initiated the connection to the ngrok edge.
+    /// Returns the client address that initiated the connection to the ngrok
+    /// edge.
     pub fn remote_addr(&self) -> SocketAddr {
         self.remote_addr
     }
@@ -228,6 +247,7 @@ impl AsyncWrite for Conn {
 // Support for axum's connection info trait.
 #[cfg(feature = "axum")]
 use axum::extract::connect_info::Connected;
+#[cfg_attr(docsrs, doc(cfg(feature = "axum")))]
 #[cfg(feature = "axum")]
 impl Connected<&Conn> for SocketAddr {
     fn connect_info(target: &Conn) -> Self {
@@ -281,6 +301,7 @@ macro_rules! make_tunnel_type {
         }
 
         #[cfg(feature = "hyper")]
+        #[cfg_attr(all(feature = "hyper", docsrs), doc(cfg(feature = "hyper")))]
         impl Accept for $wrapper {
             type Conn = Conn;
             type Error = AcceptError;
@@ -317,15 +338,15 @@ macro_rules! make_tunnel_type {
 }
 
 make_tunnel_type! {
-    /// An ngrok tunnel backing an HTTP endpoint.
+    /// An ngrok tunnel for an HTTP endpoint.
     HttpTunnel, HttpTunnelBuilder, url, proto
 }
 make_tunnel_type! {
-    /// An ngrok tunnel backing a TCP endpoint.
+    /// An ngrok tunnel for a TCP endpoint.
     TcpTunnel, TcpTunnelBuilder, url, proto
 }
 make_tunnel_type! {
-    /// An ngrok tunnel backing a TLS endpoint.
+    /// An ngrok tunnel for a TLS endpoint.
     TlsTunnel, TlsTunnelBuilder, url, proto
 }
 make_tunnel_type! {

@@ -38,11 +38,11 @@ async fn start_tunnel() -> anyhow::Result<impl UrlTunnel> {
         .connect()
         .await?
         .http_endpoint()
-        // .allow_cidr_string("0.0.0.0/0")
+        // .allow_cidr("0.0.0.0/0")
         // .basic_auth("ngrok", "online1line")
         // .circuit_breaker(0.5)
         // .compression()
-        // .deny_cidr_string("10.1.1.1/32")
+        // .deny_cidr("10.1.1.1/32")
         // .domain("<somedomain>.ngrok.io")
         // .forwards_to("example rust")
         // .mutual_tlsca(CA_CERT.into())

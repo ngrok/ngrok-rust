@@ -1,3 +1,9 @@
+## 0.9.0
+
+* Update docs to match ngrok-go
+* Update the tls termination configuration methods to match those in ngrok-go
+* Remove the `_string` suffix from the cidr restriction methods
+
 ## 0.8.1
 
 * Fix cancellation bugs causing leaked muxado/ngrok sessions.
