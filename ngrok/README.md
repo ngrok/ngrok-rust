@@ -52,7 +52,7 @@ Add `ngrok` to the `[dependencies]` section of your `Cargo.toml`:
 ...
 
 [dependencies]
-ngrok = "0.8"
+ngrok = "0.10"
 
 ...
 ```
