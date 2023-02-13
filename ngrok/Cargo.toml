@@ -25,6 +25,7 @@ bytes = "1.3.0"
 arc-swap = "1.5.1"
 tokio-retry = "0.3.0"
 awaitdrop = "0.1.1"
+parking_lot = "0.12.1"
 
 [dev-dependencies]
 tokio = { version = "1.23.0", features = ["full"] }
