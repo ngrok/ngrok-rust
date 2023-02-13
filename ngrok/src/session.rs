@@ -328,7 +328,7 @@ impl SessionBuilder {
     /// See the [server_addr parameter in the ngrok docs] for additional details.
     ///
     /// [server_addr parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#server_addr
-    pub fn server_addr(&mut self, addr: impl Into<String>) -> &mut Self {
+    pub fn server_addr(mut self, addr: impl Into<String>) -> Self {
         self.server_addr = addr.into();
         self
     }
@@ -351,7 +351,7 @@ impl SessionBuilder {
     /// ngrok service. Use this option if you need to connect through an outbound
     /// proxy. In the event of network disruptions, it will be called each time
     /// the session reconnects.
-    pub fn connector(&mut self, connect: ConnectFn) -> &mut Self {
+    pub fn connector(mut self, connect: ConnectFn) -> Self {
         self.connector = connect;
         self
     }
@@ -366,7 +366,7 @@ impl SessionBuilder {
     /// Do not block inside this callback. It will cause the Dashboard or API
     /// stop operation to time out. Do not call [std::process::exit] inside this
     /// callback, it will also cause the operation to time out.
-    pub fn handle_stop_command(&mut self, handler: impl CommandHandler<Stop>) -> &mut Self {
+    pub fn handle_stop_command(mut self, handler: impl CommandHandler<Stop>) -> Self {
         self.handlers.on_stop = Some(Arc::new(handler));
         self
     }
@@ -382,7 +382,7 @@ impl SessionBuilder {
     /// Do not block inside this callback. It will cause the Dashboard or API
     /// stop operation to time out. Do not call [std::process::exit] inside this
     /// callback, it will also cause the operation to time out.
-    pub fn handle_restart_command(&mut self, handler: impl CommandHandler<Restart>) -> &mut Self {
+    pub fn handle_restart_command(mut self, handler: impl CommandHandler<Restart>) -> Self {
         self.handlers.on_restart = Some(Arc::new(handler));
         self
     }
@@ -398,7 +398,7 @@ impl SessionBuilder {
     /// Do not block inside this callback. It will cause the Dashboard or API
     /// stop operation to time out. Do not call [std::process::exit] inside this
     /// callback, it will also cause the operation to time out.
-    pub fn handle_update_command(&mut self, handler: impl CommandHandler<Update>) -> &mut Self {
+    pub fn handle_update_command(mut self, handler: impl CommandHandler<Update>) -> Self {
         self.handlers.on_update = Some(Arc::new(handler));
         self
     }
