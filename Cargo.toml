@@ -4,3 +4,6 @@ members = [
 	"ngrok",
 	"cargo-doc-ngrok",
 ]
+
+[profile.release]
+debug = 1
