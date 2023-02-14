@@ -19,10 +19,8 @@ use futures::{
     prelude::*,
     FutureExt,
 };
-use muxado::heartbeat::{
-    HeartbeatConfig,
-    HeartbeatHandler,
-};
+use muxado::heartbeat::HeartbeatConfig;
+pub use muxado::heartbeat::HeartbeatHandler;
 use rustls_pemfile::Item;
 use thiserror::Error;
 use tokio::{
