@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     net::SocketAddr,
     pin::Pin,
+    sync::Arc,
     task::{
         Context,
         Poll,
@@ -33,15 +34,19 @@ use crate::{
         TlsTunnelBuilder,
     },
     internals::raw_session::RpcError,
+    session::ConnectError,
     Session,
 };
 
 /// Errors arising when accepting a [Conn] from an ngrok tunnel.
-#[derive(Error, Debug, Clone, Copy)]
+#[derive(Error, Debug, Clone)]
 pub enum AcceptError {
     /// An error occurred in the underlying transport protocol.
     #[error("transport error")]
     Transport(#[from] MuxadoError),
+    /// An error arose during reconnect
+    #[error("reconnect error")]
+    Reconnect(Arc<ConnectError>),
 }
 
 pub(crate) struct TunnelInner {
