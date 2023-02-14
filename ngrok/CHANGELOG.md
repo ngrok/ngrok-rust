@@ -1,3 +1,10 @@
+## 0.10.0
+
+* Some api-breaking consistency fixes for the session builder.
+* Update the connector to be more in-line with the other handlers and to support
+  disconnect/reconnect error reporting.
+* Add support for custom heartbeat handlers.
+
 ## 0.9.0
 
 * Update docs to match ngrok-go

@@ -6,6 +6,8 @@
 //! heartbeat streams and start a task to reply to them.
 
 use std::{
+    error::Error as StdError,
+    future::Future,
     io,
     sync::{
         atomic::{
@@ -67,23 +69,46 @@ pub struct HeartbeatCtl {
     on_demand: mpsc::Sender<oneshot::Sender<Duration>>,
 }
 
+/// A handler called on every heartbeat with the latency for that beat.
+#[async_trait]
+pub trait HeartbeatHandler: Send + Sync + 'static {
+    /// Handle the heartbeat
+    ///
+    /// A `None` latency implies that the timeout was reached before the
+    /// heartbeat reply was received.
+    ///
+    /// If this returns an error, the heartbeat task will exit.
+    async fn handle_heartbeat(&self, latency: Option<Duration>) -> Result<(), Box<dyn StdError>>;
+}
+
+#[async_trait]
+impl<T, F> HeartbeatHandler for T
+where
+    T: Fn(Option<Duration>) -> F + Send + Sync + 'static,
+    F: Future<Output = Result<(), Box<dyn StdError>>> + Send,
+{
+    async fn handle_heartbeat(&self, latency: Option<Duration>) -> Result<(), Box<dyn StdError>> {
+        self(latency).await
+    }
+}
+
 /// The heartbeat task configuration.
-pub struct HeartbeatConfig<F = fn(Duration)> {
+pub struct HeartbeatConfig {
     /// The interval on which heartbeats will be sent.
     pub interval: Duration,
     /// The amount of time past a missed heartbeat that the other side will be
     /// considered dead.
     pub tolerance: Duration,
     /// An optional callback to run when a heartbeat is received.
-    pub callback: Option<F>,
+    pub handler: Option<Arc<dyn HeartbeatHandler>>,
 }
 
-impl<F> Default for HeartbeatConfig<F> {
+impl Default for HeartbeatConfig {
     fn default() -> Self {
         HeartbeatConfig {
             interval: Duration::from_secs(10),
             tolerance: Duration::from_secs(15),
-            callback: None,
+            handler: None,
         }
     }
 }
@@ -94,13 +119,7 @@ where
 {
     /// Wrap a typed session and start the heartbeat task.
     /// Returns an error if the stream can't be opened.
-    pub async fn start<F>(
-        sess: S,
-        cfg: HeartbeatConfig<F>,
-    ) -> Result<(Self, HeartbeatCtl), io::Error>
-    where
-        F: FnMut(Duration) + Send + 'static,
-    {
+    pub async fn start(sess: S, cfg: HeartbeatConfig) -> Result<(Self, HeartbeatCtl), io::Error> {
         let (dropref, drop_waiter) = awaitdrop::awaitdrop();
 
         let mut hb = Heartbeat {
@@ -128,7 +147,7 @@ where
 
         ctl.start_requester(stream, drx, mtx, drop_waiter.wait())
             .await?;
-        ctl.start_check(mrx, cfg.callback, drop_waiter.wait())?;
+        ctl.start_check(mrx, cfg.handler, drop_waiter.wait())?;
 
         Ok((hb, ctl))
     }
@@ -159,15 +178,12 @@ impl HeartbeatCtl {
             .store(tolerance.as_nanos() as u64, Ordering::Relaxed);
     }
 
-    fn start_check<F>(
+    fn start_check(
         &mut self,
         mut mark: mpsc::Receiver<Duration>,
-        mut cb: Option<F>,
+        cb: Option<Arc<dyn HeartbeatHandler>>,
         dropped: awaitdrop::WaitFuture,
-    ) -> Result<(), io::Error>
-    where
-        F: FnMut(Duration) + Send + 'static,
-    {
+    ) -> Result<(), io::Error> {
         let (mut interval, mut tolerance) = self.get_durations();
         let durations = self.durations.clone();
 
@@ -178,17 +194,17 @@ impl HeartbeatCtl {
                     loop {
                         match tokio::time::timeout_at(deadline, mark.recv()).await {
                             Err(_e) => {
-                                if let Some(cb) = cb.as_mut() {
-                                    cb(Duration::from_secs(0))
+                                if let Some(cb) = cb.as_ref() {
+                                    cb.handle_heartbeat(None).await?;
                                 }
                             }
                             Ok(Some(lat)) => {
-                                if let Some(cb) = cb.as_mut() {
-                                    cb(lat)
+                                if let Some(cb) = cb.as_ref() {
+                                    cb.handle_heartbeat(lat.into()).await?;
                                 }
                             }
                             Ok(None) => {
-                                return;
+                                return Result::<(), Box<dyn StdError>>::Ok(());
                             }
                         };
 
