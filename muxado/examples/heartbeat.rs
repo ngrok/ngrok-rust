@@ -1,9 +1,15 @@
-use std::env;
+use std::{
+    env,
+    error::Error,
+    sync::Arc,
+    time::Duration,
+};
 
 use muxado::{
     heartbeat::{
         Heartbeat,
         HeartbeatConfig,
+        HeartbeatHandler,
     },
     typed::Typed,
     *,
@@ -29,9 +35,12 @@ async fn main() -> Result<(), anyhow::Error> {
     let (_heartbeat, _heartbeat_ctl) = Heartbeat::start(
         typed,
         HeartbeatConfig {
-            callback: Some(|d| {
-                tracing::info!(?d, "got heartbeat");
-            }),
+            // Either approach to providing a handler works
+            // handler: Some(Arc::new(HHandler)),
+            handler: Some(Arc::new(|lat| async move {
+                tracing::info!(?lat, "got heartbeat");
+                Result::<(), Box<dyn Error>>::Ok(())
+            })),
             ..Default::default()
         },
     )
@@ -39,4 +48,16 @@ async fn main() -> Result<(), anyhow::Error> {
 
     futures::future::pending::<()>().await;
     Ok(())
+}
+
+struct HHandler;
+
+#[async_trait::async_trait]
+impl HeartbeatHandler for HHandler {
+    async fn handle_heartbeat(&self, lat: Option<Duration>) -> Result<(), Box<dyn Error>> {
+        if let Some(lat) = lat {
+            tracing::info!(?lat, "got heartbeat");
+        }
+        Ok(())
+    }
 }
