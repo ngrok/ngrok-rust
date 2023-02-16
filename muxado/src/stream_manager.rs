@@ -31,7 +31,6 @@ use futures::{
         StreamFuture,
     },
 };
-use pin_utils::unsafe_pinned;
 use tracing::{
     debug,
     error,
@@ -98,8 +97,13 @@ pub struct StreamManager {
 }
 
 impl StreamManager {
-    unsafe_pinned!(tasks: StreamTasks);
-    unsafe_pinned!(sys_rx: mpsc::Receiver<Frame>);
+    fn tasks(&mut self) -> Pin<&mut StreamTasks> {
+        Pin::new(&mut self.tasks)
+    }
+
+    fn sys_rx(&mut self) -> Pin<&mut mpsc::Receiver<Frame>> {
+        Pin::new(&mut self.sys_rx)
+    }
 
     pub fn new(stream_limit: usize, client: bool) -> Self {
         let (sys_tx, sys_rx) = mpsc::channel(512);
@@ -483,13 +487,15 @@ struct WithID<F: ?Sized> {
     fut: F,
 }
 
-impl<F> WithID<F> {
-    unsafe_pinned!(fut: F);
+impl<F: Unpin> WithID<F> {
+    fn fut(&mut self) -> Pin<&mut F> {
+        Pin::new(&mut self.fut)
+    }
 }
 
 impl<F> Future for WithID<F>
 where
-    F: Future,
+    F: Future + Unpin,
 {
     type Output = (StreamID, F::Output);
 

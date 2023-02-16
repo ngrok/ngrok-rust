@@ -21,7 +21,6 @@ use futures::{
     ready,
     sink::Sink,
 };
-use pin_utils::unsafe_pinned;
 use tracing::instrument;
 
 use crate::{
@@ -38,7 +37,9 @@ pub struct StreamSender {
 }
 
 impl StreamSender {
-    unsafe_pinned!(sink: mpsc::Sender<Frame>);
+    pub fn sink(&mut self) -> Pin<&mut mpsc::Sender<Frame>> {
+        Pin::new(&mut self.sink)
+    }
 
     pub fn wrap(sink: mpsc::Sender<Frame>) -> StreamSender {
         let code = Arc::new(AtomicU32::new(0));
