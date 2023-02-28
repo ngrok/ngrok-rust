@@ -5,9 +5,9 @@ use async_trait::async_trait;
 use super::TunnelBuilder;
 use crate::{
     config::common::{
+        default_forwards_to,
         CommonOpts,
         TunnelConfig,
-        FORWARDS_TO,
     },
     internals::proto::{
         BindExtra,
@@ -30,7 +30,7 @@ impl TunnelConfig for LabeledOptions {
         self.common_opts
             .forwards_to
             .clone()
-            .unwrap_or(FORWARDS_TO.into())
+            .unwrap_or(default_forwards_to().into())
     }
     fn extra(&self) -> BindExtra {
         BindExtra {
@@ -97,7 +97,7 @@ mod test {
     where
         C: TunnelConfig,
     {
-        assert_eq!(FORWARDS_TO, tunnel_cfg.forwards_to());
+        assert_eq!(default_forwards_to(), tunnel_cfg.forwards_to());
 
         let extra = tunnel_cfg.extra();
         assert_eq!(String::default(), *extra.token);

@@ -17,9 +17,9 @@ use super::{
 use crate::{
     config::{
         common::{
+            default_forwards_to,
             CommonOpts,
             TunnelConfig,
-            FORWARDS_TO,
         },
         headers::Headers,
         oauth::OauthOptions,
@@ -93,7 +93,7 @@ impl TunnelConfig for HttpOptions {
         self.common_opts
             .forwards_to
             .clone()
-            .unwrap_or(FORWARDS_TO.into())
+            .unwrap_or(default_forwards_to().into())
     }
     fn extra(&self) -> BindExtra {
         BindExtra {

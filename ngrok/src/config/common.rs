@@ -1,6 +1,11 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    env,
+    process,
+};
 
 use async_trait::async_trait;
+use once_cell::sync::OnceCell;
 
 pub use crate::internals::proto::ProxyProto;
 use crate::{
@@ -15,7 +20,24 @@ use crate::{
     Tunnel,
 };
 
-pub(crate) const FORWARDS_TO: &str = "rust";
+pub(crate) fn default_forwards_to() -> &'static str {
+    static FORWARDS_TO: OnceCell<String> = OnceCell::new();
+
+    FORWARDS_TO
+        .get_or_init(|| {
+            let hostname = hostname::get()
+                .unwrap_or("<unknown>".into())
+                .to_string_lossy()
+                .into_owned();
+            let exe = env::current_exe()
+                .unwrap_or("<unknown>".into())
+                .to_string_lossy()
+                .into_owned();
+            let pid = process::id();
+            format!("app://{hostname}/{exe}?pid={pid}")
+        })
+        .as_str()
+}
 
 /// Trait representing things that can be built into an ngrok tunnel.
 #[async_trait]
