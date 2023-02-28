@@ -77,10 +77,12 @@ pub trait TunnelExt: Tunnel {
         forward_conns(self, addr, |e, c| drop(serve_gateway_error(e, c))).await
     }
 
-    /// Forward incoming tunnel connections to the provided Unix socket path.
+    /// Forward incoming tunnel connections to the provided file socket path.
+    /// On Linux/Darwin addr can be a unix domain socket path, e.g. "/tmp/ngrok.sock".
+    /// On Windows addr can be a named pipe, e.g. "\\.\pipe\ngrok_pipe".
     #[instrument(level = "debug", skip_all, fields(path))]
-    async fn forward_unix(&mut self, addr: impl AsRef<Path> + Send) -> Result<(), io::Error> {
-        forward_unix_conns(self, addr, |_, _| {}).await
+    async fn forward_pipe(&mut self, addr: impl AsRef<Path> + Send) -> Result<(), io::Error> {
+        forward_pipe_conns(self, addr, |_, _| {}).await
     }
 }
 
@@ -104,7 +106,7 @@ where
     Ok(())
 }
 
-async fn forward_unix_conns<T, F>(
+async fn forward_pipe_conns<T, F>(
     this: &mut T,
     addr: impl AsRef<Path>,
     mut on_err: F,
@@ -118,7 +120,7 @@ where
     span.record("path", field::debug(&path));
     loop {
         trace!("waiting for new tunnel connection");
-        if !handle_one_unix(this, path, &mut on_err).await? {
+        if !handle_one_pipe(this, path, &mut on_err).await? {
             debug!("listener closed, exiting");
             break;
         }
@@ -203,7 +205,7 @@ where
 }
 
 #[instrument(level = "debug", skip_all, fields(remote_addr, local_addr))]
-async fn handle_one_unix<T, F>(this: &mut T, addr: &Path, on_error: F) -> Result<bool, io::Error>
+async fn handle_one_pipe<T, F>(this: &mut T, addr: &Path, on_error: F) -> Result<bool, io::Error>
 where
     T: Tunnel + ?Sized,
     F: FnOnce(io::Error, Conn),
@@ -246,7 +248,7 @@ where
                 Ok(client) => break client,
                 Err(error) if error.raw_os_error() == Some(ERROR_PIPE_BUSY as i32) => (),
                 Err(error) => {
-                    warn!(%error, "error establishing local unix connection");
+                    warn!(%error, "error establishing local named pipe connection");
                     on_error(error, tunnel_conn);
                     return Ok(true);
                 }
