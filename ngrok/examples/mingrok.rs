@@ -62,7 +62,7 @@ async fn main() -> Result<(), Error> {
         info!(url = tun.url(), forwards_to, "started tunnel");
 
         let mut fut = if forwards_to.contains('/') {
-            tun.forward_unix(&forwards_to)
+            tun.forward_pipe(&forwards_to)
         } else {
             tun.forward_http(&forwards_to)
         }

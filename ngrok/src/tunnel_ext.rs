@@ -1,5 +1,5 @@
-#[cfg(not(target_os = "windows"))]
-use std::path::Path;
+#[cfg(target_os = "windows")]
+use std::time::Duration;
 #[cfg(feature = "hyper")]
 use std::{
     convert::Infallible,
@@ -8,6 +8,7 @@ use std::{
 use std::{
     io,
     net::SocketAddr,
+    path::Path,
 };
 
 use async_trait::async_trait;
@@ -20,8 +21,12 @@ use hyper::{
     Response,
     StatusCode,
 };
+#[cfg(target_os = "windows")]
+use tokio::net::windows::named_pipe::ClientOptions;
 #[cfg(not(target_os = "windows"))]
 use tokio::net::UnixStream;
+#[cfg(target_os = "windows")]
+use tokio::time;
 use tokio::{
     io::{
         AsyncRead,
@@ -44,6 +49,8 @@ use tracing::{
     Instrument,
     Span,
 };
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::Foundation::ERROR_PIPE_BUSY;
 
 use crate::{
     prelude::*,
@@ -70,11 +77,12 @@ pub trait TunnelExt: Tunnel {
         forward_conns(self, addr, |e, c| drop(serve_gateway_error(e, c))).await
     }
 
-    /// Forward incoming tunnel connections to the provided Unix socket path.
-    #[cfg(not(target_os = "windows"))]
+    /// Forward incoming tunnel connections to the provided file socket path.
+    /// On Linux/Darwin addr can be a unix domain socket path, e.g. "/tmp/ngrok.sock".
+    /// On Windows addr can be a named pipe, e.g. "\\.\pipe\ngrok_pipe".
     #[instrument(level = "debug", skip_all, fields(path))]
-    async fn forward_unix(&mut self, addr: impl AsRef<Path> + Send) -> Result<(), io::Error> {
-        forward_unix_conns(self, addr, |_, _| {}).await
+    async fn forward_pipe(&mut self, addr: impl AsRef<Path> + Send) -> Result<(), io::Error> {
+        forward_pipe_conns(self, addr, |_, _| {}).await
     }
 }
 
@@ -98,8 +106,7 @@ where
     Ok(())
 }
 
-#[cfg(not(target_os = "windows"))]
-async fn forward_unix_conns<T, F>(
+async fn forward_pipe_conns<T, F>(
     this: &mut T,
     addr: impl AsRef<Path>,
     mut on_err: F,
@@ -113,7 +120,7 @@ where
     span.record("path", field::debug(&path));
     loop {
         trace!("waiting for new tunnel connection");
-        if !handle_one_unix(this, path, &mut on_err).await? {
+        if !handle_one_pipe(this, path, &mut on_err).await? {
             debug!("listener closed, exiting");
             break;
         }
@@ -197,9 +204,8 @@ where
     Ok(true)
 }
 
-#[cfg(not(target_os = "windows"))]
 #[instrument(level = "debug", skip_all, fields(remote_addr, local_addr))]
-async fn handle_one_unix<T, F>(this: &mut T, addr: &Path, on_error: F) -> Result<bool, io::Error>
+async fn handle_one_pipe<T, F>(this: &mut T, addr: &Path, on_error: F) -> Result<bool, io::Error>
 where
     T: Tunnel + ?Sized,
     F: FnOnce(io::Error, Conn),
@@ -219,21 +225,42 @@ where
 
     trace!("accepted tunnel connection");
 
-    let local_conn = match UnixStream::connect(addr).await {
-        Ok(conn) => conn,
-        Err(error) => {
-            warn!(%error, "error establishing local unix connection");
+    #[cfg(not(target_os = "windows"))]
+    {
+        let local_conn = match UnixStream::connect(addr).await {
+            Ok(conn) => conn,
+            Err(error) => {
+                warn!(%error, "error establishing local unix connection");
+                on_error(error, tunnel_conn);
+                return Ok(true);
+            }
+        };
+        span.record("local_addr", field::debug(local_conn.peer_addr().unwrap()));
+        debug!("established local connection, joining streams");
+        join_streams(tunnel_conn, local_conn);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        // loop behavior copied from docs
+        // https://docs.rs/tokio/latest/tokio/net/windows/named_pipe/struct.NamedPipeClient.html
+        let local_conn = loop {
+            match ClientOptions::new().open(addr) {
+                Ok(client) => break client,
+                Err(error) if error.raw_os_error() == Some(ERROR_PIPE_BUSY as i32) => (),
+                Err(error) => {
+                    warn!(%error, "error establishing local named pipe connection");
+                    on_error(error, tunnel_conn);
+                    return Ok(true);
+                }
+            }
 
-            on_error(error, tunnel_conn);
+            time::sleep(Duration::from_millis(50)).await;
+        };
+        span.record("local_addr", field::debug(addr));
+        debug!("established local connection, joining streams");
+        join_streams(tunnel_conn, local_conn);
+    }
 
-            return Ok(true);
-        }
-    };
-    span.record("local_addr", field::debug(local_conn.peer_addr().unwrap()));
-
-    debug!("established local connection, joining streams");
-
-    join_streams(tunnel_conn, local_conn);
     Ok(true)
 }
 
