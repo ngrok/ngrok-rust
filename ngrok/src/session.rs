@@ -95,6 +95,8 @@ use crate::{
 };
 
 const CERT_BYTES: &[u8] = include_bytes!("../assets/ngrok.ca.crt");
+const CLIENT_TYPE: &str = "library/official/rust";
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Clone)]
 struct BoundTunnel {
@@ -206,6 +208,9 @@ pub async fn default_connect(
 /// The builder for an ngrok [Session].
 #[derive(Clone)]
 pub struct SessionBuilder {
+    // Consuming libraries and applications can add a client type and version on
+    // top of the "base" type and version declared by this library.
+    versions: Vec<(String, String)>,
     authtoken: Option<SecretString>,
     metadata: Option<String>,
     heartbeat_interval: Option<Duration>,
@@ -292,6 +297,7 @@ impl Default for SessionBuilder {
             .with_no_client_auth();
 
         SessionBuilder {
+            versions: vec![],
             authtoken: None,
             metadata: None,
             heartbeat_interval: None,
@@ -455,6 +461,27 @@ impl SessionBuilder {
         self
     }
 
+    /// Add client type and version information for a child client.
+    ///
+    /// This is a way for applications and library consumers of this crate
+    /// identify themselves.
+    ///
+    /// The protocol-level semantics of adding additional type/version
+    /// information are currently unstable, as is the format of the type and
+    /// version strings. The server may reject client types that it doesn't
+    /// recognize, or versions that are too far out of date.
+    ///
+    /// For now, don't use this outside of official consumers.
+    #[doc(hidden)]
+    pub fn child_client(
+        mut self,
+        client_type: impl Into<String>,
+        version: impl Into<String>,
+    ) -> Self {
+        self.versions.push((client_type.into(), version.into()));
+        self
+    }
+
     /// Begins a new ngrok [Session] by connecting to the ngrok service.
     /// `connect` blocks until the session is successfully established or fails with
     /// an error.
@@ -511,11 +538,22 @@ impl SessionBuilder {
             _ => env::consts::OS,
         };
 
+        let mut client_type = CLIENT_TYPE.to_string();
+        let mut version = VERSION.to_string();
+
+        for (child_type, child_version) in &self.versions {
+            client_type.push_str(",");
+            client_type.push_str(&child_type);
+            version.push_str(",");
+            version.push_str(&child_version);
+        }
+
         let resp = raw
             .auth(
                 self.id.as_deref().unwrap_or_default(),
                 AuthExtra {
-                    version: env!("CARGO_PKG_VERSION").into(),
+                    version,
+                    client_type,
                     auth_token: self.authtoken.clone().unwrap_or_default(),
                     metadata: self.metadata.clone().unwrap_or_default(),
                     os: os.into(),
@@ -540,7 +578,6 @@ impl SessionBuilder {
                         .is_none()
                         .then_some(NOT_IMPLEMENTED.into())
                         .or(Some("".into())),
-                    client_type: "library/official/rust".into(),
                     cookie: self.cookie.clone().unwrap_or_default(),
                     ..Default::default()
                 },
