@@ -542,10 +542,10 @@ impl SessionBuilder {
         let mut version = VERSION.to_string();
 
         for (child_type, child_version) in &self.versions {
-            client_type.push_str(",");
-            client_type.push_str(&child_type);
-            version.push_str(",");
-            version.push_str(&child_version);
+            client_type.push(',');
+            client_type.push_str(child_type);
+            version.push(',');
+            version.push_str(child_version);
         }
 
         let resp = raw
