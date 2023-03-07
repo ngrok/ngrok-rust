@@ -128,7 +128,7 @@ async fn serve_http(
     Ok(start_http_server(tun, router))
 }
 
-fn start_http_server(tun: impl UrlTunnel, router: Router) -> TunnelGuard {
+fn start_http_server(tun: impl UrlInfo + Tunnel, router: Router) -> TunnelGuard {
     let url = tun.url().into();
 
     let (tx, rx) = oneshot::channel::<()>();

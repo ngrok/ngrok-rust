@@ -8,7 +8,10 @@ use futures::{
     prelude::*,
     select,
 };
-use ngrok::prelude::*;
+use ngrok::{
+    config::ForwarderBuilder,
+    prelude::*,
+};
 use tokio::sync::oneshot;
 use tracing::info;
 use url::Url;
@@ -57,19 +60,17 @@ async fn main() -> Result<(), Error> {
             .connect()
             .await?
             .http_endpoint()
-            .forwards_to(forwards_to.as_str())
-            .listen()
+            .listen_and_forward(forwards_to.clone())
             .await?;
 
         info!(url = tun.url(), %forwards_to, "started tunnel");
 
-        let mut fut = TunnelExt::forward(&mut tun, forwards_to.clone()).fuse();
-
+        let mut fut = tun.join().fuse();
         let mut stop_rx = stop_rx.fuse();
         let mut restart_rx = restart_rx.fuse();
 
         select! {
-            res = fut => return Ok(res?),
+            res = fut => return Ok(res??),
             _ = stop_rx => return Ok(()),
             _ = restart_rx => {
                 drop(fut);

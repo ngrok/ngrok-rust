@@ -1,8 +1,5 @@
 use std::collections::HashMap;
 
-use async_trait::async_trait;
-
-use super::TunnelBuilder;
 use crate::{
     config::common::{
         default_forwards_to,
@@ -13,7 +10,6 @@ use crate::{
         BindExtra,
         BindOpts,
     },
-    session::RpcError,
     tunnel::LabeledTunnel,
     Session,
 };
@@ -52,7 +48,7 @@ impl TunnelConfig for LabeledOptions {
 
 impl_builder! {
     /// A builder for a labeled tunnel.
-    LabeledTunnelBuilder, LabeledOptions, LabeledTunnel
+    LabeledTunnelBuilder, LabeledOptions, LabeledTunnel, |l: &LabeledTunnel| l.proto()
 }
 
 impl LabeledTunnelBuilder {
@@ -66,6 +62,13 @@ impl LabeledTunnelBuilder {
     /// Add a label, value pair for this tunnel.
     pub fn label(&mut self, label: impl Into<String>, value: impl Into<String>) -> &mut Self {
         self.options.labels.insert(label.into(), value.into());
+        self
+    }
+
+    /// Sets the ForwardsTo string for this tunnel. This can be viewed via the
+    /// API or dashboard.
+    pub fn forwards_to(&mut self, forwards_to: impl Into<String>) -> &mut Self {
+        self.options.common_opts.forwards_to = forwards_to.into().into();
         self
     }
 }

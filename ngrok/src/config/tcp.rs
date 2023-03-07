@@ -1,11 +1,6 @@
 use std::collections::HashMap;
 
-use async_trait::async_trait;
-
-use super::{
-    common::ProxyProto,
-    TunnelBuilder,
-};
+use super::common::ProxyProto;
 use crate::{
     config::common::{
         default_forwards_to,
@@ -17,7 +12,6 @@ use crate::{
         BindExtra,
         BindOpts,
     },
-    session::RpcError,
     tunnel::TcpTunnel,
     Session,
 };
@@ -66,7 +60,7 @@ impl TunnelConfig for TcpOptions {
 
 impl_builder! {
     /// A builder for a tunnel backing a TCP endpoint.
-    TcpTunnelBuilder, TcpOptions, TcpTunnel
+    TcpTunnelBuilder, TcpOptions, TcpTunnel, |_| "tcp"
 }
 
 /// The options for a TCP edge.

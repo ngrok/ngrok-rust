@@ -111,6 +111,7 @@ use crate::{
         AcceptError,
         Conn,
         TunnelInner,
+        TunnelInnerInfo,
     },
 };
 
@@ -875,17 +876,20 @@ impl Session {
                 .await?;
 
             extra.token = resp.extra.token;
+            let info = TunnelInnerInfo {
+                id: resp.client_id,
+                proto: resp.proto.clone(),
+                url: resp.url,
+                labels: HashMap::new(),
+                forwards_to: tunnel_cfg.forwards_to(),
+                metadata: extra.metadata.clone(),
+            };
 
             (
                 TunnelInner {
-                    id: resp.client_id,
-                    proto: resp.proto.clone(),
-                    url: resp.url,
-                    labels: HashMap::new(),
-                    forwards_to: tunnel_cfg.forwards_to(),
-                    metadata: extra.metadata.clone(),
+                    info,
                     session: self.clone(),
-                    incoming: rx,
+                    incoming: rx.into(),
                 },
                 BoundTunnel {
                     proto: resp.proto,
@@ -902,16 +906,20 @@ impl Session {
                 .listen_label(labels.clone(), &extra.metadata, &forwards_to)
                 .await?;
 
+            let info = TunnelInnerInfo {
+                id: resp.id,
+                proto: Default::default(),
+                url: Default::default(),
+                labels: tunnel_cfg.labels(),
+                forwards_to: tunnel_cfg.forwards_to(),
+                metadata: extra.metadata.clone(),
+            };
+
             (
                 TunnelInner {
-                    id: resp.id,
-                    proto: Default::default(),
-                    url: Default::default(),
-                    labels: tunnel_cfg.labels(),
-                    forwards_to: tunnel_cfg.forwards_to(),
-                    metadata: extra.metadata.clone(),
+                    info,
                     session: self.clone(),
-                    incoming: rx,
+                    incoming: rx.into(),
                 },
                 BoundTunnel {
                     extra,
@@ -925,7 +933,7 @@ impl Session {
         };
 
         let mut tunnels = inner.tunnels.write().await;
-        tunnels.insert(tunnel.id.clone(), bound);
+        tunnels.insert(tunnel.info.id.clone(), bound);
 
         Ok(tunnel)
     }
@@ -985,6 +993,7 @@ async fn accept_one(
             .send(Ok(Conn {
                 remote_addr,
                 stream: conn.stream,
+                header: conn.header,
             }))
             .await
     } else {

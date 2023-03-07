@@ -65,11 +65,13 @@ use crate::{
     Conn,
 };
 
-impl<T> TunnelExt for T where T: Tunnel + Send {}
+#[allow(deprecated)]
+impl<T> TunnelExt for T where T: Tunnel + ProtoInfo + Send {}
 
 /// Extension methods auto-implemented for all tunnel types
 #[async_trait]
-pub trait TunnelExt: Tunnel + Send {
+#[deprecated = "superceded by the `listen_and_forward` builder method"]
+pub trait TunnelExt: Tunnel + ProtoInfo + Send {
     /// Forward incoming tunnel connections to the provided url based on its
     /// scheme.
     /// This currently supports http, https, tls, and tcp on all platforms, unix
@@ -119,14 +121,17 @@ pub trait TunnelExt: Tunnel + Send {
                 }
             };
 
-            debug!(parent: &span, "established local connection, joining streams");
+            debug!(
+                parent: &span,
+                "established local connection, joining streams"
+            );
 
             span.in_scope(|| join_streams(tunnel_conn, local_conn));
         }
     }
 }
 
-fn on_err<T: Tunnel + Send + ?Sized>(tunnel: &T, err: io::Error, conn: Conn) {
+fn on_err<T: Tunnel + ProtoInfo + Send + ?Sized>(tunnel: &T, err: io::Error, conn: Conn) {
     match tunnel.proto() {
         #[cfg(feature = "hyper")]
         "http" | "https" => drop(serve_gateway_error(err, conn)),
