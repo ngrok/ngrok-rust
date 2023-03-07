@@ -80,7 +80,10 @@ use super::{
 pub enum RpcError {
     /// Failed to open a new stream to start the RPC call.
     #[error("failed to open muxado stream")]
-    Open(#[from] MuxadoError),
+    Open(#[source] MuxadoError),
+    /// Some non-Open transport error occurred
+    #[error("transport error")]
+    Transport(#[source] MuxadoError),
     /// Failed to send the request over the stream.
     #[error("error sending rpc request")]
     Send(#[source] io::Error),
@@ -217,7 +220,11 @@ impl RawSession {
 impl RpcClient {
     #[instrument(level = "debug", skip(self))]
     async fn rpc<R: RpcRequest>(&mut self, req: R) -> Result<R::Response, RpcError> {
-        let mut stream = self.open.open_typed(R::TYPE).await?;
+        let mut stream = self
+            .open
+            .open_typed(R::TYPE)
+            .await
+            .map_err(RpcError::Open)?;
         let s = serde_json::to_string(&req)
             // This should never happen, since we control the request types and
             // know that they will always serialize correctly. Just in case
@@ -255,6 +262,15 @@ impl RpcClient {
         debug!(resp = ?ok_resp, "decoded rpc response");
 
         Ok(ok_resp?)
+    }
+
+    /// Close the raw ngrok session with a "None" muxado error.
+    pub async fn close(&mut self) -> Result<(), RpcError> {
+        self.open
+            .close(MuxadoError::None, "".into())
+            .await
+            .map_err(RpcError::Transport)?;
+        Ok(())
     }
 
     #[instrument(level = "debug", skip(self))]
