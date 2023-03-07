@@ -1,6 +1,9 @@
-use std::sync::{
-    Arc,
-    Mutex,
+use std::{
+    str::FromStr,
+    sync::{
+        Arc,
+        Mutex,
+    },
 };
 
 use anyhow::Error;
@@ -8,9 +11,13 @@ use futures::{
     prelude::*,
     select,
 };
-use ngrok::prelude::*;
+use ngrok::{
+    config::ForwarderBuilder,
+    prelude::*,
+};
 use tokio::sync::oneshot;
 use tracing::info;
+use url::Url;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -55,24 +62,17 @@ async fn main() -> Result<(), Error> {
             .connect()
             .await?
             .http_endpoint()
-            .forwards_to(&forwards_to)
-            .listen()
+            .listen_and_forward(Url::from_str(&forwards_to).expect("Url forward argument"))
             .await?;
 
         info!(url = tun.url(), forwards_to, "started tunnel");
 
-        let mut fut = if forwards_to.contains('/') {
-            tun.forward_pipe(&forwards_to)
-        } else {
-            tun.forward_http(&forwards_to)
-        }
-        .fuse();
-
+        let mut fut = tun.join().expect("join handle").fuse();
         let mut stop_rx = stop_rx.fuse();
         let mut restart_rx = restart_rx.fuse();
 
         select! {
-            res = fut => return Ok(res?),
+            res = fut => return Ok(res??),
             _ = stop_rx => return Ok(()),
             _ = restart_rx => {
                 drop(fut);

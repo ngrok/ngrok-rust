@@ -1,15 +1,11 @@
 use std::collections::HashMap;
 
-use async_trait::async_trait;
 use bytes::{
     self,
     Bytes,
 };
 
-use super::{
-    common::ProxyProto,
-    TunnelBuilder,
-};
+use super::common::ProxyProto;
 use crate::{
     config::common::{
         default_forwards_to,
@@ -22,7 +18,6 @@ use crate::{
         BindOpts,
         TlsTermination,
     },
-    session::RpcError,
     tunnel::TlsTunnel,
     Session,
 };
@@ -89,7 +84,7 @@ impl TunnelConfig for TlsOptions {
 
 impl_builder! {
     /// A builder for a tunnel backing a TCP endpoint.
-    TlsTunnelBuilder, TlsOptions, TlsTunnel
+    TlsTunnelBuilder, TlsOptions, TlsTunnel, |_| "tls"
 }
 
 impl TlsTunnelBuilder {

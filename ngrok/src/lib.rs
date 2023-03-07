@@ -40,6 +40,9 @@ pub mod session;
 /// Types for working with ngrok tunnels.
 pub mod tunnel;
 
+/// Types for working with connection forwarders.
+pub mod forwarder;
+
 mod tunnel_ext;
 
 #[doc(inline)]
@@ -52,14 +55,17 @@ pub use tunnel::{
 
 /// A prelude of traits for working with ngrok types.
 pub mod prelude {
+    #[allow(deprecated)]
     #[doc(inline)]
     pub use crate::{
         config::TunnelBuilder,
         tunnel::{
-            LabelsTunnel,
-            ProtoTunnel,
+            LabelsInfo,
+            ProtoInfo,
             Tunnel,
-            UrlTunnel,
+            TunnelCloser,
+            TunnelInfo,
+            UrlInfo,
         },
         tunnel_ext::TunnelExt,
     };

@@ -57,10 +57,12 @@ use crate::{
     Conn,
 };
 
+#[allow(deprecated)]
 impl<T> TunnelExt for T where T: Tunnel {}
 
 /// Extension methods auto-implemented for all tunnel types
 #[async_trait]
+#[deprecated = "superceded by the `listen_and_forward` builder method"]
 pub trait TunnelExt: Tunnel {
     /// Forward incoming tunnel connections to the provided TCP address.
     #[instrument(level = "debug", skip_all, fields(local_addrs))]

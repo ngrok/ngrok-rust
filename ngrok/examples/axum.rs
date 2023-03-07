@@ -32,7 +32,7 @@ async fn main() -> anyhow::Result<()> {
 
 // const CA_CERT: &[u8] = include_bytes!("ca.crt");
 
-async fn start_tunnel() -> anyhow::Result<impl UrlTunnel> {
+async fn start_tunnel() -> anyhow::Result<impl UrlInfo + Tunnel> {
     let tun = ngrok::Session::builder()
         .authtoken_from_env()
         .connect()

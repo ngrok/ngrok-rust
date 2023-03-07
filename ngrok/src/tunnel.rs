@@ -33,7 +33,13 @@ use crate::{
         TcpTunnelBuilder,
         TlsTunnelBuilder,
     },
-    internals::raw_session::RpcError,
+    internals::{
+        proto::{
+            EdgeType,
+            ProxyHeader,
+        },
+        raw_session::RpcError,
+    },
     session::ConnectError,
     Session,
 };
@@ -49,14 +55,19 @@ pub enum AcceptError {
     Reconnect(Arc<ConnectError>),
 }
 
-pub(crate) struct TunnelInner {
+#[derive(Clone)]
+pub(crate) struct TunnelInnerInfo {
     pub(crate) id: String,
     pub(crate) proto: String,
     pub(crate) url: String,
     pub(crate) labels: HashMap<String, String>,
     pub(crate) forwards_to: String,
     pub(crate) metadata: String,
-    pub(crate) incoming: Receiver<Result<Conn, AcceptError>>,
+}
+
+pub(crate) struct TunnelInner {
+    pub(crate) info: TunnelInnerInfo,
+    pub(crate) incoming: Option<Receiver<Result<Conn, AcceptError>>>,
 
     // Note: this session field is also used to detect tunnel liveness for the
     // purposes of shutting down the accept loop. If it's ever removed, an
@@ -83,14 +94,18 @@ macro_rules! tunnel_trait {
         /// ngrok [Tunnel]s act like TCP listeners and can be used as a
         /// [futures::stream::TryStream] of [Conn]ections from endpoints created on the ngrok
         /// service.
-        #[async_trait]
         pub trait Tunnel:
             Stream<Item = Result<Conn, AcceptError>>
+            + TunnelInfo
+            + TunnelCloser
             $($hyper_bound)*
             + Unpin
             + Send
             + 'static
-        {
+        {}
+
+        /// Information associated with an ngrok tunnel.
+        pub trait TunnelInfo {
             /// Returns a tunnel's unique ID.
             fn id(&self) -> &str;
             /// Returns a human-readable string presented in the ngrok dashboard
@@ -100,6 +115,11 @@ macro_rules! tunnel_trait {
             fn forwards_to(&self) -> &str;
             /// Returns the arbitrary metadata string for this tunnel.
             fn metadata(&self) -> &str;
+        }
+
+        /// An ngrok tunnel closer.
+        #[async_trait]
+        pub trait TunnelCloser {
             /// Close the tunnel.
             ///
             /// This is an RPC call that must be `.await`ed.
@@ -120,19 +140,19 @@ tunnel_trait!();
 tunnel_trait!(+ Accept<Conn = Conn, Error = AcceptError>);
 
 /// An ngrok tunnel that supports getting the URL it was started for.
-pub trait UrlTunnel: Tunnel {
+pub trait UrlInfo {
     /// Returns the tunnel endpoint's URL.
     fn url(&self) -> &str;
 }
 
 /// An ngrok tunnel that supports getting the protocol it uses at the ngrok edge.
-pub trait ProtoTunnel: Tunnel {
+pub trait ProtoInfo {
     /// Returns the protocol of the tunnel's endpoint.
     fn proto(&self) -> &str;
 }
 
 /// An ngrok tunnel that supports getting the labels it was started with.
-pub trait LabelsTunnel: Tunnel {
+pub trait LabelsInfo {
     /// Returns the labels that the tunnel was started with.
     fn labels(&self) -> &HashMap<String, String>;
 }
@@ -142,15 +162,31 @@ pub trait LabelsTunnel: Tunnel {
 /// This implements [AsyncRead]/[AsyncWrite], as well as providing access to the
 /// address from which the connection to the ngrok edge originated.
 pub struct Conn {
+    pub(crate) header: ProxyHeader,
     pub(crate) remote_addr: SocketAddr,
     pub(crate) stream: TypedStream,
+}
+
+impl Conn {
+    #[allow(dead_code)]
+    fn edge_type(&self) -> EdgeType {
+        self.header.edge_type
+    }
+
+    #[allow(dead_code)]
+    fn proto(&self) -> &str {
+        &self.header.proto
+    }
 }
 
 impl Stream for TunnelInner {
     type Item = Result<Conn, AcceptError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.incoming.poll_recv(cx)
+        self.incoming
+            .as_mut()
+            .expect("tunnel inner lacks a receiver")
+            .poll_recv(cx)
     }
 }
 
@@ -170,42 +206,61 @@ impl Accept for TunnelInner {
 impl TunnelInner {
     /// Get this tunnel's ID as returned by the ngrok server.
     pub fn id(&self) -> &str {
-        &self.id
+        &self.info.id
     }
 
     /// Get the URL for this tunnel.
     /// Labeled tunnels will return an empty string.
     pub fn url(&self) -> &str {
-        &self.url
+        &self.info.url
     }
 
     /// Close the tunnel.
     /// This is an RPC call and needs to be `.await`ed.
     pub async fn close(&mut self) -> Result<(), RpcError> {
-        self.session.close_tunnel(&self.id).await?;
-        self.incoming.close();
+        self.session.close_tunnel(self.id()).await?;
+        if let Some(r) = self.incoming.as_mut() {
+            r.close()
+        }
         Ok(())
     }
 
     /// Get the protocol that this tunnel uses.
     pub fn proto(&self) -> &str {
-        &self.proto
+        &self.info.proto
     }
 
     /// Get the labels this tunnel was started with.
     /// The returned [`HashMap`] will be empty for non-labeled tunnels.
     pub fn labels(&self) -> &HashMap<String, String> {
-        &self.labels
+        &self.info.labels
     }
 
     /// Get the address that this tunnel says it forwards to.
     pub fn forwards_to(&self) -> &str {
-        &self.forwards_to
+        &self.info.forwards_to
     }
 
     /// Get the user-supplied metadata for this tunnel.
     pub fn metadata(&self) -> &str {
-        &self.metadata
+        &self.info.metadata
+    }
+
+    /// Split the tunnel into two parts - the first contains the listener and
+    /// all tunnel information, and the second contains *only* the information.
+    pub(crate) fn split_listener(mut self) -> (TunnelInner, TunnelInner) {
+        (
+            TunnelInner {
+                info: self.info.clone(),
+                incoming: self.incoming.take(),
+                session: self.session.clone(),
+            },
+            TunnelInner {
+                info: self.info.clone(),
+                incoming: None,
+                session: self.session.clone(),
+            },
+        )
     }
 }
 
@@ -267,14 +322,28 @@ macro_rules! make_tunnel_type {
             pub(crate) inner: TunnelInner,
         }
 
-        #[async_trait]
-        impl Tunnel for $wrapper {
+        impl $wrapper {
+            /// Split this tunnel type into two parts - both of which have all
+            /// tunnel information, but only the former can be used as a
+            /// listener. Attempts to accept connections on the later will fail.
+            pub(crate) fn split_listener(self) -> ($wrapper, $wrapper) {
+                let (listener, info) = self.inner.split_listener();
+                (
+                    $wrapper {
+                        inner: listener,
+                    },
+                    $wrapper {
+                        inner: info,
+                    }
+                )
+            }
+        }
+
+        impl Tunnel for $wrapper { }
+
+        impl TunnelInfo for $wrapper {
             fn id(&self) -> &str {
                 self.inner.id()
-            }
-
-            async fn close(&mut self) -> Result<(), RpcError> {
-                self.inner.close().await
             }
 
             fn forwards_to(&self) -> &str {
@@ -283,6 +352,13 @@ macro_rules! make_tunnel_type {
 
             fn metadata(&self) -> &str {
                 self.inner.metadata()
+            }
+        }
+
+        #[async_trait]
+        impl TunnelCloser for $wrapper {
+            async fn close(&mut self) -> Result<(), RpcError> {
+                self.inner.close().await
             }
         }
 
@@ -320,21 +396,21 @@ macro_rules! make_tunnel_type {
         }
     };
     (url; $wrapper:ty) => {
-        impl UrlTunnel for $wrapper {
+        impl UrlInfo for $wrapper {
             fn url(&self) -> &str {
                 self.inner.url()
             }
         }
     };
     (proto; $wrapper:ty) => {
-        impl ProtoTunnel for $wrapper {
+        impl ProtoInfo for $wrapper {
             fn proto(&self) -> &str {
                 self.inner.proto()
             }
         }
     };
     (labels; $wrapper:ty) => {
-        impl LabelsTunnel for $wrapper {
+        impl LabelsInfo for $wrapper {
             fn labels(&self) -> &HashMap<String, String> {
                 self.inner.labels()
             }
@@ -356,5 +432,5 @@ make_tunnel_type! {
 }
 make_tunnel_type! {
     /// A labeled ngrok tunnel.
-    LabeledTunnel, LabeledTunnelBuilder, labels
+    LabeledTunnel, LabeledTunnelBuilder, labels, proto
 }
