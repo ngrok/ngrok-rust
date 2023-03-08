@@ -235,6 +235,7 @@ pub struct SessionBuilder {
 
 /// Errors arising at [SessionBuilder::connect] time.
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum ConnectError {
     /// The builder specified an invalid heartbeat interval.
     ///

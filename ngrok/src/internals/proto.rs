@@ -291,6 +291,7 @@ pub struct ProxyHeader {
 }
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum ReadHeaderError {
     #[error("error reading proxy header")]
     Io(#[from] io::Error),

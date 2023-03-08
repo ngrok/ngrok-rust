@@ -77,6 +77,7 @@ use super::{
 
 /// Errors arising from tunneling protocol RPC calls.
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum RpcError {
     /// Failed to open a new stream to start the RPC call.
     #[error("failed to open muxado stream")]
@@ -99,12 +100,14 @@ pub enum RpcError {
 }
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum StartSessionError {
     #[error("failed to start heartbeat task")]
     StartHeartbeat(#[from] io::Error),
 }
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum AcceptError {
     #[error("transport error when accepting connection")]
     Transport(#[from] MuxadoError),
