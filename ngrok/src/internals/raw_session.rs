@@ -19,7 +19,7 @@ use muxado::{
     typed::{
         StreamType,
         TypedAccept,
-        TypedOpen,
+        TypedOpenClose,
         TypedSession,
         TypedStream,
     },
@@ -113,7 +113,7 @@ pub struct RpcClient {
     // we may use it to request heartbeats via the `Session`.
     #[allow(dead_code)]
     heartbeat: HeartbeatCtl,
-    open: Box<dyn TypedOpen + Send>,
+    open: Box<dyn TypedOpenClose + Send>,
 }
 
 pub struct IncomingStreams {

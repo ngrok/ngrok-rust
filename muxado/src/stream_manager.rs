@@ -86,7 +86,7 @@ pub struct StreamManager {
     last_local_id: StreamID,
     last_remote_id: StreamID,
 
-    sent_away: bool,
+    gone_away: bool,
 
     // If we run out of streams to poll, the task collection will be put to
     // sleep. We can't immediately poll it when we add a new stream since that
@@ -122,7 +122,7 @@ impl StreamManager {
             last_local_id: StreamID::clamp(last_local_id),
             last_remote_id: StreamID::clamp(last_remote_id),
             tasks: Default::default(),
-            sent_away: false,
+            gone_away: false,
             new_streams: None,
         }
     }
@@ -137,10 +137,10 @@ impl StreamManager {
         )
     }
 
-    pub fn go_away(&mut self, _error: Error) {
-        self.sent_away = true;
+    pub fn go_away(&mut self, error: Error) {
+        self.gone_away = true;
         for (_id, handle) in self.streams.drain() {
-            handle.sink_closer.close_with(Error::RemoteGoneAway);
+            handle.sink_closer.close_with(error);
         }
     }
 
@@ -157,7 +157,7 @@ impl StreamManager {
 
 impl FusedStream for StreamManager {
     fn is_terminated(&self) -> bool {
-        self.sent_away
+        self.gone_away
     }
 }
 
@@ -176,7 +176,7 @@ impl StreamT for StreamManager {
     #[instrument(level = "trace", skip_all)]
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         // There will only be no new frames if we've gone away.
-        if self.sent_away {
+        if self.gone_away {
             return Poll::Ready(None);
         }
 
@@ -187,8 +187,18 @@ impl StreamT for StreamManager {
 
         // Handle system frames first, but don't return if it's not ready, or
         // it's somehow closed (shouldn't happen).
-        // TODO: handle locally-generated GOAWAYs by closing all streams, etc.
-        if let Poll::Ready(Some(frame)) = self.as_mut().sys_rx().poll_next(cx) {
+        if let Poll::Ready(Some(mut frame)) = self.as_mut().sys_rx().poll_next(cx) {
+            if let Body::GoAway {
+                ref mut last_stream_id,
+                error: _,
+                message: _,
+            } = &mut frame.body
+            {
+                *last_stream_id = self.last_remote_id;
+                // We won't be sending any more frames from streams.
+                self.as_mut().tasks().clear();
+                self.as_mut().go_away(Error::SessionClosed);
+            }
             return Some(frame).into();
         }
 

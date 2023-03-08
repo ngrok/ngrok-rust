@@ -1,4 +1,13 @@
-use std::io;
+use std::{
+    io,
+    sync::{
+        atomic::{
+            AtomicBool,
+            Ordering,
+        },
+        Arc,
+    },
+};
 
 use async_trait::async_trait;
 use futures::{
@@ -135,7 +144,7 @@ where
             window,
             manager: m1,
             last_stream_processed: StreamID::clamp(0),
-            sys_tx,
+            sys_tx: sys_tx.clone(),
         };
 
         let write_task = Writer {
@@ -172,7 +181,12 @@ where
 
         MuxadoSession {
             incoming: MuxadoAccept(dropref.clone(), accept_rx),
-            outgoing: MuxadoOpen(dropref, open_tx),
+            outgoing: MuxadoOpen {
+                dropref,
+                open_tx,
+                sys_tx,
+                closed: AtomicBool::from(false).into(),
+            },
         }
     }
 }
@@ -315,9 +329,13 @@ where
                 // the remote.
                 frame = self.manager.next() => {
                     if let Some(frame) = frame {
+                        let is_goaway = matches!(frame.header.typ, HeaderType::GoAway);
                         trace!(?frame, "sending frame to remote");
                         if let Err(_e) = self.io.send(frame).await {
                             return Err(Error::SessionClosed);
+                        }
+                        if is_goaway {
+                            return Ok(())
                         }
                     }
                 },
@@ -346,13 +364,13 @@ where
 ///
 /// Can be used directly to open and accept streams, or split into dedicated
 /// open/accept parts.
-pub trait Session: Accept + Open {
+pub trait Session: Accept + OpenClose {
     /// The open half of the session.
-    type Open: Open;
+    type OpenClose: OpenClose;
     /// The accept half of the session.
     type Accept: Accept;
     /// Split the session into dedicated open/accept components.
-    fn split(self) -> (Self::Open, Self::Accept);
+    fn split(self) -> (Self::OpenClose, Self::Accept);
 }
 
 /// Trait for accepting incoming streams in a muxado [Session].
@@ -364,17 +382,22 @@ pub trait Accept {
 
 /// Trait for opening new streams in a muxado [Session].
 #[async_trait]
-pub trait Open {
+pub trait OpenClose {
     /// Open a new stream.
     async fn open(&mut self) -> Result<Stream, Error>;
+    /// Close the session by sending a GOAWAY
+    async fn close(&mut self, error: Error, msg: String) -> Result<(), Error>;
 }
 
 /// The [Open] half of a muxado session.
 #[derive(Clone)]
-pub struct MuxadoOpen(
-    awaitdrop::Ref,
-    mpsc::Sender<oneshot::Sender<Result<Stream, Error>>>,
-);
+pub struct MuxadoOpen {
+    dropref: awaitdrop::Ref,
+    open_tx: mpsc::Sender<oneshot::Sender<Result<Stream, Error>>>,
+    sys_tx: mpsc::Sender<Frame>,
+    closed: Arc<AtomicBool>,
+}
+
 /// The [Accept] half of a muxado session.
 pub struct MuxadoAccept(awaitdrop::Ref, mpsc::Receiver<Stream>);
 
@@ -386,11 +409,14 @@ impl Accept for MuxadoAccept {
 }
 
 #[async_trait]
-impl Open for MuxadoOpen {
+impl OpenClose for MuxadoOpen {
     async fn open(&mut self) -> Result<Stream, Error> {
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(Error::SessionClosed);
+        }
         let (resp_tx, resp_rx) = oneshot::channel();
 
-        self.1
+        self.open_tx
             .send(resp_tx)
             .await
             .map_err(|_| Error::SessionClosed)?;
@@ -401,9 +427,23 @@ impl Open for MuxadoOpen {
             .and_then(|r| r);
 
         if let Ok(ref mut stream) = &mut res {
-            stream.dropref = self.0.clone().into();
+            stream.dropref = self.dropref.clone().into();
         }
 
+        res
+    }
+
+    async fn close(&mut self, error: Error, msg: String) -> Result<(), Error> {
+        let res = self
+            .sys_tx
+            .send(Frame::goaway(
+                StreamID::clamp(0),
+                error,
+                msg.into_bytes().into(),
+            ))
+            .await
+            .map_err(|_| Error::SessionClosed);
+        self.closed.store(true, Ordering::SeqCst);
         res
     }
 }
@@ -425,16 +465,20 @@ impl Accept for MuxadoSession {
 }
 
 #[async_trait]
-impl Open for MuxadoSession {
+impl OpenClose for MuxadoSession {
     async fn open(&mut self) -> Result<Stream, Error> {
         self.outgoing.open().await
+    }
+
+    async fn close(&mut self, error: Error, msg: String) -> Result<(), Error> {
+        self.outgoing.close(error, msg).await
     }
 }
 
 impl Session for MuxadoSession {
     type Accept = MuxadoAccept;
-    type Open = MuxadoOpen;
-    fn split(self) -> (Self::Open, Self::Accept) {
+    type OpenClose = MuxadoOpen;
+    fn split(self) -> (Self::OpenClose, Self::Accept) {
         (self.outgoing, self.incoming)
     }
 }
