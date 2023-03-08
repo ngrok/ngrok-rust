@@ -111,8 +111,9 @@ macro_rules! impl_builder {
                     let mut cfg = self.clone();
                     let url_str: &str = to_url.as_ref();
                     cfg = cfg.forwards_to(url_str);
-                    let (listener, info) = cfg.listen().await?.split_listener();
-                    $crate::forwarder::forward(listener, info, $get_proto, to_url)
+                    let tunnel = cfg.listen().await?;
+                    let info = tunnel.make_info();
+                    $crate::forwarder::forward(tunnel, info, $get_proto, to_url)
                 }
             }
         }

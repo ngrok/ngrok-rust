@@ -105,6 +105,7 @@ where
         let mut listener = listener;
         let proto = get_proto(&listener);
         match (to_url.scheme(), proto) {
+            #[cfg(feature = "hyper")]
             (_, "http") => {
                 listener
                     .forward_http(format!(

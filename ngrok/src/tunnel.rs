@@ -248,19 +248,12 @@ impl TunnelInner {
 
     /// Split the tunnel into two parts - the first contains the listener and
     /// all tunnel information, and the second contains *only* the information.
-    pub(crate) fn split_listener(mut self) -> (TunnelInner, TunnelInner) {
-        (
-            TunnelInner {
-                info: self.info.clone(),
-                incoming: self.incoming.take(),
-                session: self.session.clone(),
-            },
-            TunnelInner {
-                info: self.info.clone(),
-                incoming: None,
-                session: self.session.clone(),
-            },
-        )
+    pub(crate) fn make_info(&self) -> TunnelInner {
+        TunnelInner {
+            info: self.info.clone(),
+            incoming: None,
+            session: self.session.clone(),
+        }
     }
 }
 
@@ -326,16 +319,10 @@ macro_rules! make_tunnel_type {
             /// Split this tunnel type into two parts - both of which have all
             /// tunnel information, but only the former can be used as a
             /// listener. Attempts to accept connections on the later will fail.
-            pub(crate) fn split_listener(self) -> ($wrapper, $wrapper) {
-                let (listener, info) = self.inner.split_listener();
-                (
-                    $wrapper {
-                        inner: listener,
-                    },
-                    $wrapper {
-                        inner: info,
-                    }
-                )
+            pub(crate) fn make_info(&self) -> $wrapper {
+                $wrapper {
+                    inner: self.inner.make_info(),
+                }
             }
         }
 
