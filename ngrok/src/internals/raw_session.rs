@@ -31,11 +31,14 @@ use serde::{
     Deserialize,
 };
 use thiserror::Error;
-use tokio::io::{
-    AsyncRead,
-    AsyncReadExt,
-    AsyncWrite,
-    AsyncWriteExt,
+use tokio::{
+    io::{
+        AsyncRead,
+        AsyncReadExt,
+        AsyncWrite,
+        AsyncWriteExt,
+    },
+    runtime::Handle,
 };
 use tokio_util::either::Either;
 use tracing::{
@@ -117,6 +120,7 @@ pub struct RpcClient {
 }
 
 pub struct IncomingStreams {
+    runtime: Handle,
     handlers: CommandHandlers,
     accept: Box<dyn TypedAccept + Send>,
 }
@@ -183,12 +187,15 @@ impl RawSession {
         let (heartbeat, hbctl) = muxado::heartbeat::Heartbeat::start(typed, heartbeat).await?;
         let (open, accept) = heartbeat.split_typed();
 
+        let runtime = Handle::current();
+
         let sess = RawSession {
             client: RpcClient {
                 heartbeat: hbctl,
                 open: Box::new(open),
             },
             incoming: IncomingStreams {
+                runtime,
                 handlers,
                 accept: Box::new(accept),
             },
@@ -398,13 +405,16 @@ impl IncomingStreams {
 
             match stream.typ() {
                 RESTART_REQ => {
-                    tokio::spawn(handle_req(self.handlers.on_restart.clone(), stream));
+                    self.runtime
+                        .spawn(handle_req(self.handlers.on_restart.clone(), stream));
                 }
                 UPDATE_REQ => {
-                    tokio::spawn(handle_req(self.handlers.on_update.clone(), stream));
+                    self.runtime
+                        .spawn(handle_req(self.handlers.on_update.clone(), stream));
                 }
                 STOP_REQ => {
-                    tokio::spawn(handle_req(self.handlers.on_stop.clone(), stream));
+                    self.runtime
+                        .spawn(handle_req(self.handlers.on_stop.clone(), stream));
                 }
                 PROXY_REQ => {
                     let header = ProxyHeader::read_from_stream(&mut *stream).await?;

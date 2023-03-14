@@ -69,7 +69,8 @@ impl Drop for TunnelInner {
     fn drop(&mut self) {
         let id = self.id().to_string();
         let sess = self.session.clone();
-        tokio::spawn(async move { sess.close_tunnel(&id).await });
+        let rt = sess.runtime();
+        rt.spawn(async move { sess.close_tunnel(&id).await });
     }
 }
 

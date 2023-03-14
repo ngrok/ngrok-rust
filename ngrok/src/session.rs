@@ -28,6 +28,7 @@ use tokio::{
         AsyncRead,
         AsyncWrite,
     },
+    runtime::Handle,
     sync::{
         mpsc::{
             channel,
@@ -124,6 +125,7 @@ pub struct Session {
 }
 
 struct SessionInner {
+    runtime: Handle,
     client: Mutex<RpcClient>,
     tunnels: RwLock<TunnelConns>,
     builder: SessionBuilder,
@@ -489,9 +491,11 @@ impl SessionBuilder {
         let (dropref, dropped) = awaitdrop::awaitdrop();
         let (inner, incoming) = self.connect_inner(None).await?;
 
+        let rt = inner.runtime.clone();
+
         let inner = Arc::new(ArcSwap::new(inner.into()));
 
-        tokio::spawn(future::select(
+        rt.spawn(future::select(
             accept_incoming(incoming, inner.clone()).boxed(),
             dropped.wait(),
         ));
@@ -595,6 +599,7 @@ impl SessionBuilder {
 
         Ok((
             SessionInner {
+                runtime: Handle::current(),
                 client: client.into(),
                 tunnels: Default::default(),
                 builder,
@@ -722,6 +727,10 @@ impl Session {
         inner.client.lock().await.unlisten(id).await?;
         inner.tunnels.write().await.remove(id);
         Ok(())
+    }
+
+    pub(crate) fn runtime(&self) -> Handle {
+        self.inner.load().runtime.clone()
     }
 }
 
