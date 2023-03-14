@@ -29,6 +29,7 @@ use tokio::{
         AsyncReadExt,
         AsyncWriteExt,
     },
+    runtime::Handle,
     select,
     sync::{
         mpsc,
@@ -52,6 +53,7 @@ const HEARTBEAT_TYPE: StreamType = StreamType::clamp(0xFFFFFFFF);
 /// Wrapper for a muxado [TypedSession] that adds heartbeating over a dedicated
 /// typed stream.
 pub struct Heartbeat<S> {
+    runtime: Handle,
     drop_waiter: awaitdrop::Waiter,
     typ: StreamType,
     inner: S,
@@ -123,6 +125,7 @@ where
         let (dropref, drop_waiter) = awaitdrop::awaitdrop();
 
         let mut hb = Heartbeat {
+            runtime: Handle::current(),
             drop_waiter: drop_waiter.clone(),
             typ: HEARTBEAT_TYPE,
             inner: sess,
@@ -307,8 +310,8 @@ impl HeartbeatCtl {
     }
 }
 
-fn start_responder(mut stream: TypedStream, drop_waiter: awaitdrop::WaitFuture) {
-    tokio::spawn(select(
+fn start_responder(rt: &Handle, mut stream: TypedStream, drop_waiter: awaitdrop::WaitFuture) {
+    rt.spawn(select(
         async move {
             loop {
                 let mut buf = [0u8; 4];
@@ -338,7 +341,7 @@ where
             let typ = stream.typ();
 
             if typ == self.typ {
-                start_responder(stream, self.drop_waiter.wait());
+                start_responder(&self.runtime, stream, self.drop_waiter.wait());
                 continue;
             }
 
@@ -378,14 +381,17 @@ where
     fn split_typed(self) -> (Self::TypedOpen, Self::TypedAccept) {
         let drop_waiter = self.drop_waiter;
         let typ = self.typ;
+        let runtime = self.runtime;
         let (open, accept) = self.inner.split_typed();
         (
             Heartbeat {
+                runtime: runtime.clone(),
                 drop_waiter: drop_waiter.clone(),
                 typ,
                 inner: open,
             },
             Heartbeat {
+                runtime,
                 drop_waiter,
                 typ,
                 inner: accept,
