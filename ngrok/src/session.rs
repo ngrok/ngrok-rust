@@ -4,7 +4,13 @@ use std::{
     future::Future,
     io,
     num::ParseIntError,
-    sync::Arc,
+    sync::{
+        atomic::{
+            AtomicBool,
+            Ordering,
+        },
+        Arc,
+    },
     time::Duration,
 };
 
@@ -127,6 +133,7 @@ pub struct Session {
 struct SessionInner {
     runtime: Handle,
     client: Mutex<RpcClient>,
+    closed: AtomicBool,
     tunnels: RwLock<TunnelConns>,
     builder: SessionBuilder,
 }
@@ -228,6 +235,7 @@ pub struct SessionBuilder {
 
 /// Errors arising at [SessionBuilder::connect] time.
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum ConnectError {
     /// The builder specified an invalid heartbeat interval.
     ///
@@ -602,6 +610,7 @@ impl SessionBuilder {
                 runtime: Handle::current(),
                 client: client.into(),
                 tunnels: Default::default(),
+                closed: Default::default(),
                 builder,
             },
             incoming,
@@ -732,6 +741,14 @@ impl Session {
     pub(crate) fn runtime(&self) -> Handle {
         self.inner.load().runtime.clone()
     }
+
+    /// Close the ngrok session.
+    pub async fn close(&mut self) -> Result<(), RpcError> {
+        let inner = self.inner.load();
+        let res = inner.client.lock().await.close().await;
+        inner.closed.store(true, Ordering::SeqCst);
+        res
+    }
 }
 
 async fn accept_one(
@@ -784,6 +801,9 @@ async fn try_reconnect(
     err: impl Into<Option<AcceptError>>,
 ) -> Result<IncomingStreams, ConnectError> {
     let old_inner = inner.load();
+    if old_inner.closed.load(Ordering::SeqCst) {
+        return Err(ConnectError::Canceled);
+    }
     let (new_inner, new_incoming) = old_inner.builder.connect_inner(err).await?;
     let mut client = new_inner.client.lock().await;
     let mut new_tunnels = new_inner.tunnels.write().await;

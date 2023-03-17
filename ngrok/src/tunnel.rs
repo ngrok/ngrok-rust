@@ -40,6 +40,7 @@ use crate::{
 
 /// Errors arising when accepting a [Conn] from an ngrok tunnel.
 #[derive(Error, Debug, Clone)]
+#[non_exhaustive]
 pub enum AcceptError {
     /// An error occurred in the underlying transport protocol.
     #[error("transport error")]
