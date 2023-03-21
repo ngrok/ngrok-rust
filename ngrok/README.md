@@ -52,23 +52,36 @@ Add `ngrok` to the `[dependencies]` section of your `Cargo.toml`:
 ...
 
 [dependencies]
-ngrok = "0.10"
+ngrok = "0.11"
 
 ...
 ```
 
-Alternatively, with [cargo-edit][cargo-edit]:
+Alternatively, with `cargo add`:
 
 ```bash
 $ cargo add ngrok
 ```
 
-[cargo-edit]: https://crates.io/crates/cargo-edit
-
 ## Quickstart
 
 Create a simple HTTP server using `ngrok` and `axum`:
 
+`Cargo.toml`:
+```toml
+[package]
+name = "ngrok-axum-example"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ngrok = { version="0.11", features=["axum"] }
+tokio = { version = "1.26", features = ["full"] }
+axum = "0.6"
+anyhow = "1.0"
+```
+
+`src/main.rs`:
 ```rust
 use std::net::SocketAddr;
 
