@@ -85,6 +85,7 @@ pub use crate::internals::{
 };
 use crate::{
     config::{
+        FutureTunnelBuilder,
         HttpTunnelBuilder,
         LabeledTunnelBuilder,
         ProxyProto,
@@ -437,6 +438,14 @@ fn sanitize_ua_string(s: impl AsRef<str>) -> String {
 }
 
 impl SessionBuilder {
+    pub fn http_endpoint(
+        &self,
+    ) -> FutureTunnelBuilder<
+        HttpTunnelBuilder,
+        impl Future<Output = Result<Session, ConnectError>> + '_,
+    > {
+        FutureTunnelBuilder::from(self.connect())
+    }
     /// Configures the session to authenticate with the provided authtoken. You
     /// can [find your existing authtoken] or [create a new one] in the ngrok
     /// dashboard.

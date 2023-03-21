@@ -4,6 +4,7 @@ members = [
 	"muxado",
 	"ngrok",
 	"cargo-doc-ngrok",
+	"ngrok-nginx",
 ]
 
 [profile.release]

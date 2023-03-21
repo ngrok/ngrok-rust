@@ -1,0 +1,9 @@
+ngx_module_type=HTTP
+ngx_module_name=ngx_ngrok_module
+ngx_module_srcs="$ngx_addon_dir/ngx_ngrok_module.c"
+ngx_module_incs="$ngx_addon_dir/.."
+ngx_module_libs="-lm -ldl -lpthread -lngrok_nginx -L../../target/release"
+
+. auto/module
+
+ngx_addon_name=$ngx_module_name

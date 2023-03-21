@@ -8,7 +8,10 @@ use futures::{
     prelude::*,
     select,
 };
-use ngrok::prelude::*;
+use ngrok::{
+    config::ProxyProto,
+    prelude::*,
+};
 use tokio::sync::oneshot;
 use tracing::info;
 use url::Url;
@@ -57,6 +60,7 @@ async fn main() -> Result<(), Error> {
             .connect()
             .await?
             .http_endpoint()
+            .proxy_proto(ProxyProto::V2)
             .listen_and_forward(forwards_to.clone())
             .await?;
 

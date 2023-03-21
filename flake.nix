@@ -97,14 +97,28 @@
           ${cargo}/bin/cargo metadata --format-version 1 --no-deps | \
             ${jq}/bin/jq -r ".packages[] | select(.name == \"$1\") | .version"
         '';
+        lib = pkgs.lib;
+        libclang-path = with pkgs; symlinkJoin {
+          name = "libclang";
+          paths = [
+            libclang.dev
+            libclang.lib
+          ];
+        };
       in
       {
-        devShell = pkgs.mkShell {
+        devShell = with pkgs; mkShell {
           CHALK_OVERFLOW_DEPTH = 3000;
           CHALK_SOLVER_MAX_SIZE = 1500;
-          OPENSSL_LIB_DIR = "${pkgs.openssl.out}/lib";
-          OPENSSL_INCLUDE_DIR = "${pkgs.openssl.dev}/include";
-          RUSTC_WRAPPER="${pkgs.sccache}/bin/sccache";
+          OPENSSL_LIB_DIR = "${openssl.out}/lib";
+          OPENSSL_INCLUDE_DIR = "${openssl.dev}/include";
+          LIBCLANG_PATH="${libclang-path}/lib";
+          # BINDGEN_EXTRA_CLANG_ARGS = "-isystem ${clang}/resource-root/include -isystem ${glibc.dev}/include $NIX_CFLAGS_COMPILE -isystem ${libxcrypt}/include -isystem ${pcre.dev}/include";
+          BINDGEN_EXTRA_CLANG_ARGS = "-isystem ${clang}/resource-root/include -isystem ${glibc.dev}/include";
+          RUSTC_WRAPPER="${sccache}/bin/sccache";
+          shellHook = ''
+            export BINDGEN_EXTRA_CLANG_ARGS="$BINDGEN_EXTRA_CLANG_ARGS $NIX_CFLAGS_COMPILE"
+          '';
           buildInputs = with pkgs; [
             toolchain
             fix-n-fmt
@@ -112,11 +126,15 @@
             cargo-udeps
             semver-checks
             extract-version
+            pcre
+            openssl
+            zlib
+            libxcrypt
           ] ++ lib.optionals stdenv.isDarwin [
             # nix darwin stdenv has broken libiconv: https://github.com/NixOS/nixpkgs/issues/158331
             libiconv
-            pkgs.darwin.apple_sdk.frameworks.CoreServices
-            pkgs.darwin.apple_sdk.frameworks.Security
+            darwin.apple_sdk.frameworks.CoreServices
+            darwin.apple_sdk.frameworks.Security
           ];
         };
       });

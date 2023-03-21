@@ -1,0 +1,16 @@
+[package]
+name = "ngrok-nginx"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["staticlib", "cdylib"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.70"
+ngrok = { version = "0.11.0", features = ["axum", "hyper"] }
+once_cell = "1.17.1"
+tokio = { version = "1.26.0", features = ["rt-multi-thread"] }
+tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }

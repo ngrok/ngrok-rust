@@ -1,11 +1,17 @@
 use std::{
     collections::HashMap,
     env,
+    marker::PhantomData,
     process,
 };
 
 use async_trait::async_trait;
+use futures::{
+    future::Either,
+    prelude::*,
+};
 use once_cell::sync::OnceCell;
+use thiserror::Error;
 use url::Url;
 
 pub use crate::internals::proto::ProxyProto;
@@ -18,7 +24,10 @@ use crate::{
         IpRestriction,
         MutualTls,
     },
-    session::RpcError,
+    session::{
+        ConnectError,
+        RpcError,
+    },
     Session,
     Tunnel,
 };
@@ -61,6 +70,52 @@ pub trait ForwarderBuilder: TunnelBuilder {
     ///
     /// This will also set the `forwards_to` metadata for the tunnel.
     async fn listen_and_forward(&self, to_url: Url) -> Result<Forwarder<Self::Tunnel>, RpcError>;
+}
+
+pub struct FutureTunnelBuilder<B, F> {
+    sess_future: F,
+    opts: Box<dyn FnOnce(B) -> B>,
+    _ph: PhantomData<fn() -> B>,
+}
+
+impl<B, F> From<F> for FutureTunnelBuilder<B, F>
+where
+    F: Future<Output = Result<Session, ConnectError>>,
+{
+    fn from(other: F) -> Self {
+        FutureTunnelBuilder {
+            sess_future: other,
+            opts: Box::new(|i| i),
+            _ph: Default::default(),
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum ConnectAndListenError {
+    #[error("error connecting session")]
+    Connect(#[from] ConnectError),
+    #[error("error starting listener")]
+    Listen(#[from] RpcError),
+}
+
+impl<B, F> FutureTunnelBuilder<B, F>
+where
+    B: TunnelBuilder,
+    F: Future<Output = Result<Session, ConnectError>>,
+{
+    pub fn with_opts(mut self, opts: impl FnOnce(B) -> B + 'static) -> Self {
+        self.opts = Box::new(opts);
+        self
+    }
+
+    pub async fn listen(self) -> Result<B::Tunnel, ConnectAndListenError> {
+        let sess = self.sess_future.await?;
+
+        let b = B::from(sess);
+
+        Ok(b.listen().await?)
+    }
 }
 
 macro_rules! impl_builder {
