@@ -54,7 +54,6 @@ async fn main() -> Result<(), Error> {
                 info!(?req, "received update command");
                 Err("unable to update".into())
             })
-            .connect()
             .await?
             .http_endpoint()
             .listen_and_forward(forwards_to.clone())

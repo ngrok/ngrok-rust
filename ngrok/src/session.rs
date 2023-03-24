@@ -4,6 +4,7 @@ use std::{
         VecDeque,
     },
     env,
+    future::IntoFuture,
     io,
     sync::{
         atomic::{
@@ -19,6 +20,7 @@ use arc_swap::ArcSwap;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{
+    future::BoxFuture,
     prelude::*,
     FutureExt,
 };
@@ -331,6 +333,30 @@ pub struct SessionBuilder {
     handlers: CommandHandlers,
     cookie: Option<SecretString>,
     id: Option<String>,
+}
+
+impl<'a> IntoFuture for &'a mut SessionBuilder {
+    type IntoFuture = BoxFuture<'a, Result<Session, ConnectError>>;
+    type Output = Result<Session, ConnectError>;
+    fn into_future(self) -> Self::IntoFuture {
+        (&*self).into_future()
+    }
+}
+
+impl<'a> IntoFuture for &'a SessionBuilder {
+    type IntoFuture = BoxFuture<'a, Result<Session, ConnectError>>;
+    type Output = Result<Session, ConnectError>;
+    fn into_future(self) -> Self::IntoFuture {
+        async move { self.connect().await }.boxed()
+    }
+}
+
+impl IntoFuture for SessionBuilder {
+    type IntoFuture = BoxFuture<'static, Result<Session, ConnectError>>;
+    type Output = Result<Session, ConnectError>;
+    fn into_future(self) -> Self::IntoFuture {
+        async move { self.connect().await }.boxed()
+    }
 }
 
 /// Errors arising at [SessionBuilder::connect] time.
