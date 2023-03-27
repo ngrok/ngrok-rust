@@ -290,6 +290,7 @@ impl HttpTunnelBuilder {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::config::OauthProvider;
 
     const METADATA: &str = "testmeta";
     const TEST_FORWARD: &str = "testforward";
@@ -323,9 +324,9 @@ mod test {
             .response_header("X-Res-Yup", "true")
             .remove_request_header("X-Req-Nope")
             .remove_response_header("X-Res-Nope")
-            .oauth(OauthOptions::new("google"))
+            .oauth(OauthOptions::new(OauthProvider::Google))
             .oauth(
-                OauthOptions::new("google")
+                OauthOptions::new(OauthProvider::Google)
                     .allow_email("<user>@<domain>")
                     .allow_domain("<domain>")
                     .scope("<scope>"),
