@@ -18,7 +18,7 @@
 [apache-url]: https://github.com/ngrok/ngrok-rs/blob/main/LICENSE-APACHE
 
 [Website](https://ngrok.com) |
-[API Docs (unstable)](https://ngrok.github.io/ngrok-rs/ngrok)
+[API Docs](https://ngrok.github.io/ngrok-rs/ngrok)
 
 ngrok is a simplified API-first ingress-as-a-service that adds connectivity, 
 security, and observability to your apps.
