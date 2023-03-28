@@ -18,7 +18,7 @@
 [apache-url]: https://github.com/ngrok/ngrok-rs/blob/main/LICENSE-APACHE
 
 [Website](https://ngrok.com) |
-[API Docs](https://ngrok.github.io/ngrok-rs/ngrok)
+[API Docs (main)](https://ngrok.github.io/ngrok-rs/ngrok)
 
 ngrok is a simplified API-first ingress-as-a-service that adds connectivity, 
 security, and observability to your apps.
@@ -28,12 +28,11 @@ with secure ingress traffic directly into your Rust apps 🦀. If you’ve used 
 the past, you can think of ngrok-rs as the ngrok agent packaged as a Rust crate.
 
 ngrok-rs lets developers serve Rust services on the internet in a single statement 
-without setting up low-level network primitives like IPs, NAT, certificates, load 
-balancers, and even ports! Applications using ngrok-rs listen on ngrok’s global ingress 
-network using an incoming stream with tokio’s `AsyncRead` and `AsyncWrite` traits — 
-compatible with `axium::Server::builder()` and `hyper::Server::builder()`. This makes 
-it easy to add ngrok-rs into any application that uses axium or hyper — the most 
-beloved Web Framework and HTTP implementations in Rust. 
+without setting up low-level network primitives like IPs, NAT, certificates, 
+load balancers, and even ports! Applications using ngrok-rs listen on ngrok’s global 
+ingress network for TCP and HTTP traffic. ngrok-rs uses an incoming stream with tokio’s 
+`AsyncRead` and `AsyncWrite` traits. This makes it easy to add ngrok-rs into any 
+application that uses the popular axum and hyper HTTP crates.
 
 See [`/ngrok/examples/`][examples] for example usage, or the tests in
 [`/ngrok/src/online_tests.rs`][online-tests].
