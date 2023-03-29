@@ -18,16 +18,23 @@
 [apache-url]: https://github.com/ngrok/ngrok-rs/blob/main/LICENSE-APACHE
 
 [Website](https://ngrok.com) |
-[API Docs (unstable)](https://ngrok.github.io/ngrok-rs/ngrok)
+[API Docs (main)](https://ngrok.github.io/ngrok-rs/ngrok)
 
-ngrok is a globally distributed reverse proxy commonly used for quickly getting
-a public URL to a service running inside a private network, such as on your
-local laptop. The ngrok agent is usually deployed inside a private network and
-is used to communicate with the ngrok cloud service.
+ngrok is a simplified API-first ingress-as-a-service that adds connectivity, 
+security, and observability to your apps.
 
-This is the ngrok agent in library form, suitable for integrating directly into
-Rust applications. This allows you to quickly build ngrok into your application
-with no separate process to manage.
+ngrok-rs, our native and idiomatic crate for adding a public internet address 
+with secure ingress traffic directly into your Rust apps 🦀. If you’ve used ngrok in 
+the past, you can think of ngrok-rs as the ngrok agent packaged as a Rust crate.
+
+ngrok-rs lets developers serve Rust services on the internet in a single statement 
+without setting up low-level network primitives like IPs, NAT, certificates, 
+load balancers, and even ports! Applications using ngrok-rs listen on ngrok’s global 
+ingress network for TCP and HTTP traffic. ngrok-rs listeners are usable with 
+[hyper Servers](https://docs.rs/hyper/latest/hyper/server/index.html), and connections 
+implement [tokio’s AsyncRead and AsyncWrite traits](https://docs.rs/tokio/latest/tokio/io/index.html). 
+This makes it easy to add ngrok-rs into any application that’s built on hyper, such 
+as the popular [axum](https://docs.rs/axum/latest/axum/) HTTP framework.
 
 See [`/ngrok/examples/`][examples] for example usage, or the tests in
 [`/ngrok/src/online_tests.rs`][online-tests].
