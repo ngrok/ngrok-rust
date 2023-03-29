@@ -27,6 +27,8 @@ use futures::{
 };
 use muxado::heartbeat::HeartbeatConfig;
 pub use muxado::heartbeat::HeartbeatHandler;
+use once_cell::sync::OnceCell;
+use regex::Regex;
 use rustls_pemfile::Item;
 use thiserror::Error;
 use tokio::{
@@ -323,6 +325,14 @@ impl Default for SessionBuilder {
     }
 }
 
+fn sanitize_ua_string(s: impl AsRef<str>) -> String {
+    static UA_BANNED: OnceCell<Regex> = OnceCell::new();
+    UA_BANNED
+        .get_or_init(|| Regex::new("[^/!#$%&'*+-.^_`|~0-9a-zA-Z]").unwrap())
+        .replace_all(s.as_ref(), "#")
+        .replace('/', "-")
+}
+
 impl SessionBuilder {
     /// Configures the session to authenticate with the provided authtoken. You
     /// can [find your existing authtoken] or [create a new one] in the ngrok
@@ -552,12 +562,22 @@ impl SessionBuilder {
 
         let mut client_type = CLIENT_TYPE.to_string();
         let mut version = VERSION.to_string();
+        let mut user_agent = String::new();
 
         for (child_type, child_version) in &self.versions {
             client_type.push(',');
             client_type.push_str(child_type);
             version.push(',');
             version.push_str(child_version);
+
+            user_agent.push_str(sanitize_ua_string(child_type).as_str());
+            user_agent.push('/');
+            user_agent.push_str(sanitize_ua_string(child_version).as_str());
+            user_agent.push(' ');
+        }
+
+        if let Some(' ') = user_agent.chars().last() {
+            user_agent.pop();
         }
 
         let resp = raw
@@ -566,6 +586,7 @@ impl SessionBuilder {
                 AuthExtra {
                     version,
                     client_type,
+                    user_agent,
                     auth_token: self.authtoken.clone().unwrap_or_default(),
                     metadata: self.metadata.clone().unwrap_or_default(),
                     os: os.into(),
@@ -880,5 +901,22 @@ async fn accept_incoming(mut incoming: IncomingStreams, inner: Arc<ArcSwap<Sessi
     };
     for (_id, tun) in inner.load().tunnels.write().await.drain() {
         let _ = tun.tx.send(Err(error.clone())).await;
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_sanitize_ua() {
+        assert_eq!(
+            sanitize_ua_string("library/official/rust"),
+            "library-official-rust"
+        );
+        assert_eq!(
+            sanitize_ua_string("something@really☺weird"),
+            "something#really#weird"
+        );
     }
 }
