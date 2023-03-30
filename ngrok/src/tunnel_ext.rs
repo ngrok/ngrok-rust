@@ -29,10 +29,9 @@ use tokio::net::UnixStream;
 use tokio::time;
 use tokio::{
     io::{
+        copy_bidirectional,
         AsyncRead,
-        AsyncReadExt,
         AsyncWrite,
-        AsyncWriteExt,
     },
     net::{
         TcpStream,
@@ -128,34 +127,16 @@ where
     Ok(())
 }
 
-async fn forward_bytes(
-    mut r: impl AsyncRead + Unpin,
-    mut w: impl AsyncWrite + Unpin,
-) -> Result<(), io::Error> {
-    let mut buf = vec![0u8; 1024];
-    loop {
-        let n = r.read(&mut buf).await?;
-        if n == 0 {
-            break;
-        }
-
-        w.write_all(&buf[0..n]).await?;
-    }
-    Ok(())
-}
-
 fn join_streams(
-    left: impl AsyncRead + AsyncWrite + Unpin + Send + 'static,
-    right: impl AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    mut left: impl AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    mut right: impl AsyncRead + AsyncWrite + Unpin + Send + 'static,
 ) -> JoinHandle<()> {
-    let (l_rx, l_tx) = tokio::io::split(left);
-    let (r_rx, r_tx) = tokio::io::split(right);
-
-    let joined = futures::future::join(forward_bytes(r_rx, l_tx), forward_bytes(l_rx, r_tx));
     tokio::spawn(
         async move {
-            let (to_tunnel, to_local) = joined.await;
-            debug!(?to_tunnel, ?to_local, "connection closed");
+            match copy_bidirectional(&mut left, &mut right).await {
+                Ok((l_bytes, r_bytes)) => debug!("joined streams closed, bytes from tunnel: {l_bytes}, bytes from local: {r_bytes}"),
+                Err(e) => debug!("joined streams error: {e}"),
+            };
         }
         .in_current_span(),
     )
