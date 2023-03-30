@@ -12,7 +12,7 @@ serde = { version = "1.0.149", features = ["derive"] }
 serde_json = "1.0.89"
 thiserror = "1.0.37"
 base64 = "0.13.1"
-tokio = { version = "1.23.0", features = ["net", "sync", "time", "rt"] }
+tokio = { version = "1.23.0", features = ["io-util", "net", "sync", "time", "rt"] }
 tracing = "0.1.37"
 async-rustls = { version = "0.3.0" }
 tokio-util = { version = "0.7.4", features = ["compat"] }
