@@ -59,7 +59,10 @@ use crate::{
         Scheme,
     },
     prelude::*,
-    session::SessionBuilder,
+    session::{
+        SessionBuilder,
+        CERT_BYTES,
+    },
     Session,
 };
 
@@ -590,6 +593,47 @@ async fn tls() -> Result<(), Error> {
     let err_str = resp.err().unwrap().to_string();
     tracing::debug!(?err_str);
     assert!(err_str.contains("certificate"));
+
+    Ok(())
+}
+
+#[cfg_attr(not(feature = "online-tests"), ignore)]
+#[test]
+async fn session_ca_cert() -> Result<(), Error> {
+    // invalid cert
+    let resp = Session::builder()
+        .authtoken_from_env()
+        .ca_cert(CERT.into())
+        .connect()
+        .await;
+
+    assert!(resp.is_err());
+    let err_str = resp.err().unwrap().to_string();
+    tracing::debug!(?err_str);
+    assert!(err_str.contains("tls"));
+
+    // use the default cert, this should connect
+    Session::builder()
+        .authtoken_from_env()
+        .ca_cert(CERT_BYTES.into())
+        .connect()
+        .await?;
+
+    Ok(())
+}
+
+#[cfg_attr(not(feature = "online-tests"), ignore)]
+#[test]
+async fn session_tls_config() -> Result<(), Error> {
+    let default_tls_config = Session::builder().get_or_create_tls_config();
+
+    // invalid cert, but valid tls_config overrides
+    Session::builder()
+        .authtoken_from_env()
+        .ca_cert(CERT.into())
+        .tls_config(default_tls_config)
+        .connect()
+        .await?;
 
     Ok(())
 }
