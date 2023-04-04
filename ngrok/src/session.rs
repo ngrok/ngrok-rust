@@ -20,6 +20,7 @@ use async_rustls::rustls::{
     client::InvalidDnsNameError,
 };
 use async_trait::async_trait;
+use bytes::Bytes;
 use futures::{
     future,
     prelude::*,
@@ -103,7 +104,7 @@ use crate::{
     },
 };
 
-const CERT_BYTES: &[u8] = include_bytes!("../assets/ngrok.ca.crt");
+pub(crate) const CERT_BYTES: &[u8] = include_bytes!("../assets/ngrok.ca.crt");
 const CLIENT_TYPE: &str = "library/official/rust";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -228,7 +229,8 @@ pub struct SessionBuilder {
     heartbeat_tolerance: Option<Duration>,
     heartbeat_handler: Option<Arc<dyn HeartbeatHandler>>,
     server_addr: String,
-    tls_config: rustls::ClientConfig,
+    ca_cert: Option<bytes::Bytes>,
+    tls_config: Option<rustls::ClientConfig>,
     connector: Arc<dyn Connector>,
     handlers: CommandHandlers,
     cookie: Option<SecretString>,
@@ -289,25 +291,6 @@ pub enum ConnectError {
 
 impl Default for SessionBuilder {
     fn default() -> Self {
-        let mut root_store = rustls::RootCertStore::empty();
-        let mut cert_pem = io::Cursor::new(CERT_BYTES);
-        root_store.add_parsable_certificates(
-            rustls_pemfile::read_all(&mut cert_pem)
-                .expect("a valid ngrok root certificate")
-                .into_iter()
-                .filter_map(|it| match it {
-                    Item::X509Certificate(bs) => Some(bs),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-                .as_slice(),
-        );
-
-        let tls_config = rustls::ClientConfig::builder()
-            .with_safe_defaults()
-            .with_root_certificates(root_store)
-            .with_no_client_auth();
-
         SessionBuilder {
             versions: vec![],
             authtoken: None,
@@ -316,7 +299,8 @@ impl Default for SessionBuilder {
             heartbeat_tolerance: None,
             heartbeat_handler: None,
             server_addr: "tunnel.ngrok.com:443".into(),
-            tls_config,
+            ca_cert: None,
+            tls_config: None,
             connector: Arc::new(default_connect),
             handlers: Default::default(),
             cookie: None,
@@ -402,6 +386,18 @@ impl SessionBuilder {
         self
     }
 
+    /// Sets the default certificate in PEM format to validate ngrok Session TLS connections.
+    /// A client config set via tls_config will override this value.
+    ///
+    /// Roughly corresponds to the "path to a certificate PEM file" option in the
+    /// [root_cas parameter in the ngrok docs]
+    ///
+    /// [root_cas parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#root_cas
+    pub fn ca_cert(mut self, ca_cert: Bytes) -> Self {
+        self.ca_cert = Some(ca_cert);
+        self
+    }
+
     /// Configures the TLS client used to connect to the ngrok service while
     /// establishing the session. Use this option only if you are connecting through
     /// a man-in-the-middle or deep packet inspection proxy. Passed to the
@@ -412,7 +408,7 @@ impl SessionBuilder {
     ///
     /// [root_cas parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#root_cas
     pub fn tls_config(mut self, config: rustls::ClientConfig) -> Self {
-        self.tls_config = config;
+        self.tls_config = Some(config);
         self
     }
 
@@ -521,6 +517,32 @@ impl SessionBuilder {
         Ok(Session { dropref, inner })
     }
 
+    pub(crate) fn get_or_create_tls_config(&self) -> rustls::ClientConfig {
+        // if the user has provided a custom TLS config, use that
+        if let Some(tls_config) = &self.tls_config {
+            return tls_config.clone();
+        }
+        // generate a default TLS config
+        let mut root_store = rustls::RootCertStore::empty();
+        let cert_pem = self.ca_cert.as_ref().map_or(CERT_BYTES, |it| it.as_ref());
+        root_store.add_parsable_certificates(
+            rustls_pemfile::read_all(&mut io::Cursor::new(cert_pem))
+                .expect("a valid ngrok root certificate")
+                .into_iter()
+                .filter_map(|it| match it {
+                    Item::X509Certificate(bs) => Some(bs),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .as_slice(),
+        );
+
+        rustls::ClientConfig::builder()
+            .with_safe_defaults()
+            .with_root_certificates(root_store)
+            .with_no_client_auth()
+    }
+
     async fn connect_inner(
         &self,
         err: impl Into<Option<AcceptError>>,
@@ -529,7 +551,7 @@ impl SessionBuilder {
             .connector
             .connect(
                 self.server_addr.clone(),
-                Arc::new(self.tls_config.clone()),
+                Arc::new(self.get_or_create_tls_config()),
                 err.into(),
             )
             .await?;
