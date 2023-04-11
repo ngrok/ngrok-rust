@@ -366,9 +366,12 @@ async fn circuit_breaker() -> Result<(), Error> {
     )
     .await?;
 
-    for _ in 0..10 {
+    let mut attempts = 0;
+    for _ in 0..20 {
         let mut futs = FuturesUnordered::new();
-        for _ in 0..50 {
+        // smaller batches to have less in-flight requests and break sooner
+        for _ in 0..25 {
+            attempts += 1;
             let url = tun.url.clone();
             futs.push(async move {
                 let resp = reqwest::get(url).await?;
@@ -377,12 +380,25 @@ async fn circuit_breaker() -> Result<(), Error> {
                 Result::<_, Error>::Ok(resp.status())
             });
         }
+        let mut done = false;
         while let Some(res) = futs.next().await {
-            res?;
+            if res? == StatusCode::SERVICE_UNAVAILABLE {
+                // circuit breaker is working, done after this batch
+                done = true;
+            }
+        }
+        if done {
+            break;
         }
     }
 
-    assert!(ctr.load(Ordering::SeqCst) < 500);
+    // validate that some, but not all, requests were dropped
+    let actual = ctr.load(Ordering::SeqCst);
+    assert!(actual > 4, "expected > 4 requests, got {actual}");
+    assert!(
+        actual < attempts,
+        "expected < {attempts} requests, got {actual}"
+    );
 
     Ok(())
 }
