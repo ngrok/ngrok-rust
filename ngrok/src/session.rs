@@ -1,5 +1,8 @@
 use std::{
-    collections::HashMap,
+    collections::{
+        HashMap,
+        VecDeque,
+    },
     env,
     future::Future,
     io,
@@ -222,7 +225,7 @@ pub async fn default_connect(
 pub struct SessionBuilder {
     // Consuming libraries and applications can add a client type and version on
     // top of the "base" type and version declared by this library.
-    versions: Vec<(String, String)>,
+    versions: VecDeque<(String, String)>,
     authtoken: Option<SecretString>,
     metadata: Option<String>,
     heartbeat_interval: Option<Duration>,
@@ -292,7 +295,9 @@ pub enum ConnectError {
 impl Default for SessionBuilder {
     fn default() -> Self {
         SessionBuilder {
-            versions: vec![],
+            versions: [(CLIENT_TYPE.to_string(), VERSION.to_string())]
+                .into_iter()
+                .collect(),
             authtoken: None,
             metadata: None,
             heartbeat_interval: None,
@@ -494,7 +499,8 @@ impl SessionBuilder {
         client_type: impl Into<String>,
         version: impl Into<String>,
     ) -> Self {
-        self.versions.push((client_type.into(), version.into()));
+        self.versions
+            .push_front((client_type.into(), version.into()));
         self
     }
 
@@ -582,25 +588,21 @@ impl SessionBuilder {
             _ => env::consts::OS,
         };
 
-        let mut client_type = CLIENT_TYPE.to_string();
-        let mut version = VERSION.to_string();
-        let mut user_agent = String::new();
+        let user_agent = self
+            .versions
+            .iter()
+            .map(|(name, version)| {
+                format!(
+                    "{}/{}",
+                    sanitize_ua_string(name),
+                    sanitize_ua_string(version)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
 
-        for (child_type, child_version) in &self.versions {
-            client_type.push(',');
-            client_type.push_str(child_type);
-            version.push(',');
-            version.push_str(child_version);
-
-            user_agent.push_str(sanitize_ua_string(child_type).as_str());
-            user_agent.push('/');
-            user_agent.push_str(sanitize_ua_string(child_version).as_str());
-            user_agent.push(' ');
-        }
-
-        if let Some(' ') = user_agent.chars().last() {
-            user_agent.pop();
-        }
+        let client_type = self.versions[0].0.clone();
+        let version = self.versions[0].1.clone();
 
         let resp = raw
             .auth(
