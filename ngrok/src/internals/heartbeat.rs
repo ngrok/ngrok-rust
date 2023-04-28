@@ -1,12 +1,5 @@
-//! Heartbeating [TypedSession] wrapper.
-//!
-//! This can be used to wrap a [TypedSession] to provide heartbeating
-//! functionality. The wrapper will start a background task to send heartbeats
-//! to the remote via a dedicated heartbeat stream. It will also accept incoming
-//! heartbeat streams and start a task to reply to them.
-
+#![allow(dead_code)]
 use std::{
-    error::Error as StdError,
     future::Future,
     io,
     sync::{
@@ -26,7 +19,9 @@ use futures::{
 };
 use tokio::{
     io::{
+        AsyncRead,
         AsyncReadExt,
+        AsyncWrite,
         AsyncWriteExt,
     },
     runtime::Handle,
@@ -37,26 +32,28 @@ use tokio::{
     },
 };
 
-use crate::{
-    errors::Error,
+use super::{
+    multiplexer::{
+        DynRead,
+        DynResult,
+        DynWrite,
+        StreamMux,
+    },
     typed::{
-        StreamType,
-        TypedAccept,
-        TypedOpenClose,
-        TypedSession,
-        TypedStream,
+        Typed,
+        TypedMux,
     },
 };
 
-const HEARTBEAT_TYPE: StreamType = StreamType::clamp(0xFFFFFFFF);
+const HEARTBEAT_TYPE: u32 = 0xFFFFFFFF;
 
 /// Wrapper for a muxado [TypedSession] that adds heartbeating over a dedicated
 /// typed stream.
 pub struct Heartbeat<S> {
     runtime: Handle,
     drop_waiter: awaitdrop::Waiter,
-    typ: StreamType,
-    inner: S,
+    typ: u32,
+    inner: Typed<S>,
 }
 
 /// Controller for the heartbeat task.
@@ -80,16 +77,16 @@ pub trait HeartbeatHandler: Send + Sync + 'static {
     /// heartbeat reply was received.
     ///
     /// If this returns an error, the heartbeat task will exit.
-    async fn handle_heartbeat(&self, latency: Option<Duration>) -> Result<(), Box<dyn StdError>>;
+    async fn handle_heartbeat(&self, latency: Option<Duration>) -> DynResult<()>;
 }
 
 #[async_trait]
 impl<T, F> HeartbeatHandler for T
 where
     T: Fn(Option<Duration>) -> F + Send + Sync + 'static,
-    F: Future<Output = Result<(), Box<dyn StdError>>> + Send,
+    F: Future<Output = DynResult<()>> + Send,
 {
-    async fn handle_heartbeat(&self, latency: Option<Duration>) -> Result<(), Box<dyn StdError>> {
+    async fn handle_heartbeat(&self, latency: Option<Duration>) -> DynResult<()> {
         self(latency).await
     }
 }
@@ -117,18 +114,18 @@ impl Default for HeartbeatConfig {
 
 impl<S> Heartbeat<S>
 where
-    S: TypedSession + 'static,
+    S: StreamMux + Sync + Send + 'static,
 {
     /// Wrap a typed session and start the heartbeat task.
     /// Returns an error if the stream can't be opened.
     pub async fn start(sess: S, cfg: HeartbeatConfig) -> Result<(Self, HeartbeatCtl), io::Error> {
         let (dropref, drop_waiter) = awaitdrop::awaitdrop();
 
-        let mut hb = Heartbeat {
+        let hb = Heartbeat {
             runtime: Handle::current(),
             drop_waiter: drop_waiter.clone(),
             typ: HEARTBEAT_TYPE,
-            inner: sess,
+            inner: Typed { inner: sess },
         };
 
         let (dtx, drx) = mpsc::channel(1);
@@ -207,7 +204,7 @@ impl HeartbeatCtl {
                                 }
                             }
                             Ok(None) => {
-                                return Result::<(), Box<dyn StdError>>::Ok(());
+                                return DynResult::<()>::Ok(());
                             }
                         };
 
@@ -234,7 +231,10 @@ impl HeartbeatCtl {
 
     async fn start_requester(
         &mut self,
-        mut stream: TypedStream,
+        (mut wr, mut rd): (
+            impl AsyncWrite + Unpin + Send + 'static,
+            impl AsyncRead + Unpin + Send + 'static,
+        ),
         mut on_demand: mpsc::Receiver<oneshot::Sender<Duration>>,
         mark: mpsc::Sender<Duration>,
         drop_waiter: awaitdrop::WaitFuture,
@@ -264,7 +264,7 @@ impl HeartbeatCtl {
                         let start = std::time::Instant::now();
                         let id: i32 = rand::random();
 
-                        if stream.write_all(&id.to_be_bytes()[..]).await.is_err() {
+                        if wr.write_all(&id.to_be_bytes()[..]).await.is_err() {
                             return;
                         }
 
@@ -272,7 +272,7 @@ impl HeartbeatCtl {
 
                         tracing::debug!("waiting for response");
 
-                        if stream.read_exact(&mut resp_bytes[..]).await.is_err() {
+                        if rd.read_exact(&mut resp_bytes[..]).await.is_err() {
                             tracing::debug!("error reading response");
                             return;
                         }
@@ -310,16 +310,20 @@ impl HeartbeatCtl {
     }
 }
 
-fn start_responder(rt: &Handle, mut stream: TypedStream, drop_waiter: awaitdrop::WaitFuture) {
+fn start_responder(
+    rt: &Handle,
+    (mut wr, mut rd): (DynWrite, DynRead),
+    drop_waiter: awaitdrop::WaitFuture,
+) {
     rt.spawn(select(
         async move {
             loop {
                 let mut buf = [0u8; 4];
-                if let Err(e) = stream.read(&mut buf[..]).await {
+                if let Err(e) = rd.read(&mut buf[..]).await {
                     tracing::debug!(?e, "heartbeat responder exiting");
                     return;
                 }
-                if let Err(e) = stream.write_all(&buf[..]).await {
+                if let Err(e) = wr.write_all(&buf[..]).await {
                     tracing::debug!(?e, "heartbeat responder exiting");
                     return;
                 }
@@ -331,72 +335,34 @@ fn start_responder(rt: &Handle, mut stream: TypedStream, drop_waiter: awaitdrop:
 }
 
 #[async_trait]
-impl<S> TypedAccept for Heartbeat<S>
+impl<S> TypedMux for Heartbeat<S>
 where
-    S: TypedAccept + Send,
+    S: StreamMux + Send + Sync + 'static,
 {
-    async fn accept_typed(&mut self) -> Result<TypedStream, Error> {
+    async fn accept_typed(&self) -> DynResult<(u32, DynWrite, DynRead)> {
         loop {
-            let stream = self.inner.accept_typed().await?;
-            let typ = stream.typ();
+            let (typ, wr, rd) = self.inner.accept_typed().await?;
 
             if typ == self.typ {
-                start_responder(&self.runtime, stream, self.drop_waiter.wait());
+                start_responder(&self.runtime, (wr, rd), self.drop_waiter.wait());
                 continue;
             }
 
-            return Ok(stream);
+            return Ok((typ, wr, rd));
         }
     }
-}
 
-#[async_trait]
-impl<S> TypedOpenClose for Heartbeat<S>
-where
-    S: TypedOpenClose + Send,
-{
-    async fn open_typed(&mut self, typ: StreamType) -> Result<TypedStream, Error> {
+    async fn open_typed(&self, typ: u32) -> DynResult<(DynWrite, DynRead)> {
         // Don't open a heartbeat stream manually
         if typ == self.typ {
-            return Err(Error::StreamRefused);
+            return Err(muxado::Error::StreamRefused.into());
         }
 
         self.inner.open_typed(typ).await
     }
 
-    async fn close(&mut self, error: Error, msg: String) -> Result<(), Error> {
-        self.inner.close(error, msg).await
-    }
-}
-
-impl<S> TypedSession for Heartbeat<S>
-where
-    S: TypedSession + Send,
-    S::TypedAccept: Send,
-    S::TypedOpen: Send,
-{
-    type TypedAccept = Heartbeat<S::TypedAccept>;
-    type TypedOpen = Heartbeat<S::TypedOpen>;
-
-    fn split_typed(self) -> (Self::TypedOpen, Self::TypedAccept) {
-        let drop_waiter = self.drop_waiter;
-        let typ = self.typ;
-        let runtime = self.runtime;
-        let (open, accept) = self.inner.split_typed();
-        (
-            Heartbeat {
-                runtime: runtime.clone(),
-                drop_waiter: drop_waiter.clone(),
-                typ,
-                inner: open,
-            },
-            Heartbeat {
-                runtime,
-                drop_waiter,
-                typ,
-                inner: accept,
-            },
-        )
+    async fn close(&self) -> DynResult<()> {
+        self.inner.close().await
     }
 }
 

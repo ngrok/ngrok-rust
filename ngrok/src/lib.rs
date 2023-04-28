@@ -5,8 +5,11 @@
 mod internals {
     #[macro_use]
     pub mod rpc;
+    pub mod heartbeat;
+    pub mod multiplexer;
     pub mod proto;
     pub mod raw_session;
+    pub mod typed;
 }
 
 /// Tunnel and endpoint configuration types.
@@ -49,6 +52,18 @@ pub use tunnel::{
     Conn,
     Tunnel,
 };
+
+/// Utilities for working with ngrok's underlying transport.
+pub mod transport {
+    pub use crate::internals::multiplexer::{
+        DynError,
+        DynRead,
+        DynResult,
+        DynWrite,
+        Muxado,
+        StreamMux,
+    };
+}
 
 /// A prelude of traits for working with ngrok types.
 pub mod prelude {

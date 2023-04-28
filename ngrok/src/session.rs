@@ -29,8 +29,6 @@ use futures::{
     prelude::*,
     FutureExt,
 };
-use muxado::heartbeat::HeartbeatConfig;
-pub use muxado::heartbeat::HeartbeatHandler;
 use once_cell::sync::OnceCell;
 use regex::Regex;
 use rustls_pemfile::Item;
@@ -84,6 +82,14 @@ use crate::{
         TunnelConfig,
     },
     internals::{
+        heartbeat::{
+            HeartbeatConfig,
+            HeartbeatHandler,
+        },
+        multiplexer::{
+            Muxado,
+            StreamMux,
+        },
         proto::{
             AuthExtra,
             BindExtra,
@@ -170,21 +176,21 @@ pub trait Connector: Sync + Send + 'static {
         addr: String,
         tls_config: Arc<rustls::ClientConfig>,
         err: Option<AcceptError>,
-    ) -> Result<Box<dyn IoStream>, ConnectError>;
+    ) -> Result<Box<dyn StreamMux>, ConnectError>;
 }
 
 #[async_trait]
 impl<F, U> Connector for F
 where
     F: Fn(String, Arc<rustls::ClientConfig>, Option<AcceptError>) -> U + Send + Sync + 'static,
-    U: Future<Output = Result<Box<dyn IoStream>, ConnectError>> + Send,
+    U: Future<Output = Result<Box<dyn StreamMux>, ConnectError>> + Send,
 {
     async fn connect(
         &self,
         addr: String,
         tls_config: Arc<rustls::ClientConfig>,
         err: Option<AcceptError>,
-    ) -> Result<Box<dyn IoStream>, ConnectError> {
+    ) -> Result<Box<dyn StreamMux>, ConnectError> {
         self(addr, tls_config, err).await
     }
 }
@@ -200,7 +206,7 @@ pub async fn default_connect(
     addr: String,
     tls_config: Arc<rustls::ClientConfig>,
     _: Option<AcceptError>,
-) -> Result<Box<dyn IoStream>, ConnectError> {
+) -> Result<Box<dyn StreamMux>, ConnectError> {
     let mut split = addr.split(':');
     let host = split.next().unwrap();
     let port = split
@@ -217,7 +223,9 @@ pub async fn default_connect(
         .connect(rustls::ServerName::try_from(host)?, conn)
         .await
         .map_err(ConnectError::Tls)?;
-    Ok(Box::new(tls_conn.compat()) as Box<dyn IoStream>)
+
+    let mux_sess = Muxado::new(tls_conn.compat());
+    Ok(Box::new(mux_sess) as Box<dyn StreamMux>)
 }
 
 /// The builder for an ngrok [Session].
@@ -551,14 +559,14 @@ impl SessionBuilder {
 
     async fn connect_inner(
         &self,
-        err: impl Into<Option<AcceptError>>,
+        err: Option<AcceptError>,
     ) -> Result<(SessionInner, IncomingStreams), ConnectError> {
         let conn = self
             .connector
             .connect(
                 self.server_addr.clone(),
                 Arc::new(self.get_or_create_tls_config()),
-                err.into(),
+                err,
             )
             .await?;
 
@@ -804,7 +812,7 @@ async fn accept_one(
         Ok(conn) => conn,
         // Assume if we got a muxado error, the session is borked. Break and
         // propagate the error to all of the tunnels out in the wild.
-        Err(RawAcceptError::Transport(error)) => return Err(error.into()),
+        Err(RawAcceptError::Transport(error)) => return Err(Arc::new(error).into()),
         // The other errors are either a bad header or an unrecognized
         // stream type. They're non-fatal, but could signal a protocol
         // mismatch.
@@ -843,7 +851,7 @@ async fn accept_one(
 
 async fn try_reconnect(
     inner: Arc<ArcSwap<SessionInner>>,
-    err: impl Into<Option<AcceptError>>,
+    err: Option<AcceptError>,
 ) -> Result<IncomingStreams, ConnectError> {
     let old_inner = inner.load();
     if old_inner.closed.load(Ordering::SeqCst) {

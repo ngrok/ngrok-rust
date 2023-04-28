@@ -10,7 +10,6 @@ use std::{
     string::FromUtf8Error,
 };
 
-use muxado::typed::StreamType;
 use serde::{
     de::{
         DeserializeOwned,
@@ -26,15 +25,15 @@ use tokio::io::{
 };
 use tracing::debug;
 
-pub const AUTH_REQ: StreamType = StreamType::clamp(0);
-pub const BIND_REQ: StreamType = StreamType::clamp(1);
-pub const UNBIND_REQ: StreamType = StreamType::clamp(2);
-pub const PROXY_REQ: StreamType = StreamType::clamp(3);
-pub const RESTART_REQ: StreamType = StreamType::clamp(4);
-pub const STOP_REQ: StreamType = StreamType::clamp(5);
-pub const UPDATE_REQ: StreamType = StreamType::clamp(6);
-pub const BIND_LABELED_REQ: StreamType = StreamType::clamp(7);
-pub const SRV_INFO_REQ: StreamType = StreamType::clamp(8);
+pub const AUTH_REQ: u32 = 0;
+pub const BIND_REQ: u32 = 1;
+pub const UNBIND_REQ: u32 = 2;
+pub const PROXY_REQ: u32 = 3;
+pub const RESTART_REQ: u32 = 4;
+pub const STOP_REQ: u32 = 5;
+pub const UPDATE_REQ: u32 = 6;
+pub const BIND_LABELED_REQ: u32 = 7;
+pub const SRV_INFO_REQ: u32 = 8;
 
 pub const VERSION: &str = "2";
 

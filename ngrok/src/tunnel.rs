@@ -13,10 +13,6 @@ use async_trait::async_trait;
 use futures::Stream;
 #[cfg(feature = "hyper")]
 use hyper::server::accept::Accept;
-use muxado::{
-    typed::TypedStream,
-    Error as MuxadoError,
-};
 use thiserror::Error;
 use tokio::{
     io::{
@@ -33,7 +29,14 @@ use crate::{
         TcpTunnelBuilder,
         TlsTunnelBuilder,
     },
-    internals::raw_session::RpcError,
+    internals::{
+        multiplexer::{
+            DynError,
+            DynRead,
+            DynWrite,
+        },
+        raw_session::RpcError,
+    },
     session::ConnectError,
     Session,
 };
@@ -44,7 +47,7 @@ use crate::{
 pub enum AcceptError {
     /// An error occurred in the underlying transport protocol.
     #[error("transport error")]
-    Transport(#[from] MuxadoError),
+    Transport(#[from] Arc<DynError>),
     /// An error arose during reconnect
     #[error("reconnect error")]
     Reconnect(Arc<ConnectError>),
@@ -145,7 +148,7 @@ pub trait LabelsTunnel: Tunnel {
 /// address from which the connection to the ngrok edge originated.
 pub struct Conn {
     pub(crate) remote_addr: SocketAddr,
-    pub(crate) stream: TypedStream,
+    pub(crate) stream: (DynWrite, DynRead),
 }
 
 impl Stream for TunnelInner {
@@ -225,7 +228,7 @@ impl AsyncRead for Conn {
         cx: &mut Context<'_>,
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
-        Pin::new(&mut *self.stream).poll_read(cx, buf)
+        Pin::new(&mut self.stream.1).poll_read(cx, buf)
     }
 }
 
@@ -235,19 +238,19 @@ impl AsyncWrite for Conn {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, std::io::Error>> {
-        Pin::new(&mut *self.stream).poll_write(cx, buf)
+        Pin::new(&mut self.stream.0).poll_write(cx, buf)
     }
     fn poll_flush(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Result<(), std::io::Error>> {
-        Pin::new(&mut *self.stream).poll_flush(cx)
+        Pin::new(&mut self.stream.0).poll_flush(cx)
     }
     fn poll_shutdown(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Result<(), std::io::Error>> {
-        Pin::new(&mut *self.stream).poll_shutdown(cx)
+        Pin::new(&mut self.stream.0).poll_shutdown(cx)
     }
 }
 

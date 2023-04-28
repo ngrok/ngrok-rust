@@ -11,21 +11,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use muxado::{
-    heartbeat::{
-        HeartbeatConfig,
-        HeartbeatCtl,
-    },
-    typed::{
-        StreamType,
-        TypedAccept,
-        TypedOpenClose,
-        TypedSession,
-        TypedStream,
-    },
-    Error as MuxadoError,
-    SessionBuilder,
-};
 use serde::{
     de::DeserializeOwned,
     Deserialize,
@@ -33,9 +18,7 @@ use serde::{
 use thiserror::Error;
 use tokio::{
     io::{
-        AsyncRead,
         AsyncReadExt,
-        AsyncWrite,
         AsyncWriteExt,
     },
     runtime::Handle,
@@ -48,6 +31,11 @@ use tracing::{
 };
 
 use super::{
+    heartbeat::{
+        Heartbeat,
+        HeartbeatConfig,
+        HeartbeatCtl,
+    },
     proto::{
         Auth,
         AuthExtra,
@@ -73,6 +61,13 @@ use super::{
         VERSION,
     },
     rpc::RpcRequest,
+    typed::TypedMuxHandle,
+};
+use crate::internals::multiplexer::{
+    DynError,
+    DynRead,
+    DynWrite,
+    StreamMux,
 };
 
 /// Errors arising from tunneling protocol RPC calls.
@@ -81,10 +76,10 @@ use super::{
 pub enum RpcError {
     /// Failed to open a new stream to start the RPC call.
     #[error("failed to open muxado stream")]
-    Open(#[source] MuxadoError),
+    Open(#[source] DynError),
     /// Some non-Open transport error occurred
     #[error("transport error")]
-    Transport(#[source] MuxadoError),
+    Transport(#[source] DynError),
     /// Failed to send the request over the stream.
     #[error("error sending rpc request")]
     Send(#[source] io::Error),
@@ -110,11 +105,11 @@ pub enum StartSessionError {
 #[non_exhaustive]
 pub enum AcceptError {
     #[error("transport error when accepting connection")]
-    Transport(#[from] MuxadoError),
+    Transport(#[from] DynError),
     #[error(transparent)]
     Header(#[from] ReadHeaderError),
     #[error("invalid stream type: {0}")]
-    InvalidType(StreamType),
+    InvalidType(u32),
 }
 
 pub struct RpcClient {
@@ -122,13 +117,13 @@ pub struct RpcClient {
     // we may use it to request heartbeats via the `Session`.
     #[allow(dead_code)]
     heartbeat: HeartbeatCtl,
-    open: Box<dyn TypedOpenClose + Send>,
+    open: TypedMuxHandle,
 }
 
 pub struct IncomingStreams {
     runtime: Handle,
     handlers: CommandHandlers,
-    accept: Box<dyn TypedAccept + Send>,
+    accept: TypedMuxHandle,
 }
 
 pub struct RawSession {
@@ -177,33 +172,30 @@ pub struct CommandHandlers {
 
 impl RawSession {
     pub async fn start<S, H>(
-        io_stream: S,
+        mux_sess: S,
         heartbeat: HeartbeatConfig,
         handlers: H,
     ) -> Result<Self, StartSessionError>
     where
-        S: AsyncRead + AsyncWrite + Send + 'static,
+        S: StreamMux,
         H: Into<Option<CommandHandlers>>,
     {
-        let mux_sess = SessionBuilder::new(io_stream).start();
-
         let handlers = handlers.into().unwrap_or_default();
 
-        let typed = muxado::typed::Typed::new(mux_sess);
-        let (heartbeat, hbctl) = muxado::heartbeat::Heartbeat::start(typed, heartbeat).await?;
-        let (open, accept) = heartbeat.split_typed();
+        let (heartbeat, hbctl) = Heartbeat::start(mux_sess, heartbeat).await?;
+        let handle = Arc::new(heartbeat) as TypedMuxHandle;
 
         let runtime = Handle::current();
 
         let sess = RawSession {
             client: RpcClient {
                 heartbeat: hbctl,
-                open: Box::new(open),
+                open: handle.clone(),
             },
             incoming: IncomingStreams {
                 runtime,
                 handlers,
-                accept: Box::new(accept),
+                accept: handle,
             },
         };
 
@@ -223,7 +215,7 @@ impl RawSession {
 impl RpcClient {
     #[instrument(level = "debug", skip(self))]
     async fn rpc<R: RpcRequest>(&mut self, req: R) -> Result<R::Response, RpcError> {
-        let mut stream = self
+        let (mut wr, mut rd) = self
             .open
             .open_typed(R::TYPE)
             .await
@@ -235,16 +227,10 @@ impl RpcClient {
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
             .map_err(RpcError::Send)?;
 
-        stream
-            .write_all(s.as_bytes())
-            .await
-            .map_err(RpcError::Send)?;
+        wr.write_all(s.as_bytes()).await.map_err(RpcError::Send)?;
 
         let mut buf = Vec::new();
-        stream
-            .read_to_end(&mut buf)
-            .await
-            .map_err(RpcError::Receive)?;
+        rd.read_to_end(&mut buf).await.map_err(RpcError::Receive)?;
 
         #[derive(Debug, Deserialize)]
         struct ErrResp {
@@ -269,10 +255,7 @@ impl RpcClient {
 
     /// Close the raw ngrok session with a "None" muxado error.
     pub async fn close(&mut self) -> Result<(), RpcError> {
-        self.open
-            .close(MuxadoError::None, "".into())
-            .await
-            .map_err(RpcError::Transport)?;
+        self.open.close().await.map_err(RpcError::Transport)?;
         Ok(())
     }
 
@@ -370,7 +353,7 @@ pub const NOT_IMPLEMENTED: &str = "the agent has not defined a callback for this
 
 async fn handle_req<T>(
     handler: Option<Arc<dyn CommandHandler<T>>>,
-    mut stream: TypedStream,
+    mut stream: (DynWrite, DynRead),
 ) -> Result<(), Either<io::Error, serde_json::Error>>
 where
     T: DeserializeOwned + Debug + 'static,
@@ -380,7 +363,7 @@ where
         let mut buf = vec![];
         let req = serde_json::from_value(loop {
             let mut tmp = vec![0u8; 256];
-            let bytes = stream.read(&mut tmp).await.map_err(Either::Left)?;
+            let bytes = stream.1.read(&mut tmp).await.map_err(Either::Left)?;
             buf.extend_from_slice(&tmp[..bytes]);
 
             if let Ok(obj) = serde_json::from_slice::<serde_json::Value>(&buf) {
@@ -402,6 +385,7 @@ where
         let resp_json = serde_json::to_vec(&CommandResp { error: resp }).map_err(Either::Right)?;
 
         stream
+            .0
             .write_all(resp_json.as_slice())
             .await
             .map_err(Either::Left)?;
@@ -420,25 +404,28 @@ where
 impl IncomingStreams {
     pub async fn accept(&mut self) -> Result<TunnelStream, AcceptError> {
         Ok(loop {
-            let mut stream = self.accept.accept_typed().await?;
+            let (typ, wr, mut rd) = self.accept.accept_typed().await?;
 
-            match stream.typ() {
+            match typ {
                 RESTART_REQ => {
                     self.runtime
-                        .spawn(handle_req(self.handlers.on_restart.clone(), stream));
+                        .spawn(handle_req(self.handlers.on_restart.clone(), (wr, rd)));
                 }
                 UPDATE_REQ => {
                     self.runtime
-                        .spawn(handle_req(self.handlers.on_update.clone(), stream));
+                        .spawn(handle_req(self.handlers.on_update.clone(), (wr, rd)));
                 }
                 STOP_REQ => {
                     self.runtime
-                        .spawn(handle_req(self.handlers.on_stop.clone(), stream));
+                        .spawn(handle_req(self.handlers.on_stop.clone(), (wr, rd)));
                 }
                 PROXY_REQ => {
-                    let header = ProxyHeader::read_from_stream(&mut *stream).await?;
+                    let header = ProxyHeader::read_from_stream(&mut rd).await?;
 
-                    break TunnelStream { header, stream };
+                    break TunnelStream {
+                        header,
+                        stream: (wr, rd),
+                    };
                 }
                 t => return Err(AcceptError::InvalidType(t)),
             }
@@ -448,5 +435,5 @@ impl IncomingStreams {
 
 pub struct TunnelStream {
     pub header: ProxyHeader,
-    pub stream: TypedStream,
+    pub stream: (DynWrite, DynRead),
 }
