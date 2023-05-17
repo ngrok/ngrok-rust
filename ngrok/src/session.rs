@@ -225,7 +225,7 @@ pub async fn default_connect(
 pub struct SessionBuilder {
     // Consuming libraries and applications can add a client type and version on
     // top of the "base" type and version declared by this library.
-    versions: VecDeque<(String, String)>,
+    versions: VecDeque<(String, String, Option<Vec<String>>)>,
     authtoken: Option<SecretString>,
     metadata: Option<String>,
     heartbeat_interval: Option<Duration>,
@@ -295,7 +295,7 @@ pub enum ConnectError {
 impl Default for SessionBuilder {
     fn default() -> Self {
         SessionBuilder {
-            versions: [(CLIENT_TYPE.to_string(), VERSION.to_string())]
+            versions: [(CLIENT_TYPE.to_string(), VERSION.to_string(), None)]
                 .into_iter()
                 .collect(),
             authtoken: None,
@@ -498,9 +498,13 @@ impl SessionBuilder {
         mut self,
         client_type: impl Into<String>,
         version: impl Into<String>,
+        comments: Option<Vec<impl Into<String>>>,
     ) -> Self {
-        self.versions
-            .push_front((client_type.into(), version.into()));
+        self.versions.push_front((
+            client_type.into(),
+            version.into(),
+            comments.map(|c| c.into_iter().map(Into::into).collect()),
+        ));
         self
     }
 
@@ -591,11 +595,18 @@ impl SessionBuilder {
         let user_agent = self
             .versions
             .iter()
-            .map(|(name, version)| {
+            .map(|(name, version, comments)| {
                 format!(
-                    "{}/{}",
+                    "{}/{}{}",
                     sanitize_ua_string(name),
-                    sanitize_ua_string(version)
+                    sanitize_ua_string(version),
+                    comments.as_ref().map_or(String::new(), |f| format!(
+                        " ({})",
+                        f.iter()
+                            .map(sanitize_ua_string)
+                            .collect::<Vec<_>>()
+                            .join(";")
+                    ))
                 )
             })
             .collect::<Vec<_>>()
