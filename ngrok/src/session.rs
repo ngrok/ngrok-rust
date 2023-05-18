@@ -225,7 +225,7 @@ pub async fn default_connect(
 pub struct SessionBuilder {
     // Consuming libraries and applications can add a client type and version on
     // top of the "base" type and version declared by this library.
-    versions: VecDeque<(String, String, Option<Vec<String>>)>,
+    versions: VecDeque<(String, String, Option<String>)>,
     authtoken: Option<SecretString>,
     metadata: Option<String>,
     heartbeat_interval: Option<Duration>,
@@ -482,28 +482,20 @@ impl SessionBuilder {
         self
     }
 
-    /// Add client type and version information for a child client.
+    /// Add client type and version information for a client application.
     ///
     /// This is a way for applications and library consumers of this crate
     /// identify themselves.
-    ///
-    /// The protocol-level semantics of adding additional type/version
-    /// information are currently unstable, as is the format of the type and
-    /// version strings. The server may reject client types that it doesn't
-    /// recognize, or versions that are too far out of date.
-    ///
-    /// For now, don't use this outside of official consumers.
-    #[doc(hidden)]
-    pub fn child_client(
+    pub fn client_info(
         mut self,
         client_type: impl Into<String>,
         version: impl Into<String>,
-        comments: Option<Vec<impl Into<String>>>,
+        comments: Option<impl Into<String>>,
     ) -> Self {
         self.versions.push_front((
             client_type.into(),
             version.into(),
-            comments.map(|c| c.into_iter().map(Into::into).collect()),
+            comments.map(|c| c.into()),
         ));
         self
     }
@@ -600,13 +592,9 @@ impl SessionBuilder {
                     "{}/{}{}",
                     sanitize_ua_string(name),
                     sanitize_ua_string(version),
-                    comments.as_ref().map_or(String::new(), |f| format!(
-                        " ({})",
-                        f.iter()
-                            .map(sanitize_ua_string)
-                            .collect::<Vec<_>>()
-                            .join(";")
-                    ))
+                    comments
+                        .as_ref()
+                        .map_or(String::new(), |f| format!(" ({})", sanitize_ua_string(f)))
                 )
             })
             .collect::<Vec<_>>()
