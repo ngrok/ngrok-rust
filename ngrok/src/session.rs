@@ -108,7 +108,7 @@ use crate::{
 };
 
 pub(crate) const CERT_BYTES: &[u8] = include_bytes!("../assets/ngrok.ca.crt");
-const CLIENT_TYPE: &str = "library/official/rust";
+const CLIENT_TYPE: &str = "ngrok-rust";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Clone)]
