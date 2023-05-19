@@ -488,9 +488,9 @@ impl SessionBuilder {
     /// identify themselves.
     ///
     /// This will add a new entry to the `User-Agent` field in the "most significant"
-    /// (first) position. Comments must follow [RFC 7231] or a connection error may occur.
+    /// (first) position. Comments must follow [RFC 7230] or a connection error may occur.
     ///
-    /// [RFC 7231]: https://datatracker.ietf.org/doc/html/rfc7230#section-3.2.6
+    /// [RFC 7230]: https://datatracker.ietf.org/doc/html/rfc7230#section-3.2.6
     pub fn client_info(
         mut self,
         client_type: impl Into<String>,
