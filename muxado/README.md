@@ -10,12 +10,12 @@
 [crates-url]: https://crates.io/crates/muxado
 [docs-badge]: https://img.shields.io/docsrs/muxado.svg
 [docs-url]: https://docs.rs/muxado
-[ci-badge]: https://github.com/ngrok/ngrok-rs/actions/workflows/ci.yml/badge.svg
-[ci-url]: https://github.com/ngrok/ngrok-rs/actions/workflows/ci.yml
+[ci-badge]: https://github.com/ngrok/ngrok-rust/actions/workflows/ci.yml/badge.svg
+[ci-url]: https://github.com/ngrok/ngrok-rust/actions/workflows/ci.yml
 [mit-badge]: https://img.shields.io/badge/license-MIT-blue.svg
-[mit-url]: https://github.com/ngrok/ngrok-rs/blob/main/LICENSE-MIT
+[mit-url]: https://github.com/ngrok/ngrok-rust/blob/main/LICENSE-MIT
 [apache-badge]: https://img.shields.io/badge/license-Apache_2.0-blue.svg
-[apache-url]: https://github.com/ngrok/ngrok-rs/blob/main/LICENSE-APACHE
+[apache-url]: https://github.com/ngrok/ngrok-rust/blob/main/LICENSE-APACHE
 
 This is the stream multiplexing protocol that powers ngrok's tunnels.
 

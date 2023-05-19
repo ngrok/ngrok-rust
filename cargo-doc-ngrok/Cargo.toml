@@ -4,7 +4,7 @@ version = "0.1.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "A cargo subcommand to build and serve documentation via ngrok"
-repository = "https://github.com/ngrok/ngrok-rs"
+repository = "https://github.com/ngrok/ngrok-rust"
 
 [dependencies]
 axum = "0.6.1"

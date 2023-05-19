@@ -97,7 +97,7 @@ jobs:
     name: Publish muxado
     uses: ./.github/workflows/release.yml
     needs: [udeps, fmt, clippy, test-nix, test-stable, semver]
-    if: github.ref_name == 'main' && github.repository == 'ngrok/ngrok-rs'
+    if: github.ref_name == 'main' && github.repository == 'ngrok/ngrok-rust'
     permissions:
       contents: write
     with:
