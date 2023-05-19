@@ -486,6 +486,11 @@ impl SessionBuilder {
     ///
     /// This is a way for applications and library consumers of this crate
     /// identify themselves.
+    ///
+    /// This will add a new entry to the `User-Agent` field in the "most significant"
+    /// (first) position. Comments must follow [RFC 7231] or a connection error may occur.
+    ///
+    /// [RFC 7231]: https://datatracker.ietf.org/doc/html/rfc7230#section-3.2.6
     pub fn client_info(
         mut self,
         client_type: impl Into<String>,
@@ -594,7 +599,7 @@ impl SessionBuilder {
                     sanitize_ua_string(version),
                     comments
                         .as_ref()
-                        .map_or(String::new(), |f| format!(" ({})", sanitize_ua_string(f)))
+                        .map_or(String::new(), |f| format!(" ({f})"))
                 )
             })
             .collect::<Vec<_>>()
