@@ -28,5 +28,5 @@ The new rust-native implementation supports similar connection-forwarding:
 	tunnel.forward_http(forwards_to).await?;
 ```
 
-See the [examples](https://github.com/ngrok/ngrok-rs/tree/main/ngrok/examples)
+See the [examples](https://github.com/ngrok/ngrok-rust/tree/main/ngrok/examples)
 for more way to use `ngrok`!
