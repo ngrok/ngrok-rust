@@ -47,7 +47,7 @@ pub enum AcceptError {
     Transport(#[from] MuxadoError),
     /// An error arose during reconnect
     #[error("reconnect error")]
-    Reconnect(Arc<ConnectError>),
+    Reconnect(#[from] Arc<ConnectError>),
 }
 
 pub(crate) struct TunnelInner {
