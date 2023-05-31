@@ -59,7 +59,7 @@ Add `ngrok` to the `[dependencies]` section of your `Cargo.toml`:
 ...
 
 [dependencies]
-ngrok = "0.11"
+ngrok = "0.12"
 
 ...
 ```
@@ -82,7 +82,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ngrok = { version="0.11", features=["axum"] }
+ngrok = { version="0.12", features=["axum"] }
 tokio = { version = "1.26", features = ["full"] }
 axum = "0.6"
 anyhow = "1.0"
