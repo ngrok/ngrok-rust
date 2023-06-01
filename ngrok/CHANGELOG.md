@@ -1,7 +1,11 @@
+## 0.12.2
+
+* Updated readme and changelog
+
 ## 0.12.1
 
 * Add source error on reconnect
-* Rename to ngrok-rust
+* Rename repository to ngrok-rust
 
 ## 0.12.0
 
