@@ -1,3 +1,45 @@
+## 0.12.2
+
+* Updated readme and changelog
+
+## 0.12.1
+
+* Add source error on reconnect
+* Rename repository to ngrok-rust
+
+## 0.12.0
+
+* Add `client_info` to SessionBuilder
+* Update UserAgent generation
+* Make `circuit_breaker` test more reliable
+
+## 0.11.3
+
+* Update stream forwarding logic
+* Add `ca_cert` option to SessionBuilder
+* Unpin `bstr`
+
+## 0.11.2
+
+* Send UserAgent when authenticating
+* Update readme documentation
+
+## 0.11.0
+
+* Include a session close method
+* Mark errors as non-exhaustive
+
+## 0.10.2
+
+* Update default forwards-to
+* Expose OAuth Client ID/Secret setters
+* Muxado: close method on the opener
+
+## 0.10.1
+
+* Add windows pipe support
+* Require tokio rt
+
 ## 0.10.0
 
 * Some api-breaking consistency fixes for the session builder.
