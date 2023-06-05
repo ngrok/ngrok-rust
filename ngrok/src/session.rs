@@ -693,6 +693,17 @@ impl Session {
         self.clone().into()
     }
 
+    /// Get the unique ID of this session.
+    pub fn id(&self) -> String {
+        self.inner
+            .load()
+            .builder
+            .id
+            .as_ref()
+            .expect("Session ID not set")
+            .clone()
+    }
+
     /// Start a new tunnel in this session.
     pub(crate) async fn start_tunnel<C>(&self, tunnel_cfg: C) -> Result<TunnelInner, RpcError>
     where
