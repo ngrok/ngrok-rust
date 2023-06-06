@@ -1,3 +1,7 @@
+## 0.12.3
+
+* Add `session.id()`
+
 ## 0.12.2
 
 * Updated readme and changelog
