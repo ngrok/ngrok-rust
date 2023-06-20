@@ -376,7 +376,7 @@ impl SharedStreamManager {
             // Lock self, look up the stream. If it doesn't exist, return the
             // error.
             let mut lock = ready!(self.0.poll_lock(cx));
-            let mut handle = match lock.get_stream(id) {
+            let handle = match lock.get_stream(id) {
                 Ok(handle) => handle,
                 Err(_e) if HeaderType::Data != typ || is_fin => {
                     return Ok(()).into();
