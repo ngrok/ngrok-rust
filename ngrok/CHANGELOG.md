@@ -1,3 +1,8 @@
+## 0.12.4
+
+* Add `Win32_Foundation` feature
+* Update nix for rust `1.72`
+
 ## 0.12.3
 
 * Add `session.id()`
