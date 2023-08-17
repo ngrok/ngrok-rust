@@ -319,7 +319,7 @@ async fn oauth() -> Result<(), Error> {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = resp.text().await?;
     assert_ne!(body, "Hello, world!");
-    assert!(body.contains("google-site-verification"));
+    assert!(body.contains("accounts.google.com"));
 
     Ok(())
 }
