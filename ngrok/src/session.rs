@@ -88,6 +88,7 @@ use crate::{
             AuthExtra,
             BindExtra,
             BindOpts,
+            NgrokError,
             SecretString,
         },
         raw_session::{
@@ -277,19 +278,34 @@ pub enum ConnectError {
     /// This might occur when there's a protocol mismatch interfering with the
     /// heartbeat routine.
     #[error("failed to start ngrok session")]
-    Start(StartSessionError),
+    Start(#[source] StartSessionError),
     /// An error occurred when attempting to authenticate.
     #[error("authentication failure")]
-    Auth(RpcError),
+    Auth(#[source] RpcError),
     /// An error occurred when rebinding tunnels during a reconnect
     #[error("error rebinding tunnel after reconnect")]
-    Rebind(RpcError),
+    Rebind(#[source] RpcError),
     /// The (re)connect function gave up.
     ///
     /// This will never be returned by the default connect function, and is
     /// instead used to cancel the reconnect loop.
     #[error("the connect function gave up")]
     Canceled,
+}
+
+impl NgrokError for ConnectError {
+    fn error_code(&self) -> Option<&str> {
+        match self {
+            ConnectError::Auth(resp) | ConnectError::Rebind(resp) => resp.error_code(),
+            _ => None,
+        }
+    }
+    fn msg(&self) -> String {
+        match self {
+            ConnectError::Auth(resp) | ConnectError::Rebind(resp) => resp.msg(),
+            _ => format!("{self}"),
+        }
+    }
 }
 
 impl Default for SessionBuilder {

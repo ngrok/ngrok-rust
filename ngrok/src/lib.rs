@@ -55,6 +55,7 @@ pub mod prelude {
     #[doc(inline)]
     pub use crate::{
         config::TunnelBuilder,
+        internals::proto::NgrokError,
         tunnel::{
             LabelsTunnel,
             ProtoTunnel,
