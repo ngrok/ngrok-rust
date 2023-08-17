@@ -57,6 +57,8 @@ use super::{
         BindOpts,
         BindResp,
         CommandResp,
+        ErrResp,
+        NgrokError,
         ProxyHeader,
         ReadHeaderError,
         Restart,
@@ -95,8 +97,24 @@ pub enum RpcError {
     #[error("failed to deserialize rpc response")]
     InvalidResponse(#[from] serde_json::Error),
     /// There was an error in the RPC response.
-    #[error("rpc error response: {0}")]
-    Response(String),
+    #[error("rpc error response:\n{0}")]
+    Response(ErrResp),
+}
+
+impl NgrokError for RpcError {
+    fn error_code(&self) -> Option<&str> {
+        match self {
+            RpcError::Response(resp) => resp.error_code(),
+            _ => None,
+        }
+    }
+
+    fn msg(&self) -> String {
+        match self {
+            RpcError::Response(resp) => resp.msg(),
+            _ => format!("{self}"),
+        }
+    }
 }
 
 #[derive(Error, Debug)]
@@ -258,7 +276,7 @@ impl RpcClient {
         if let Ok(err) = err_resp {
             if !err.error.is_empty() {
                 debug!(?err, "decoded rpc error response");
-                return Err(RpcError::Response(err.error));
+                return Err(RpcError::Response(err.error.as_str().into()));
             }
         }
 

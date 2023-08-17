@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    error,
     fmt,
     io,
     ops::{
@@ -37,6 +38,66 @@ pub const BIND_LABELED_REQ: StreamType = StreamType::clamp(7);
 pub const SRV_INFO_REQ: StreamType = StreamType::clamp(8);
 
 pub const VERSION: &str = "2";
+
+/// An error that may have an ngrok error code.
+/// All ngrok error codes are documented at https://ngrok.com/docs/errors
+pub trait NgrokError: error::Error {
+    /// Return the ngrok error code, if one exists for this error.
+    fn error_code(&self) -> Option<&str> {
+        None
+    }
+    /// Return the error message minus the ngrok error code.
+    /// If this error has no error code, this is equivalent to
+    /// `format!("{error}")`.
+    fn msg(&self) -> String {
+        format!("{self}")
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct ErrResp {
+    pub msg: String,
+    pub error_code: Option<String>,
+}
+
+impl<'a> From<&'a str> for ErrResp {
+    fn from(value: &'a str) -> Self {
+        let mut error_code = None;
+        let mut msg_lines = vec![];
+        for line in value.lines().filter(|l| !l.is_empty()) {
+            if line.starts_with("ERR_NGROK_") {
+                error_code = line.split('_').nth(2).map(String::from);
+            } else {
+                msg_lines.push(line);
+            }
+        }
+        ErrResp {
+            error_code,
+            msg: msg_lines.join("\n"),
+        }
+    }
+}
+
+impl error::Error for ErrResp {}
+
+impl fmt::Display for ErrResp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.msg.fmt(f)?;
+        if let Some(code) = &self.error_code {
+            write!(f, "\n\nERR_NGROK_{code}")?;
+        }
+        Ok(())
+    }
+}
+
+impl NgrokError for ErrResp {
+    fn error_code(&self) -> Option<&str> {
+        self.error_code.as_deref()
+    }
+    fn msg(&self) -> String {
+        self.msg.clone()
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]

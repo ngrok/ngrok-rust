@@ -20,20 +20,20 @@
 [Website](https://ngrok.com) |
 [API Docs (main)](https://ngrok.github.io/ngrok-rust/ngrok)
 
-ngrok is a simplified API-first ingress-as-a-service that adds connectivity, 
+ngrok is a simplified API-first ingress-as-a-service that adds connectivity,
 security, and observability to your apps.
 
-ngrok-rust, our native and idiomatic crate for adding a public internet address 
-with secure ingress traffic directly into your Rust apps 🦀. If you’ve used ngrok in 
+ngrok-rust, our native and idiomatic crate for adding a public internet address
+with secure ingress traffic directly into your Rust apps 🦀. If you’ve used ngrok in
 the past, you can think of ngrok-rust as the ngrok agent packaged as a Rust crate.
 
-ngrok-rust lets developers serve Rust services on the internet in a single statement 
-without setting up low-level network primitives like IPs, NAT, certificates, 
-load balancers, and even ports! Applications using ngrok-rust listen on ngrok’s global 
-ingress network for TCP and HTTP traffic. ngrok-rust listeners are usable with 
-[hyper Servers](https://docs.rs/hyper/latest/hyper/server/index.html), and connections 
-implement [tokio’s AsyncRead and AsyncWrite traits](https://docs.rs/tokio/latest/tokio/io/index.html). 
-This makes it easy to add ngrok-rust into any application that’s built on hyper, such 
+ngrok-rust lets developers serve Rust services on the internet in a single statement
+without setting up low-level network primitives like IPs, NAT, certificates,
+load balancers, and even ports! Applications using ngrok-rust listen on ngrok’s global
+ingress network for TCP and HTTP traffic. ngrok-rust listeners are usable with
+[hyper Servers](https://docs.rs/hyper/latest/hyper/server/index.html), and connections
+implement [tokio’s AsyncRead and AsyncWrite traits](https://docs.rs/tokio/latest/tokio/io/index.html).
+This makes it easy to add ngrok-rust into any application that’s built on hyper, such
 as the popular [axum](https://docs.rs/axum/latest/axum/) HTTP framework.
 
 See [`/ngrok/examples/`][examples] for example usage, or the tests in
@@ -59,7 +59,7 @@ Add `ngrok` to the `[dependencies]` section of your `Cargo.toml`:
 ...
 
 [dependencies]
-ngrok = "0.12"
+ngrok = "0.13"
 
 ...
 ```
@@ -75,6 +75,7 @@ $ cargo add ngrok
 Create a simple HTTP server using `ngrok` and `axum`:
 
 `Cargo.toml`:
+
 ```toml
 [package]
 name = "ngrok-axum-example"
@@ -82,13 +83,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ngrok = { version="0.12", features=["axum"] }
+ngrok = { version="0.13", features=["axum"] }
 tokio = { version = "1.26", features = ["full"] }
 axum = "0.6"
 anyhow = "1.0"
 ```
 
 `src/main.rs`:
+
 ```rust
 use std::net::SocketAddr;
 
@@ -140,10 +142,10 @@ async fn main() -> anyhow::Result<()> {
 
 This project is licensed under either of
 
- * Apache License, Version 2.0, ([LICENSE-APACHE][apache-url] or
-   <http://www.apache.org/licenses/LICENSE-2.0>)
- * MIT license ([LICENSE-MIT][mit-url] or
-   <http://opensource.org/licenses/MIT>)
+- Apache License, Version 2.0, ([LICENSE-APACHE][apache-url] or
+  <http://www.apache.org/licenses/LICENSE-2.0>)
+- MIT license ([LICENSE-MIT][mit-url] or
+  <http://opensource.org/licenses/MIT>)
 
 at your option.
 
