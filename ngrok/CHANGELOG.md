@@ -1,3 +1,7 @@
+## 0.13.1
+
+- Preserve the `ERR_NGROK` prefix for error codes.
+
 ## 0.13.0
 
 - Add the `NgrokError` trait
