@@ -66,7 +66,7 @@ impl<'a> From<&'a str> for ErrResp {
         let mut msg_lines = vec![];
         for line in value.lines().filter(|l| !l.is_empty()) {
             if line.starts_with("ERR_NGROK_") {
-                error_code = line.split('_').nth(2).map(String::from);
+                error_code = Some(line.trim().into());
             } else {
                 msg_lines.push(line);
             }
