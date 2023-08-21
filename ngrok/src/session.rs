@@ -26,6 +26,15 @@ use futures::{
     FutureExt,
 };
 use http::Uri;
+use hyper::{
+    client::HttpConnector,
+    service::Service,
+};
+use hyper_proxy::{
+    Intercept,
+    Proxy,
+    ProxyConnector,
+};
 use muxado::heartbeat::HeartbeatConfig;
 pub use muxado::heartbeat::HeartbeatHandler;
 use once_cell::sync::OnceCell;
@@ -217,6 +226,75 @@ pub async fn default_connect(
     Ok(Box::new(tls_conn.compat()) as Box<dyn IoStream>)
 }
 
+fn connect_proxy(uri: Uri) -> Arc<dyn Connector> {
+    match uri.scheme().map(|s| s.as_str()) {
+        Some("http" | "https") => Arc::new(connect_http_proxy(uri)),
+        Some("socks5") => {
+            let host = uri.host().unwrap_or_default();
+            let port = uri.port();
+            let port = port.as_ref();
+            let port = port.map(|p| p.as_str()).unwrap_or("1080");
+            Arc::new(connect_socks_proxy(format!("{host}:{port}")))
+        }
+        _ => Arc::new(move |_, _, _, _| {
+            let uri_string = uri.to_string();
+            async move { Err(ConnectError::ProxyUnsupportedError(uri_string)) }
+        }),
+    }
+}
+
+fn connect_http_proxy(url: Uri) -> impl Connector {
+    move |host: String, port, tls_config, _| {
+        let mut proxy = Proxy::new(Intercept::All, url.clone());
+        proxy.force_connect();
+        let connector = HttpConnector::new();
+        async move {
+            let mut connector = ProxyConnector::from_proxy(connector, proxy)
+                .map_err(|e| ConnectError::ProxyUnsupportedError(format!("{e}")))?;
+
+            let server_uri = format!("http://{host}:{port}").parse().unwrap();
+
+            let conn = connector
+                .call(server_uri)
+                .await
+                .map_err(|e| ConnectError::ProxyConnect(Box::new(e)))?
+                .compat();
+
+            let tls_conn = async_rustls::TlsConnector::from(tls_config)
+                .connect(rustls::ServerName::try_from(host.as_str()).unwrap(), conn)
+                .await
+                .map_err(ConnectError::Tls)?;
+
+            Ok(Box::new(tls_conn.compat()) as Box<dyn IoStream>)
+        }
+    }
+}
+
+fn connect_socks_proxy(proxy_addr: String) -> impl Connector {
+    move |server_host: String, server_port, tls_config, _| {
+        let proxy_addr = proxy_addr.clone();
+        async move {
+            let conn = tokio_socks::tcp::Socks5Stream::connect(
+                proxy_addr.as_str(),
+                format!("{server_host}:{server_port}"),
+            )
+            .await
+            .map_err(|e| ConnectError::ProxyConnect(Box::new(e)))?
+            .compat();
+
+            let tls_conn = async_rustls::TlsConnector::from(tls_config)
+                .connect(
+                    rustls::ServerName::try_from(server_host.as_str()).unwrap(),
+                    conn,
+                )
+                .await
+                .map_err(ConnectError::Tls)?;
+
+            Ok(Box::new(tls_conn.compat()) as Box<dyn IoStream>)
+        }
+    }
+}
+
 /// The builder for an ngrok [Session].
 #[derive(Clone)]
 pub struct SessionBuilder {
@@ -245,13 +323,13 @@ pub enum ConnectError {
     /// An error occurred when establishing a TCP connection to the ngrok
     /// server.
     #[error("failed to establish tcp connection")]
-    Tcp(io::Error),
+    Tcp(#[source] io::Error),
     /// A TLS handshake error occurred.
     ///
     /// This is usually a certificate validation issue, or an attempt to connect
     /// to something that doesn't actually speak TLS.
     #[error("tls handshake error")]
-    Tls(io::Error),
+    Tls(#[source] io::Error),
     /// An error occurred when starting the ngrok session.
     ///
     /// This might occur when there's a protocol mismatch interfering with the
@@ -264,6 +342,12 @@ pub enum ConnectError {
     /// An error occurred when rebinding tunnels during a reconnect
     #[error("error rebinding tunnel after reconnect")]
     Rebind(#[source] RpcError),
+    /// An error arising from a misconfigured proxy
+    #[error("unsupported proxy address: {0}")]
+    ProxyUnsupportedError(String),
+    /// An error arising from a misconfigured proxy
+    #[error("failed to connect through proxy")]
+    ProxyConnect(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
     /// The (re)connect function gave up.
     ///
     /// This will never be returned by the default connect function, and is
@@ -463,6 +547,18 @@ impl SessionBuilder {
     /// the session reconnects.
     pub fn connector(&mut self, connect: impl Connector) -> &mut Self {
         self.connector = Arc::new(connect);
+        self
+    }
+
+    /// Configures the session to connect to ngrok through an outbound
+    /// HTTP or SOCKS5 proxy. This parameter is ignored if you override the connector
+    /// with [SessionBuilder::connector].
+    ///
+    /// See the [proxy url paramter in the ngrok docs] for additional details.
+    ///
+    /// [proxy url paramter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#proxy_url
+    pub fn proxy_url(&mut self, url: Uri) -> &mut Self {
+        self.connector = connect_proxy(url);
         self
     }
 
