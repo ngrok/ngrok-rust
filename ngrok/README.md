@@ -1,4 +1,4 @@
-# The ngrok Agent SDK
+# ngrok-rust
 
 [![Crates.io][crates-badge]][crates-url]
 [![docs.rs][docs-badge]][docs-url]
@@ -17,10 +17,9 @@
 [apache-badge]: https://img.shields.io/badge/license-Apache_2.0-blue.svg
 [apache-url]: https://github.com/ngrok/ngrok-rust/blob/main/LICENSE-APACHE
 
-[Website](https://ngrok.com) |
 [API Docs (main)](https://ngrok.github.io/ngrok-rust/ngrok)
 
-ngrok is a simplified API-first ingress-as-a-service that adds connectivity,
+[ngrok](https://ngrok.com) is a simplified API-first ingress-as-a-service that adds connectivity, 
 security, and observability to your apps.
 
 ngrok-rust, our native and idiomatic crate for adding a public internet address
@@ -50,6 +49,8 @@ If you're looking for the agent wrapper, it's over
 for tips on migrating.
 
 [upgrading]: https://github.com/ngrok/ngrok-rust/blob/main/ngrok/UPGRADING.md
+
+For additional information, be sure to also check out the [ngrok-rust launch announcement](https://webflow.ngrok.com/blog-post/ngrok-rs)!
 
 ## Installation
 
