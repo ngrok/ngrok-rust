@@ -226,8 +226,13 @@ pub async fn default_connect(
     Ok(Box::new(tls_conn.compat()) as Box<dyn IoStream>)
 }
 
-fn connect_proxy(uri: Uri) -> Arc<dyn Connector> {
-    match uri.scheme().map(|s| s.as_str()) {
+#[derive(Debug, Clone, Error)]
+#[error("unsupported proxy address: {0}")]
+/// An unsupported proxy address was provided.
+pub struct ProxyUnsupportedError(Uri);
+
+fn connect_proxy(uri: Uri) -> Result<Arc<dyn Connector>, ProxyUnsupportedError> {
+    Ok(match uri.scheme().map(|s| s.as_str()) {
         Some("http" | "https") => Arc::new(connect_http_proxy(uri)),
         Some("socks5") => {
             let host = uri.host().unwrap_or_default();
@@ -236,11 +241,8 @@ fn connect_proxy(uri: Uri) -> Arc<dyn Connector> {
             let port = port.map(|p| p.as_str()).unwrap_or("1080");
             Arc::new(connect_socks_proxy(format!("{host}:{port}")))
         }
-        _ => Arc::new(move |_, _, _, _| {
-            let uri_string = uri.to_string();
-            async move { Err(ConnectError::ProxyUnsupportedError(uri_string)) }
-        }),
-    }
+        _ => return Err(ProxyUnsupportedError(uri)),
+    })
 }
 
 fn connect_http_proxy(url: Uri) -> impl Connector {
@@ -557,9 +559,9 @@ impl SessionBuilder {
     /// See the [proxy url paramter in the ngrok docs] for additional details.
     ///
     /// [proxy url paramter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#proxy_url
-    pub fn proxy_url(&mut self, url: Uri) -> &mut Self {
-        self.connector = connect_proxy(url);
-        self
+    pub fn proxy_url(&mut self, url: Uri) -> Result<&mut Self, ProxyUnsupportedError> {
+        self.connector = connect_proxy(url)?;
+        Ok(self)
     }
 
     /// Configures a function which is called when the ngrok service requests that
