@@ -88,7 +88,7 @@ use crate::{
             AuthExtra,
             BindExtra,
             BindOpts,
-            NgrokError,
+            Error,
             SecretString,
         },
         raw_session::{
@@ -293,7 +293,7 @@ pub enum ConnectError {
     Canceled,
 }
 
-impl NgrokError for ConnectError {
+impl Error for ConnectError {
     fn error_code(&self) -> Option<&str> {
         match self {
             ConnectError::Auth(resp) | ConnectError::Rebind(resp) => resp.error_code(),

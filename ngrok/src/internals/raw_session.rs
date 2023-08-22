@@ -58,7 +58,7 @@ use super::{
         BindResp,
         CommandResp,
         ErrResp,
-        NgrokError,
+        Error,
         ProxyHeader,
         ReadHeaderError,
         Restart,
@@ -101,7 +101,7 @@ pub enum RpcError {
     Response(ErrResp),
 }
 
-impl NgrokError for RpcError {
+impl Error for RpcError {
     fn error_code(&self) -> Option<&str> {
         match self {
             RpcError::Response(resp) => resp.error_code(),

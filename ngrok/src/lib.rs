@@ -11,10 +11,6 @@ mod internals {
 
 /// Tunnel and endpoint configuration types.
 pub mod config {
-    // TODO: remove this once all of the config structs are fully fleshed out
-    //       and tested.
-    #![allow(dead_code)]
-
     #[macro_use]
     mod common;
     pub use common::*;
@@ -43,6 +39,8 @@ pub mod tunnel;
 mod tunnel_ext;
 
 #[doc(inline)]
+pub use internals::proto::Error;
+#[doc(inline)]
 pub use session::Session;
 #[doc(inline)]
 pub use tunnel::{
@@ -55,7 +53,7 @@ pub mod prelude {
     #[doc(inline)]
     pub use crate::{
         config::TunnelBuilder,
-        internals::proto::NgrokError,
+        internals::proto::Error,
         tunnel::{
             LabelsTunnel,
             ProtoTunnel,

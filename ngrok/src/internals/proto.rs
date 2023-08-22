@@ -41,7 +41,7 @@ pub const VERSION: &str = "2";
 
 /// An error that may have an ngrok error code.
 /// All ngrok error codes are documented at https://ngrok.com/docs/errors
-pub trait NgrokError: error::Error {
+pub trait Error: error::Error {
     /// Return the ngrok error code, if one exists for this error.
     fn error_code(&self) -> Option<&str> {
         None
@@ -90,7 +90,7 @@ impl fmt::Display for ErrResp {
     }
 }
 
-impl NgrokError for ErrResp {
+impl Error for ErrResp {
     fn error_code(&self) -> Option<&str> {
         self.error_code.as_deref()
     }
