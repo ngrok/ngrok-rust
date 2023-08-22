@@ -32,29 +32,29 @@ impl OauthOptions {
     }
 
     /// Provide an OAuth client ID for custom apps.
-    pub fn client_id(mut self, id: impl Into<String>) -> Self {
+    pub fn client_id(&mut self, id: impl Into<String>) -> &mut Self {
         self.client_id = id.into();
         self
     }
 
     /// Provide an OAuth client secret for custom apps.
-    pub fn client_secret(mut self, secret: impl Into<String>) -> Self {
+    pub fn client_secret(&mut self, secret: impl Into<String>) -> &mut Self {
         self.client_secret = SecretString::from(secret.into());
         self
     }
 
     /// Append an email address to the list of allowed emails.
-    pub fn allow_email(mut self, email: impl Into<String>) -> Self {
+    pub fn allow_email(&mut self, email: impl Into<String>) -> &mut Self {
         self.allow_emails.push(email.into());
         self
     }
     /// Append an email domain to the list of allowed domains.
-    pub fn allow_domain(mut self, domain: impl Into<String>) -> Self {
+    pub fn allow_domain(&mut self, domain: impl Into<String>) -> &mut Self {
         self.allow_domains.push(domain.into());
         self
     }
     /// Append a scope to the list of scopes to request.
-    pub fn scope(mut self, scope: impl Into<String>) -> Self {
+    pub fn scope(&mut self, scope: impl Into<String>) -> &mut Self {
         self.scopes.push(scope.into());
         self
     }

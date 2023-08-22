@@ -115,15 +115,15 @@ impl Drop for TunnelGuard {
 // axum router.
 // The returned guard, when dropped, will cause the server to shut down.
 async fn serve_http(
-    build_session: impl FnOnce(SessionBuilder) -> SessionBuilder,
-    build_tunnel: impl FnOnce(HttpTunnelBuilder) -> HttpTunnelBuilder,
+    build_session: impl FnOnce(&mut SessionBuilder) -> &mut SessionBuilder,
+    build_tunnel: impl FnOnce(&mut HttpTunnelBuilder) -> &mut HttpTunnelBuilder,
     router: axum::Router,
 ) -> Result<TunnelGuard, Error> {
     let sess = build_session(Session::builder().authtoken_from_env())
         .connect()
         .await?;
 
-    let tun = build_tunnel(sess.http_endpoint()).listen().await?;
+    let tun = build_tunnel(&mut sess.http_endpoint()).listen().await?;
 
     Ok(start_http_server(tun, router))
 }
@@ -141,7 +141,7 @@ fn start_http_server(tun: impl UrlTunnel, router: Router) -> TunnelGuard {
     TunnelGuard { tx: tx.into(), url }
 }
 
-fn defaults<T>(opts: T) -> T {
+fn defaults<T>(opts: &mut T) -> &mut T {
     opts
 }
 

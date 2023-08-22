@@ -348,13 +348,13 @@ impl SessionBuilder {
     /// [find your existing authtoken]: https://dashboard.ngrok.com/get-started/your-authtoken
     /// [create a new one]: https://dashboard.ngrok.com/tunnels/authtokens
     /// [authtoken parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#authtoken
-    pub fn authtoken(mut self, authtoken: impl Into<String>) -> Self {
+    pub fn authtoken(&mut self, authtoken: impl Into<String>) -> &mut Self {
         self.authtoken = Some(authtoken.into().into());
         self
     }
     /// Shortcut for calling [SessionBuilder::authtoken] with the value of the
     /// NGROK_AUTHTOKEN environment variable.
-    pub fn authtoken_from_env(mut self) -> Self {
+    pub fn authtoken_from_env(&mut self) -> &mut Self {
         self.authtoken = env::var("NGROK_AUTHTOKEN").ok().map(From::from);
         self
     }
@@ -366,7 +366,7 @@ impl SessionBuilder {
     /// details.
     ///
     /// [heartbeat_interval parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#heartbeat_interval
-    pub fn heartbeat_interval(mut self, heartbeat_interval: Duration) -> Self {
+    pub fn heartbeat_interval(&mut self, heartbeat_interval: Duration) -> &mut Self {
         self.heartbeat_interval = Some(heartbeat_interval);
         self
     }
@@ -378,7 +378,7 @@ impl SessionBuilder {
     /// details.
     ///
     /// [heartbeat_tolerance parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#heartbeat_tolerance
-    pub fn heartbeat_tolerance(mut self, heartbeat_tolerance: Duration) -> Self {
+    pub fn heartbeat_tolerance(&mut self, heartbeat_tolerance: Duration) -> &mut Self {
         self.heartbeat_tolerance = Some(heartbeat_tolerance);
         self
     }
@@ -391,7 +391,7 @@ impl SessionBuilder {
     /// See the [metdata parameter in the ngrok docs] for additional details.
     ///
     /// [metdata parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#metadata
-    pub fn metadata(mut self, metadata: impl Into<String>) -> Self {
+    pub fn metadata(&mut self, metadata: impl Into<String>) -> &mut Self {
         self.metadata = Some(metadata.into());
         self
     }
@@ -402,7 +402,7 @@ impl SessionBuilder {
     /// See the [server_addr parameter in the ngrok docs] for additional details.
     ///
     /// [server_addr parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#server_addr
-    pub fn server_addr(mut self, addr: impl Into<String>) -> Self {
+    pub fn server_addr(&mut self, addr: impl Into<String>) -> &mut Self {
         self.server_addr = addr.into();
         self
     }
@@ -414,7 +414,7 @@ impl SessionBuilder {
     /// [root_cas parameter in the ngrok docs]
     ///
     /// [root_cas parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#root_cas
-    pub fn ca_cert(mut self, ca_cert: Bytes) -> Self {
+    pub fn ca_cert(&mut self, ca_cert: Bytes) -> &mut Self {
         self.ca_cert = Some(ca_cert);
         self
     }
@@ -428,7 +428,7 @@ impl SessionBuilder {
     /// for deeper TLS configuration.
     ///
     /// [root_cas parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#root_cas
-    pub fn tls_config(mut self, config: rustls::ClientConfig) -> Self {
+    pub fn tls_config(&mut self, config: rustls::ClientConfig) -> &mut Self {
         self.tls_config = Some(config);
         self
     }
@@ -437,7 +437,7 @@ impl SessionBuilder {
     /// ngrok service. Use this option if you need to connect through an outbound
     /// proxy. In the event of network disruptions, it will be called each time
     /// the session reconnects.
-    pub fn connector(mut self, connect: impl Connector) -> Self {
+    pub fn connector(&mut self, connect: impl Connector) -> &mut Self {
         self.connector = Arc::new(connect);
         self
     }
@@ -452,7 +452,7 @@ impl SessionBuilder {
     /// Do not block inside this callback. It will cause the Dashboard or API
     /// stop operation to time out. Do not call [std::process::exit] inside this
     /// callback, it will also cause the operation to time out.
-    pub fn handle_stop_command(mut self, handler: impl CommandHandler<Stop>) -> Self {
+    pub fn handle_stop_command(&mut self, handler: impl CommandHandler<Stop>) -> &mut Self {
         self.handlers.on_stop = Some(Arc::new(handler));
         self
     }
@@ -468,7 +468,7 @@ impl SessionBuilder {
     /// Do not block inside this callback. It will cause the Dashboard or API
     /// stop operation to time out. Do not call [std::process::exit] inside this
     /// callback, it will also cause the operation to time out.
-    pub fn handle_restart_command(mut self, handler: impl CommandHandler<Restart>) -> Self {
+    pub fn handle_restart_command(&mut self, handler: impl CommandHandler<Restart>) -> &mut Self {
         self.handlers.on_restart = Some(Arc::new(handler));
         self
     }
@@ -484,7 +484,7 @@ impl SessionBuilder {
     /// Do not block inside this callback. It will cause the Dashboard or API
     /// stop operation to time out. Do not call [std::process::exit] inside this
     /// callback, it will also cause the operation to time out.
-    pub fn handle_update_command(mut self, handler: impl CommandHandler<Update>) -> Self {
+    pub fn handle_update_command(&mut self, handler: impl CommandHandler<Update>) -> &mut Self {
         self.handlers.on_update = Some(Arc::new(handler));
         self
     }
@@ -493,7 +493,7 @@ impl SessionBuilder {
     ///
     /// If the handler returns an error, the heartbeat task will exit, resulting
     /// in the session eventually dying as well.
-    pub fn handle_heartbeat(mut self, callback: impl HeartbeatHandler) -> Self {
+    pub fn handle_heartbeat(&mut self, callback: impl HeartbeatHandler) -> &mut Self {
         self.heartbeat_handler = Some(Arc::new(callback));
         self
     }
@@ -508,11 +508,11 @@ impl SessionBuilder {
     ///
     /// [RFC 7230]: https://datatracker.ietf.org/doc/html/rfc7230#section-3.2.6
     pub fn client_info(
-        mut self,
+        &mut self,
         client_type: impl Into<String>,
         version: impl Into<String>,
         comments: Option<impl Into<String>>,
-    ) -> Self {
+    ) -> &mut Self {
         self.versions.push_front((
             client_type.into(),
             version.into(),

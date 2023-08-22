@@ -84,7 +84,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut tunnel_cfg = sess.http_endpoint();
     if let Some(domain) = args.domain {
-        tunnel_cfg = tunnel_cfg.domain(domain);
+        tunnel_cfg.domain(domain);
     }
 
     let tunnel = tunnel_cfg.listen().await?;

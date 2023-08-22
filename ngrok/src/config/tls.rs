@@ -94,33 +94,33 @@ impl_builder! {
 
 impl TlsTunnelBuilder {
     /// Add the provided CIDR to the allowlist.
-    pub fn allow_cidr(mut self, cidr: impl Into<String>) -> Self {
+    pub fn allow_cidr(&mut self, cidr: impl Into<String>) -> &mut Self {
         self.options.common_opts.cidr_restrictions.allow(cidr);
         self
     }
     /// Add the provided CIDR to the denylist.
-    pub fn deny_cidr(mut self, cidr: impl Into<String>) -> Self {
+    pub fn deny_cidr(&mut self, cidr: impl Into<String>) -> &mut Self {
         self.options.common_opts.cidr_restrictions.deny(cidr);
         self
     }
     /// Sets the PROXY protocol version for connections over this tunnel.
-    pub fn proxy_proto(mut self, proxy_proto: ProxyProto) -> Self {
+    pub fn proxy_proto(&mut self, proxy_proto: ProxyProto) -> &mut Self {
         self.options.common_opts.proxy_proto = proxy_proto;
         self
     }
     /// Sets the opaque metadata string for this tunnel.
-    pub fn metadata(mut self, metadata: impl Into<String>) -> Self {
+    pub fn metadata(&mut self, metadata: impl Into<String>) -> &mut Self {
         self.options.common_opts.metadata = Some(metadata.into());
         self
     }
     /// Sets the ForwardsTo string for this tunnel. This can be viewed via the
     /// API or dashboard.
-    pub fn forwards_to(mut self, forwards_to: impl Into<String>) -> Self {
+    pub fn forwards_to(&mut self, forwards_to: impl Into<String>) -> &mut Self {
         self.options.common_opts.forwards_to = Some(forwards_to.into());
         self
     }
     /// Sets the domain to request for this edge.
-    pub fn domain(mut self, domain: impl Into<String>) -> Self {
+    pub fn domain(&mut self, domain: impl Into<String>) -> &mut Self {
         self.options.domain = Some(domain.into());
         self
     }
@@ -129,14 +129,14 @@ impl TlsTunnelBuilder {
     ///
     /// These will be used to authenticate client certificates for requests at
     /// the ngrok edge.
-    pub fn mutual_tlsca(mut self, mutual_tlsca: Bytes) -> Self {
+    pub fn mutual_tlsca(&mut self, mutual_tlsca: Bytes) -> &mut Self {
         self.options.mutual_tlsca.push(mutual_tlsca);
         self
     }
 
     /// Sets the key and certificate in PEM format for TLS termination at the
     /// ngrok edge.
-    pub fn termination(mut self, cert_pem: Bytes, key_pem: Bytes) -> Self {
+    pub fn termination(&mut self, cert_pem: Bytes, key_pem: Bytes) -> &mut Self {
         self.options.key_pem = Some(key_pem);
         self.options.cert_pem = Some(cert_pem);
         self
