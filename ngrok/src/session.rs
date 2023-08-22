@@ -6,7 +6,6 @@ use std::{
     env,
     future::Future,
     io,
-    num::ParseIntError,
     sync::{
         atomic::{
             AtomicBool,
@@ -18,10 +17,7 @@ use std::{
 };
 
 use arc_swap::ArcSwap;
-use async_rustls::rustls::{
-    self,
-    client::InvalidDnsNameError,
-};
+use async_rustls::rustls::{self,};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{
@@ -29,6 +25,7 @@ use futures::{
     prelude::*,
     FutureExt,
 };
+use http::Uri;
 use muxado::heartbeat::HeartbeatConfig;
 pub use muxado::heartbeat::HeartbeatHandler;
 use once_cell::sync::OnceCell;
@@ -168,7 +165,8 @@ pub trait Connector: Sync + Send + 'static {
     /// returned from the [default_connect] function.
     async fn connect(
         &self,
-        addr: String,
+        host: String,
+        port: u16,
         tls_config: Arc<rustls::ClientConfig>,
         err: Option<AcceptError>,
     ) -> Result<Box<dyn IoStream>, ConnectError>;
@@ -177,16 +175,17 @@ pub trait Connector: Sync + Send + 'static {
 #[async_trait]
 impl<F, U> Connector for F
 where
-    F: Fn(String, Arc<rustls::ClientConfig>, Option<AcceptError>) -> U + Send + Sync + 'static,
+    F: Fn(String, u16, Arc<rustls::ClientConfig>, Option<AcceptError>) -> U + Send + Sync + 'static,
     U: Future<Output = Result<Box<dyn IoStream>, ConnectError>> + Send,
 {
     async fn connect(
         &self,
-        addr: String,
+        host: String,
+        port: u16,
         tls_config: Arc<rustls::ClientConfig>,
         err: Option<AcceptError>,
     ) -> Result<Box<dyn IoStream>, ConnectError> {
-        self(addr, tls_config, err).await
+        self(host, port, tls_config, err).await
     }
 }
 
@@ -198,24 +197,21 @@ where
 /// Discards any errors during reconnect, allowing attempts to recur
 /// indefinitely.
 pub async fn default_connect(
-    addr: String,
+    host: String,
+    port: u16,
     tls_config: Arc<rustls::ClientConfig>,
     _: Option<AcceptError>,
 ) -> Result<Box<dyn IoStream>, ConnectError> {
-    let mut split = addr.split(':');
-    let host = split.next().unwrap();
-    let port = split
-        .next()
-        .map(str::parse::<u16>)
-        .transpose()?
-        .unwrap_or(443);
-    let conn = tokio::net::TcpStream::connect(&(host, port))
+    let stream = tokio::net::TcpStream::connect(&(host.as_str(), port))
         .await
         .map_err(ConnectError::Tcp)?
         .compat();
 
+    let domain = rustls::ServerName::try_from(host.as_str())
+        .expect("host should have been validated by SessionBuilder::server_addr");
+
     let tls_conn = async_rustls::TlsConnector::from(tls_config)
-        .connect(rustls::ServerName::try_from(host)?, conn)
+        .connect(domain, stream)
         .await
         .map_err(ConnectError::Tls)?;
     Ok(Box::new(tls_conn.compat()) as Box<dyn IoStream>)
@@ -232,7 +228,8 @@ pub struct SessionBuilder {
     heartbeat_interval: Option<i64>,
     heartbeat_tolerance: Option<i64>,
     heartbeat_handler: Option<Arc<dyn HeartbeatHandler>>,
-    server_addr: String,
+    server_host: String,
+    server_port: u16,
     ca_cert: Option<bytes::Bytes>,
     tls_config: Option<rustls::ClientConfig>,
     connector: Arc<dyn Connector>,
@@ -245,12 +242,6 @@ pub struct SessionBuilder {
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum ConnectError {
-    /// The builder specified an invalid port.
-    #[error("invalid server port")]
-    InvalidServerPort(#[from] ParseIntError),
-    /// The builder specified an invalid server name.
-    #[error("invalid server name")]
-    InvalidServerName(#[from] InvalidDnsNameError),
     /// An error occurred when establishing a TCP connection to the ngrok
     /// server.
     #[error("failed to establish tcp connection")]
@@ -311,6 +302,11 @@ pub struct InvalidHeartbeatInterval(u128);
 #[error("invalid heartbeat tolerance: {0}")]
 pub struct InvalidHeartbeatTolerance(u128);
 
+/// The builder provided an invalid server address
+#[derive(Error, Debug, Clone)]
+#[error("invalid server address: {0}")]
+pub struct InvalidServerAddr(String);
+
 impl Default for SessionBuilder {
     fn default() -> Self {
         SessionBuilder {
@@ -322,7 +318,8 @@ impl Default for SessionBuilder {
             heartbeat_interval: None,
             heartbeat_tolerance: None,
             heartbeat_handler: None,
-            server_addr: "tunnel.ngrok.com:443".into(),
+            server_host: "connect.ngrok-agent.com".into(),
+            server_port: 443,
             ca_cert: None,
             tls_config: None,
             connector: Arc::new(default_connect),
@@ -415,9 +412,23 @@ impl SessionBuilder {
     /// See the [server_addr parameter in the ngrok docs] for additional details.
     ///
     /// [server_addr parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#server_addr
-    pub fn server_addr(&mut self, addr: impl Into<String>) -> &mut Self {
-        self.server_addr = addr.into();
-        self
+    pub fn server_addr(&mut self, addr: impl Into<String>) -> Result<&mut Self, InvalidServerAddr> {
+        let addr = addr.into();
+        let server_uri: Uri = format!("http://{addr}")
+            .parse()
+            .map_err(|_| InvalidServerAddr(addr.clone()))?;
+
+        self.server_host = server_uri
+            .host()
+            .map(String::from)
+            .ok_or_else(|| InvalidServerAddr(addr.clone()))?;
+
+        rustls::ServerName::try_from(self.server_host.as_str())
+            .map_err(|_| InvalidServerAddr(addr.clone()))?;
+
+        self.server_port = server_uri.port_u16().unwrap_or(443);
+
+        Ok(self)
     }
 
     /// Sets the default certificate in PEM format to validate ngrok Session TLS connections.
@@ -586,7 +597,8 @@ impl SessionBuilder {
         let conn = self
             .connector
             .connect(
-                self.server_addr.clone(),
+                self.server_host.clone(),
+                self.server_port,
                 Arc::new(self.get_or_create_tls_config()),
                 err.into(),
             )

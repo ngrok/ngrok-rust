@@ -17,7 +17,7 @@ pub mod config {
 
     mod headers;
     mod http;
-    pub use http::*;
+    pub use self::http::*;
     mod labeled;
     pub use labeled::*;
     mod oauth;
