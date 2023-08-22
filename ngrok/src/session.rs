@@ -250,9 +250,11 @@ fn connect_http_proxy(url: Uri) -> impl Connector {
         let connector = HttpConnector::new();
         async move {
             let mut connector = ProxyConnector::from_proxy(connector, proxy)
-                .map_err(|e| ConnectError::ProxyUnsupportedError(format!("{e}")))?;
+                .map_err(|e| ConnectError::ProxyConnect(Box::new(e)))?;
 
-            let server_uri = format!("http://{host}:{port}").parse().unwrap();
+            let server_uri = format!("http://{host}:{port}")
+                .parse()
+                .expect("host should have been validated by SessionBuilder::server_addr");
 
             let conn = connector
                 .call(server_uri)
@@ -261,7 +263,11 @@ fn connect_http_proxy(url: Uri) -> impl Connector {
                 .compat();
 
             let tls_conn = async_rustls::TlsConnector::from(tls_config)
-                .connect(rustls::ServerName::try_from(host.as_str()).unwrap(), conn)
+                .connect(
+                    rustls::ServerName::try_from(host.as_str())
+                        .expect("host should have been validated by SessionBuilder::server_addr"),
+                    conn,
+                )
                 .await
                 .map_err(ConnectError::Tls)?;
 
@@ -284,7 +290,8 @@ fn connect_socks_proxy(proxy_addr: String) -> impl Connector {
 
             let tls_conn = async_rustls::TlsConnector::from(tls_config)
                 .connect(
-                    rustls::ServerName::try_from(server_host.as_str()).unwrap(),
+                    rustls::ServerName::try_from(server_host.as_str())
+                        .expect("host should have been validated by SessionBuilder::server_addr"),
                     conn,
                 )
                 .await
@@ -342,10 +349,7 @@ pub enum ConnectError {
     /// An error occurred when rebinding tunnels during a reconnect
     #[error("error rebinding tunnel after reconnect")]
     Rebind(#[source] RpcError),
-    /// An error arising from a misconfigured proxy
-    #[error("unsupported proxy address: {0}")]
-    ProxyUnsupportedError(String),
-    /// An error arising from a misconfigured proxy
+    /// An error arising from a failure to connect through a proxy.
     #[error("failed to connect through proxy")]
     ProxyConnect(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
     /// The (re)connect function gave up.
