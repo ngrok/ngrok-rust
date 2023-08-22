@@ -229,8 +229,8 @@ pub struct SessionBuilder {
     versions: VecDeque<(String, String, Option<String>)>,
     authtoken: Option<SecretString>,
     metadata: Option<String>,
-    heartbeat_interval: Option<Duration>,
-    heartbeat_tolerance: Option<Duration>,
+    heartbeat_interval: Option<i64>,
+    heartbeat_tolerance: Option<i64>,
     heartbeat_handler: Option<Arc<dyn HeartbeatHandler>>,
     server_addr: String,
     ca_cert: Option<bytes::Bytes>,
@@ -245,18 +245,6 @@ pub struct SessionBuilder {
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum ConnectError {
-    /// The builder specified an invalid heartbeat interval.
-    ///
-    /// This is most likely caused a [Duration] that's outside of the [i64::MAX]
-    /// nanosecond range.
-    #[error("invalid heartbeat interval: {0}")]
-    InvalidHeartbeatInterval(u128),
-    /// The builder specified an invalid heartbeat tolerance.
-    ///
-    /// This is most likely caused a [Duration] that's outside of the [i64::MAX]
-    /// nanosecond range.
-    #[error("invalid heartbeat tolerance: {0}")]
-    InvalidHeartbeatTolerance(u128),
     /// The builder specified an invalid port.
     #[error("invalid server port")]
     InvalidServerPort(#[from] ParseIntError),
@@ -307,6 +295,21 @@ impl Error for ConnectError {
         }
     }
 }
+
+/// The builder specified an invalid heartbeat interval.
+///
+/// This is most likely caused a [Duration] that's outside of the [i64::MAX]
+/// nanosecond range.
+#[derive(Copy, Clone, Debug, Error)]
+#[error("invalid heartbeat interval: {0}")]
+pub struct InvalidHeartbeatInterval(u128);
+/// The builder specified an invalid heartbeat tolerance.
+///
+/// This is most likely caused a [Duration] that's outside of the [i64::MAX]
+/// nanosecond range.
+#[derive(Copy, Clone, Debug, Error)]
+#[error("invalid heartbeat tolerance: {0}")]
+pub struct InvalidHeartbeatTolerance(u128);
 
 impl Default for SessionBuilder {
     fn default() -> Self {
@@ -366,9 +369,14 @@ impl SessionBuilder {
     /// details.
     ///
     /// [heartbeat_interval parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#heartbeat_interval
-    pub fn heartbeat_interval(&mut self, heartbeat_interval: Duration) -> &mut Self {
-        self.heartbeat_interval = Some(heartbeat_interval);
-        self
+    pub fn heartbeat_interval(
+        &mut self,
+        heartbeat_interval: Duration,
+    ) -> Result<&mut Self, InvalidHeartbeatInterval> {
+        let nanos = heartbeat_interval.as_nanos();
+        let nanos = i64::try_from(nanos).map_err(|_| InvalidHeartbeatInterval(nanos))?;
+        self.heartbeat_interval = Some(nanos);
+        Ok(self)
     }
 
     /// Configures the duration to wait for a response to a heartbeat before
@@ -378,9 +386,14 @@ impl SessionBuilder {
     /// details.
     ///
     /// [heartbeat_tolerance parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#heartbeat_tolerance
-    pub fn heartbeat_tolerance(&mut self, heartbeat_tolerance: Duration) -> &mut Self {
-        self.heartbeat_tolerance = Some(heartbeat_tolerance);
-        self
+    pub fn heartbeat_tolerance(
+        &mut self,
+        heartbeat_tolerance: Duration,
+    ) -> Result<&mut Self, InvalidHeartbeatTolerance> {
+        let nanos = heartbeat_tolerance.as_nanos();
+        let nanos = i64::try_from(nanos).map_err(|_| InvalidHeartbeatTolerance(nanos))?;
+        self.heartbeat_tolerance = Some(nanos);
+        Ok(self)
     }
 
     /// Configures the opaque, machine-readable metadata string for this session.
@@ -581,19 +594,16 @@ impl SessionBuilder {
 
         let mut heartbeat_config = HeartbeatConfig::default();
         if let Some(interval) = self.heartbeat_interval {
-            heartbeat_config.interval = interval;
+            heartbeat_config.interval = Duration::from_nanos(interval as u64);
         }
         if let Some(tolerance) = self.heartbeat_tolerance {
-            heartbeat_config.tolerance = tolerance;
+            heartbeat_config.tolerance = Duration::from_nanos(tolerance as u64);
         }
         heartbeat_config.handler = self.heartbeat_handler.clone();
+
         // convert these while we have ownership
-        let interval_nanos = heartbeat_config.interval.as_nanos();
-        let heartbeat_interval = i64::try_from(interval_nanos)
-            .map_err(|_| ConnectError::InvalidHeartbeatInterval(interval_nanos))?;
-        let tolerance_nanos = heartbeat_config.interval.as_nanos();
-        let heartbeat_tolerance = i64::try_from(tolerance_nanos)
-            .map_err(|_| ConnectError::InvalidHeartbeatTolerance(tolerance_nanos))?;
+        let heartbeat_interval = heartbeat_config.interval.as_nanos() as i64;
+        let heartbeat_tolerance = heartbeat_config.tolerance.as_nanos() as i64;
 
         let mut raw = RawSession::start(conn, heartbeat_config, self.handlers.clone())
             .await
