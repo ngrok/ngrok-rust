@@ -236,9 +236,7 @@ fn connect_proxy(uri: Uri) -> Result<Arc<dyn Connector>, ProxyUnsupportedError> 
         Some("http" | "https") => Arc::new(connect_http_proxy(uri)),
         Some("socks5") => {
             let host = uri.host().unwrap_or_default();
-            let port = uri.port();
-            let port = port.as_ref();
-            let port = port.map(|p| p.as_str()).unwrap_or("1080");
+            let port = uri.port_u16().unwrap_or(1080);
             Arc::new(connect_socks_proxy(format!("{host}:{port}")))
         }
         _ => return Err(ProxyUnsupportedError(uri)),
