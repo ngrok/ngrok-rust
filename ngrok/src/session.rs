@@ -558,9 +558,9 @@ impl SessionBuilder {
     /// HTTP or SOCKS5 proxy. This parameter is ignored if you override the connector
     /// with [SessionBuilder::connector].
     ///
-    /// See the [proxy url paramter in the ngrok docs] for additional details.
+    /// See the [proxy url parameter in the ngrok docs] for additional details.
     ///
-    /// [proxy url paramter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#proxy_url
+    /// [proxy url parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#proxy_url
     pub fn proxy_url(&mut self, url: Uri) -> Result<&mut Self, ProxyUnsupportedError> {
         self.connector = connect_proxy(url)?;
         Ok(self)
