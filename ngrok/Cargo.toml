@@ -17,7 +17,7 @@ tracing = "0.1.37"
 async-rustls = { version = "0.3.0" }
 tokio-util = { version = "0.7.4", features = ["compat"] }
 futures = "0.3.25"
-hyper = { version = "0.14.23", features = ["server"], optional = true }
+hyper = { version = "0.14.23" }
 axum = { version = "0.6.1", features = ["tokio"], optional = true }
 rustls-pemfile = "1.0.1"
 async-trait = "0.1.59"
@@ -65,7 +65,7 @@ required-features = ["hyper"]
 
 [features]
 default = []
-hyper = ["dep:hyper"]
+hyper = ["hyper/server", "hyper/http1"]
 axum = ["dep:axum", "hyper"]
 online-tests = ["axum", "hyper"]
 long-tests = ["online-tests"]
