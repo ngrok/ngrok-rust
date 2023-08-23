@@ -25,7 +25,6 @@ use futures::{
     prelude::*,
     FutureExt,
 };
-use http::Uri;
 use hyper::{
     client::HttpConnector,
     service::Service,
@@ -68,6 +67,7 @@ use tracing::{
     debug,
     warn,
 };
+use url::Url;
 
 pub use crate::internals::{
     proto::{
@@ -229,23 +229,26 @@ pub async fn default_connect(
 #[derive(Debug, Clone, Error)]
 #[error("unsupported proxy address: {0}")]
 /// An unsupported proxy address was provided.
-pub struct ProxyUnsupportedError(Uri);
+pub struct ProxyUnsupportedError(Url);
 
-fn connect_proxy(uri: Uri) -> Result<Arc<dyn Connector>, ProxyUnsupportedError> {
-    Ok(match uri.scheme().map(|s| s.as_str()) {
-        Some("http" | "https") => Arc::new(connect_http_proxy(uri)),
-        Some("socks5") => {
-            let host = uri.host().unwrap_or_default();
-            let port = uri.port_u16().unwrap_or(1080);
+fn connect_proxy(url: Url) -> Result<Arc<dyn Connector>, ProxyUnsupportedError> {
+    Ok(match url.scheme() {
+        "http" | "https" => Arc::new(connect_http_proxy(url)),
+        "socks5" => {
+            let host = url.host_str().unwrap_or_default();
+            let port = url.port().unwrap_or(1080);
             Arc::new(connect_socks_proxy(format!("{host}:{port}")))
         }
-        _ => return Err(ProxyUnsupportedError(uri)),
+        _ => return Err(ProxyUnsupportedError(url)),
     })
 }
 
-fn connect_http_proxy(url: Uri) -> impl Connector {
+fn connect_http_proxy(url: Url) -> impl Connector {
     move |host: String, port, tls_config, _| {
-        let mut proxy = Proxy::new(Intercept::All, url.clone());
+        let mut proxy = Proxy::new(
+            Intercept::All,
+            url.as_str().try_into().expect("urls should be valid uris"),
+        );
         proxy.force_connect();
         let connector = HttpConnector::new();
         async move {
@@ -502,19 +505,19 @@ impl SessionBuilder {
     /// [server_addr parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#server_addr
     pub fn server_addr(&mut self, addr: impl Into<String>) -> Result<&mut Self, InvalidServerAddr> {
         let addr = addr.into();
-        let server_uri: Uri = format!("http://{addr}")
+        let server_uri: Url = format!("http://{addr}")
             .parse()
             .map_err(|_| InvalidServerAddr(addr.clone()))?;
 
         self.server_host = server_uri
-            .host()
+            .host_str()
             .map(String::from)
             .ok_or_else(|| InvalidServerAddr(addr.clone()))?;
 
         rustls::ServerName::try_from(self.server_host.as_str())
             .map_err(|_| InvalidServerAddr(addr.clone()))?;
 
-        self.server_port = server_uri.port_u16().unwrap_or(443);
+        self.server_port = server_uri.port().unwrap_or(443);
 
         Ok(self)
     }
@@ -561,7 +564,7 @@ impl SessionBuilder {
     /// See the [proxy url parameter in the ngrok docs] for additional details.
     ///
     /// [proxy url parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#proxy_url
-    pub fn proxy_url(&mut self, url: Uri) -> Result<&mut Self, ProxyUnsupportedError> {
+    pub fn proxy_url(&mut self, url: Url) -> Result<&mut Self, ProxyUnsupportedError> {
         self.connector = connect_proxy(url)?;
         Ok(self)
     }
