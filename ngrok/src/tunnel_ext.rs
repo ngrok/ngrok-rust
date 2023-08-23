@@ -7,10 +7,14 @@ use std::{
 };
 use std::{
     io,
-    net::SocketAddr,
-    path::Path,
+    sync::Arc,
 };
 
+use async_rustls::rustls::{
+    self,
+    ClientConfig,
+    RootCertStore,
+};
 use async_trait::async_trait;
 use futures::stream::TryStreamExt;
 #[cfg(feature = "hyper")]
@@ -21,6 +25,7 @@ use hyper::{
     Response,
     StatusCode,
 };
+use once_cell::sync::Lazy;
 #[cfg(target_os = "windows")]
 use tokio::net::windows::named_pipe::ClientOptions;
 #[cfg(not(target_os = "windows"))]
@@ -33,98 +38,189 @@ use tokio::{
         AsyncRead,
         AsyncWrite,
     },
-    net::{
-        TcpStream,
-        ToSocketAddrs,
-    },
+    net::TcpStream,
     task::JoinHandle,
+};
+use tokio_util::compat::{
+    FuturesAsyncReadCompatExt,
+    TokioAsyncReadCompatExt,
 };
 use tracing::{
     debug,
     field,
-    instrument,
-    trace,
+    info_span,
     warn,
     Instrument,
     Span,
 };
+use url::Url;
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Foundation::ERROR_PIPE_BUSY;
 
 use crate::{
     prelude::*,
+    session::IoStream,
     Conn,
 };
 
-impl<T> TunnelExt for T where T: Tunnel {}
+impl<T> TunnelExt for T where T: Tunnel + Send {}
 
 /// Extension methods auto-implemented for all tunnel types
 #[async_trait]
-pub trait TunnelExt: Tunnel {
-    /// Forward incoming tunnel connections to the provided TCP address.
-    #[instrument(level = "debug", skip_all, fields(local_addrs))]
-    async fn forward_tcp(&mut self, addr: impl ToSocketAddrs + Send) -> Result<(), io::Error> {
-        forward_conns(self, addr, |_, _| {}).await
-    }
+pub trait TunnelExt: Tunnel + Send {
+    /// Forward incoming tunnel connections to the provided url based on its
+    /// scheme.
+    /// This currently supports http, https, tls, and tcp on all platforms, unix
+    /// sockets on unix platforms, and named pipes on Windows via the "pipe"
+    /// scheme.
+    #[tracing::instrument(skip_all, fields(tunnel_id = self.id(), url = %url))]
+    async fn forward(&mut self, url: Url) -> Result<(), io::Error> {
+        loop {
+            let tunnel_conn = if let Some(conn) = self
+                .try_next()
+                .await
+                .map_err(|err| io::Error::new(io::ErrorKind::NotConnected, err))?
+            {
+                conn
+            } else {
+                return Ok(());
+            };
 
-    /// Forward incoming tunnel connections to the provided TCP address.
-    ///
-    /// Provides slightly nicer errors when the backend is unavailable.
-    #[cfg(feature = "hyper")]
-    #[instrument(level = "debug", skip_all, fields(local_addrs))]
-    async fn forward_http(&mut self, addr: impl ToSocketAddrs + Send) -> Result<(), io::Error> {
-        forward_conns(self, addr, |e, c| drop(serve_gateway_error(e, c))).await
-    }
+            let span = info_span!(
+                "forward_one",
+                remote_addr = %tunnel_conn.remote_addr(),
+                forward_addr = field::Empty
+            );
 
-    /// Forward incoming tunnel connections to the provided file socket path.
-    /// On Linux/Darwin addr can be a unix domain socket path, e.g. "/tmp/ngrok.sock".
-    /// On Windows addr can be a named pipe, e.g. "\\.\pipe\ngrok_pipe".
-    #[instrument(level = "debug", skip_all, fields(path))]
-    async fn forward_pipe(&mut self, addr: impl AsRef<Path> + Send) -> Result<(), io::Error> {
-        forward_pipe_conns(self, addr, |_, _| {}).await
+            debug!(parent: &span, "accepted tunnel connection");
+
+            let local_conn = match connect(self, &tunnel_conn, &url)
+                .instrument(span.clone())
+                .await
+            {
+                Ok(conn) => conn,
+                Err(error) => {
+                    warn!(%error, "error establishing local connection");
+
+                    span.in_scope(|| on_err(self, error, tunnel_conn));
+
+                    continue;
+                }
+            };
+
+            debug!(parent: &span, "established local connection, joining streams");
+
+            span.in_scope(|| join_streams(tunnel_conn, local_conn));
+        }
     }
 }
 
-async fn forward_conns<T, A, F>(this: &mut T, addr: A, mut on_err: F) -> Result<(), io::Error>
-where
-    T: Tunnel + ?Sized,
-    A: ToSocketAddrs,
-    F: FnMut(io::Error, Conn),
-{
-    let span = Span::current();
-    let addrs = tokio::net::lookup_host(addr).await?.collect::<Vec<_>>();
-    span.record("local_addrs", field::debug(&addrs));
-    trace!("looked up local addrs");
-    loop {
-        trace!("waiting for new tunnel connection");
-        if !handle_one(this, addrs.as_slice(), &mut on_err).await? {
-            debug!("listener closed, exiting");
-            break;
-        }
+fn on_err<T: Tunnel + Send + ?Sized>(tunnel: &T, err: io::Error, conn: Conn) {
+    match tunnel.proto() {
+        #[cfg(feature = "hyper")]
+        "http" | "https" => drop(serve_gateway_error(err, conn)),
+        _ => {}
     }
-    Ok(())
 }
 
-async fn forward_pipe_conns<T, F>(
-    this: &mut T,
-    addr: impl AsRef<Path>,
-    mut on_err: F,
-) -> Result<(), io::Error>
-where
-    T: Tunnel + ?Sized,
-    F: FnMut(io::Error, Conn),
-{
-    let span = Span::current();
-    let path = addr.as_ref();
-    span.record("path", field::debug(&path));
-    loop {
-        trace!("waiting for new tunnel connection");
-        if !handle_one_pipe(this, path, &mut on_err).await? {
-            debug!("listener closed, exiting");
-            break;
+fn tls_config() -> Result<Arc<ClientConfig>, &'static io::Error> {
+    static CONFIG: Lazy<Result<Arc<ClientConfig>, io::Error>> = Lazy::new(|| {
+        let der_certs = rustls_native_certs::load_native_certs()?
+            .into_iter()
+            .map(|c| c.0)
+            .collect::<Vec<_>>();
+        let der_certs = der_certs.as_slice();
+        let mut root_store = RootCertStore::empty();
+        root_store.add_parsable_certificates(der_certs);
+        let config = ClientConfig::builder()
+            .with_safe_defaults()
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
+        Ok(Arc::new(config))
+    });
+
+    Ok(CONFIG.as_ref()?.clone())
+}
+
+// Establish the connection to forward the tunnel stream to.
+// Takes the tunnel and connection to make additional decisions on how to wrap
+// the forwarded connection, i.e. reordering tls termination and proxyproto.
+// Note: this additional wrapping logic currently unimplemented.
+async fn connect<T: Tunnel + Send + ?Sized>(
+    _tunnel: &mut T,
+    _conn: &Conn,
+    url: &Url,
+) -> Result<Box<dyn IoStream>, io::Error> {
+    let host = url.host_str().unwrap_or("localhost");
+    Ok(match url.scheme() {
+        "tcp" => {
+            let port = url.port().ok_or(io::ErrorKind::InvalidInput)?;
+            let conn = connect_tcp(host, port).in_current_span().await?;
+            Box::new(conn)
         }
+
+        "http" => {
+            let port = url.port().unwrap_or(80);
+            let conn = connect_tcp(host, port).in_current_span().await?;
+            Box::new(conn)
+        }
+
+        "https" | "tls" => {
+            let port = url.port().unwrap_or(443);
+            let conn = connect_tcp(host, port).in_current_span().await?;
+
+            // TODO: if the tunnel uses proxyproto, wrap conn here before terminating tls
+
+            let domain = rustls::ServerName::try_from(host)
+                .map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))?;
+            Box::new(
+                async_rustls::TlsConnector::from(tls_config().map_err(|e| e.kind())?)
+                    .connect(domain, conn.compat())
+                    .await?
+                    .compat(),
+            )
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        "unix" => Box::new(
+            UnixStream::connect(&format!(
+                "{}/{}",
+                url.host_str().unwrap_or_default(),
+                url.path()
+            ))
+            .await?,
+        ),
+
+        #[cfg(target_os = "windows")]
+        "pipe" => {
+            let addr = format!(
+                "\\\\{}\\{}",
+                url.host_str().unwrap_or("."),
+                url.path().replace("/", "\\")
+            );
+            // loop behavior copied from docs
+            // https://docs.rs/tokio/latest/tokio/net/windows/named_pipe/struct.NamedPipeClient.html
+            let local_conn = loop {
+                match ClientOptions::new().open(&addr) {
+                    Ok(client) => break client,
+                    Err(error) if error.raw_os_error() == Some(ERROR_PIPE_BUSY as i32) => (),
+                    Err(error) => return Err(error),
+                }
+
+                time::sleep(Duration::from_millis(50)).await;
+            };
+            Box::new(local_conn)
+        }
+        _ => return Err(io::ErrorKind::InvalidInput.into()),
+    })
+}
+
+async fn connect_tcp(host: &str, port: u16) -> Result<TcpStream, io::Error> {
+    let conn = TcpStream::connect(&format!("{}:{}", host, port)).await?;
+    if let Ok(addr) = conn.peer_addr() {
+        Span::current().record("forward_addr", field::display(addr));
     }
-    Ok(())
+    Ok(conn)
 }
 
 fn join_streams(
@@ -142,114 +238,11 @@ fn join_streams(
     )
 }
 
-#[instrument(level = "debug", skip_all, fields(remote_addr, local_addr))]
-async fn handle_one<T, F>(
-    this: &mut T,
-    addrs: &[SocketAddr],
-    on_error: F,
-) -> Result<bool, io::Error>
-where
-    T: Tunnel + ?Sized,
-    F: FnOnce(io::Error, Conn),
-{
-    let span = Span::current();
-    let tunnel_conn = if let Some(conn) = this
-        .try_next()
-        .await
-        .map_err(|err| io::Error::new(io::ErrorKind::NotConnected, err))?
-    {
-        conn
-    } else {
-        return Ok(false);
-    };
-
-    span.record("remote_addr", field::debug(tunnel_conn.remote_addr()));
-
-    trace!("accepted tunnel connection");
-
-    let local_conn = match TcpStream::connect(addrs).await {
-        Ok(conn) => conn,
-        Err(error) => {
-            warn!(%error, "error establishing local connection");
-
-            on_error(error, tunnel_conn);
-
-            return Ok(true);
-        }
-    };
-    span.record("local_addr", field::debug(local_conn.peer_addr().unwrap()));
-
-    debug!("established local connection, joining streams");
-
-    join_streams(tunnel_conn, local_conn);
-    Ok(true)
-}
-
-#[instrument(level = "debug", skip_all, fields(remote_addr, local_addr))]
-async fn handle_one_pipe<T, F>(this: &mut T, addr: &Path, on_error: F) -> Result<bool, io::Error>
-where
-    T: Tunnel + ?Sized,
-    F: FnOnce(io::Error, Conn),
-{
-    let span = Span::current();
-    let tunnel_conn = if let Some(conn) = this
-        .try_next()
-        .await
-        .map_err(|err| io::Error::new(io::ErrorKind::NotConnected, err))?
-    {
-        conn
-    } else {
-        return Ok(false);
-    };
-
-    span.record("remote_addr", field::debug(tunnel_conn.remote_addr()));
-
-    trace!("accepted tunnel connection");
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        let local_conn = match UnixStream::connect(addr).await {
-            Ok(conn) => conn,
-            Err(error) => {
-                warn!(%error, "error establishing local unix connection");
-                on_error(error, tunnel_conn);
-                return Ok(true);
-            }
-        };
-        span.record("local_addr", field::debug(local_conn.peer_addr().unwrap()));
-        debug!("established local connection, joining streams");
-        join_streams(tunnel_conn, local_conn);
-    }
-    #[cfg(target_os = "windows")]
-    {
-        // loop behavior copied from docs
-        // https://docs.rs/tokio/latest/tokio/net/windows/named_pipe/struct.NamedPipeClient.html
-        let local_conn = loop {
-            match ClientOptions::new().open(addr) {
-                Ok(client) => break client,
-                Err(error) if error.raw_os_error() == Some(ERROR_PIPE_BUSY as i32) => (),
-                Err(error) => {
-                    warn!(%error, "error establishing local named pipe connection");
-                    on_error(error, tunnel_conn);
-                    return Ok(true);
-                }
-            }
-
-            time::sleep(Duration::from_millis(50)).await;
-        };
-        span.record("local_addr", field::debug(addr));
-        debug!("established local connection, joining streams");
-        join_streams(tunnel_conn, local_conn);
-    }
-
-    Ok(true)
-}
-
 #[cfg(feature = "hyper")]
 #[allow(dead_code)]
 fn serve_gateway_error(
     err: impl fmt::Display + Send + 'static,
-    stream: impl AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    conn: impl AsyncRead + AsyncWrite + Unpin + Send + 'static,
 ) -> JoinHandle<()> {
     tokio::spawn(
         async move {
@@ -257,7 +250,7 @@ fn serve_gateway_error(
                 .http1_only(true)
                 .http1_keep_alive(false)
                 .serve_connection(
-                    stream,
+                    conn,
                     service_fn(move |_req| {
                         debug!("serving bad gateway error");
                         let mut resp =
