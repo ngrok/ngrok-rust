@@ -1,4 +1,5 @@
 use std::{
+    borrow::Borrow,
     collections::HashMap,
     str::FromStr,
 };
@@ -171,38 +172,38 @@ impl_builder! {
 
 impl HttpTunnelBuilder {
     /// Add the provided CIDR to the allowlist.
-    pub fn allow_cidr(mut self, cidr: impl Into<String>) -> Self {
+    pub fn allow_cidr(&mut self, cidr: impl Into<String>) -> &mut Self {
         self.options.common_opts.cidr_restrictions.allow(cidr);
         self
     }
     /// Add the provided CIDR to the denylist.
-    pub fn deny_cidr(mut self, cidr: impl Into<String>) -> Self {
+    pub fn deny_cidr(&mut self, cidr: impl Into<String>) -> &mut Self {
         self.options.common_opts.cidr_restrictions.deny(cidr);
         self
     }
     /// Sets the PROXY protocol version for connections over this tunnel.
-    pub fn proxy_proto(mut self, proxy_proto: ProxyProto) -> Self {
+    pub fn proxy_proto(&mut self, proxy_proto: ProxyProto) -> &mut Self {
         self.options.common_opts.proxy_proto = proxy_proto;
         self
     }
     /// Sets the opaque metadata string for this tunnel.
-    pub fn metadata(mut self, metadata: impl Into<String>) -> Self {
+    pub fn metadata(&mut self, metadata: impl Into<String>) -> &mut Self {
         self.options.common_opts.metadata = Some(metadata.into());
         self
     }
     /// Sets the ForwardsTo string for this tunnel. This can be viewed via the
     /// API or dashboard.
-    pub fn forwards_to(mut self, forwards_to: impl Into<String>) -> Self {
+    pub fn forwards_to(&mut self, forwards_to: impl Into<String>) -> &mut Self {
         self.options.common_opts.forwards_to = Some(forwards_to.into());
         self
     }
     /// Sets the scheme for this edge.
-    pub fn scheme(mut self, scheme: Scheme) -> Self {
+    pub fn scheme(&mut self, scheme: Scheme) -> &mut Self {
         self.options.scheme = scheme;
         self
     }
     /// Sets the domain to request for this edge.
-    pub fn domain(mut self, domain: impl Into<String>) -> Self {
+    pub fn domain(&mut self, domain: impl Into<String>) -> &mut Self {
         self.options.domain = Some(domain.into());
         self
     }
@@ -210,51 +211,63 @@ impl HttpTunnelBuilder {
     ///
     /// These will be used to authenticate client certificates for requests at
     /// the ngrok edge.
-    pub fn mutual_tlsca(mut self, mutual_tlsca: Bytes) -> Self {
+    pub fn mutual_tlsca(&mut self, mutual_tlsca: Bytes) -> &mut Self {
         self.options.mutual_tlsca.push(mutual_tlsca);
         self
     }
     /// Enables gzip compression.
-    pub fn compression(mut self) -> Self {
+    pub fn compression(&mut self) -> &mut Self {
         self.options.compression = true;
         self
     }
     /// Enables the websocket-to-tcp converter.
-    pub fn websocket_tcp_conversion(mut self) -> Self {
+    pub fn websocket_tcp_conversion(&mut self) -> &mut Self {
         self.options.websocket_tcp_conversion = true;
         self
     }
     /// Sets the 5XX response ratio at which the ngrok edge will stop sending
     /// requests to this tunnel.
-    pub fn circuit_breaker(mut self, circuit_breaker: f64) -> Self {
+    pub fn circuit_breaker(&mut self, circuit_breaker: f64) -> &mut Self {
         self.options.circuit_breaker = circuit_breaker;
         self
     }
 
     /// Adds a header to all requests to this edge.
-    pub fn request_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+    pub fn request_header(
+        &mut self,
+        name: impl Into<String>,
+        value: impl Into<String>,
+    ) -> &mut Self {
         self.options.request_headers.add(name, value);
         self
     }
     /// Adds a header to all responses coming from this edge.
-    pub fn response_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+    pub fn response_header(
+        &mut self,
+        name: impl Into<String>,
+        value: impl Into<String>,
+    ) -> &mut Self {
         self.options.response_headers.add(name, value);
         self
     }
     /// Removes a header from requests to this edge.
-    pub fn remove_request_header(mut self, name: impl Into<String>) -> Self {
+    pub fn remove_request_header(&mut self, name: impl Into<String>) -> &mut Self {
         self.options.request_headers.remove(name);
         self
     }
     /// Removes a header from responses from this edge.
-    pub fn remove_response_header(mut self, name: impl Into<String>) -> Self {
+    pub fn remove_response_header(&mut self, name: impl Into<String>) -> &mut Self {
         self.options.response_headers.remove(name);
         self
     }
 
     /// Adds the provided credentials to the list of basic authentication
     /// credentials.
-    pub fn basic_auth(mut self, username: impl Into<String>, password: impl Into<String>) -> Self {
+    pub fn basic_auth(
+        &mut self,
+        username: impl Into<String>,
+        password: impl Into<String>,
+    ) -> &mut Self {
         self.options
             .basic_auth
             .push((username.into(), password.into()));
@@ -262,23 +275,23 @@ impl HttpTunnelBuilder {
     }
 
     /// Set the OAuth configuraton for this edge.
-    pub fn oauth(mut self, oauth: OauthOptions) -> Self {
-        self.options.oauth = Some(oauth);
+    pub fn oauth(&mut self, oauth: impl Borrow<OauthOptions>) -> &mut Self {
+        self.options.oauth = Some(oauth.borrow().to_owned());
         self
     }
 
     /// Set the OIDC configuration for this edge.
-    pub fn oidc(mut self, oidc: OidcOptions) -> Self {
-        self.options.oidc = Some(oidc);
+    pub fn oidc(&mut self, oidc: impl Borrow<OidcOptions>) -> &mut Self {
+        self.options.oidc = Some(oidc.borrow().to_owned());
         self
     }
 
     /// Configures webhook verification for this edge.
     pub fn webhook_verification(
-        mut self,
+        &mut self,
         provider: impl Into<String>,
         secret: impl Into<String>,
-    ) -> Self {
+    ) -> &mut Self {
         self.options.webhook_verification = Some(WebhookVerification {
             provider: provider.into(),
             secret: secret.into().into(),

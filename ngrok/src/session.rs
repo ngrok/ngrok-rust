@@ -6,7 +6,6 @@ use std::{
     env,
     future::Future,
     io,
-    num::ParseIntError,
     sync::{
         atomic::{
             AtomicBool,
@@ -18,10 +17,7 @@ use std::{
 };
 
 use arc_swap::ArcSwap;
-use async_rustls::rustls::{
-    self,
-    client::InvalidDnsNameError,
-};
+use async_rustls::rustls::{self,};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{
@@ -29,6 +25,7 @@ use futures::{
     prelude::*,
     FutureExt,
 };
+use http::Uri;
 use muxado::heartbeat::HeartbeatConfig;
 pub use muxado::heartbeat::HeartbeatHandler;
 use once_cell::sync::OnceCell;
@@ -88,7 +85,7 @@ use crate::{
             AuthExtra,
             BindExtra,
             BindOpts,
-            NgrokError,
+            Error,
             SecretString,
         },
         raw_session::{
@@ -168,7 +165,8 @@ pub trait Connector: Sync + Send + 'static {
     /// returned from the [default_connect] function.
     async fn connect(
         &self,
-        addr: String,
+        host: String,
+        port: u16,
         tls_config: Arc<rustls::ClientConfig>,
         err: Option<AcceptError>,
     ) -> Result<Box<dyn IoStream>, ConnectError>;
@@ -177,16 +175,17 @@ pub trait Connector: Sync + Send + 'static {
 #[async_trait]
 impl<F, U> Connector for F
 where
-    F: Fn(String, Arc<rustls::ClientConfig>, Option<AcceptError>) -> U + Send + Sync + 'static,
+    F: Fn(String, u16, Arc<rustls::ClientConfig>, Option<AcceptError>) -> U + Send + Sync + 'static,
     U: Future<Output = Result<Box<dyn IoStream>, ConnectError>> + Send,
 {
     async fn connect(
         &self,
-        addr: String,
+        host: String,
+        port: u16,
         tls_config: Arc<rustls::ClientConfig>,
         err: Option<AcceptError>,
     ) -> Result<Box<dyn IoStream>, ConnectError> {
-        self(addr, tls_config, err).await
+        self(host, port, tls_config, err).await
     }
 }
 
@@ -198,24 +197,21 @@ where
 /// Discards any errors during reconnect, allowing attempts to recur
 /// indefinitely.
 pub async fn default_connect(
-    addr: String,
+    host: String,
+    port: u16,
     tls_config: Arc<rustls::ClientConfig>,
     _: Option<AcceptError>,
 ) -> Result<Box<dyn IoStream>, ConnectError> {
-    let mut split = addr.split(':');
-    let host = split.next().unwrap();
-    let port = split
-        .next()
-        .map(str::parse::<u16>)
-        .transpose()?
-        .unwrap_or(443);
-    let conn = tokio::net::TcpStream::connect(&(host, port))
+    let stream = tokio::net::TcpStream::connect(&(host.as_str(), port))
         .await
         .map_err(ConnectError::Tcp)?
         .compat();
 
+    let domain = rustls::ServerName::try_from(host.as_str())
+        .expect("host should have been validated by SessionBuilder::server_addr");
+
     let tls_conn = async_rustls::TlsConnector::from(tls_config)
-        .connect(rustls::ServerName::try_from(host)?, conn)
+        .connect(domain, stream)
         .await
         .map_err(ConnectError::Tls)?;
     Ok(Box::new(tls_conn.compat()) as Box<dyn IoStream>)
@@ -229,10 +225,11 @@ pub struct SessionBuilder {
     versions: VecDeque<(String, String, Option<String>)>,
     authtoken: Option<SecretString>,
     metadata: Option<String>,
-    heartbeat_interval: Option<Duration>,
-    heartbeat_tolerance: Option<Duration>,
+    heartbeat_interval: Option<i64>,
+    heartbeat_tolerance: Option<i64>,
     heartbeat_handler: Option<Arc<dyn HeartbeatHandler>>,
-    server_addr: String,
+    server_host: String,
+    server_port: u16,
     ca_cert: Option<bytes::Bytes>,
     tls_config: Option<rustls::ClientConfig>,
     connector: Arc<dyn Connector>,
@@ -245,24 +242,6 @@ pub struct SessionBuilder {
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum ConnectError {
-    /// The builder specified an invalid heartbeat interval.
-    ///
-    /// This is most likely caused a [Duration] that's outside of the [i64::MAX]
-    /// nanosecond range.
-    #[error("invalid heartbeat interval: {0}")]
-    InvalidHeartbeatInterval(u128),
-    /// The builder specified an invalid heartbeat tolerance.
-    ///
-    /// This is most likely caused a [Duration] that's outside of the [i64::MAX]
-    /// nanosecond range.
-    #[error("invalid heartbeat tolerance: {0}")]
-    InvalidHeartbeatTolerance(u128),
-    /// The builder specified an invalid port.
-    #[error("invalid server port")]
-    InvalidServerPort(#[from] ParseIntError),
-    /// The builder specified an invalid server name.
-    #[error("invalid server name")]
-    InvalidServerName(#[from] InvalidDnsNameError),
     /// An error occurred when establishing a TCP connection to the ngrok
     /// server.
     #[error("failed to establish tcp connection")]
@@ -293,7 +272,7 @@ pub enum ConnectError {
     Canceled,
 }
 
-impl NgrokError for ConnectError {
+impl Error for ConnectError {
     fn error_code(&self) -> Option<&str> {
         match self {
             ConnectError::Auth(resp) | ConnectError::Rebind(resp) => resp.error_code(),
@@ -308,6 +287,26 @@ impl NgrokError for ConnectError {
     }
 }
 
+/// The builder specified an invalid heartbeat interval.
+///
+/// This is most likely caused a [Duration] that's outside of the [i64::MAX]
+/// nanosecond range.
+#[derive(Copy, Clone, Debug, Error)]
+#[error("invalid heartbeat interval: {0}")]
+pub struct InvalidHeartbeatInterval(u128);
+/// The builder specified an invalid heartbeat tolerance.
+///
+/// This is most likely caused a [Duration] that's outside of the [i64::MAX]
+/// nanosecond range.
+#[derive(Copy, Clone, Debug, Error)]
+#[error("invalid heartbeat tolerance: {0}")]
+pub struct InvalidHeartbeatTolerance(u128);
+
+/// The builder provided an invalid server address
+#[derive(Error, Debug, Clone)]
+#[error("invalid server address: {0}")]
+pub struct InvalidServerAddr(String);
+
 impl Default for SessionBuilder {
     fn default() -> Self {
         SessionBuilder {
@@ -319,7 +318,8 @@ impl Default for SessionBuilder {
             heartbeat_interval: None,
             heartbeat_tolerance: None,
             heartbeat_handler: None,
-            server_addr: "tunnel.ngrok.com:443".into(),
+            server_host: "connect.ngrok-agent.com".into(),
+            server_port: 443,
             ca_cert: None,
             tls_config: None,
             connector: Arc::new(default_connect),
@@ -348,13 +348,13 @@ impl SessionBuilder {
     /// [find your existing authtoken]: https://dashboard.ngrok.com/get-started/your-authtoken
     /// [create a new one]: https://dashboard.ngrok.com/tunnels/authtokens
     /// [authtoken parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#authtoken
-    pub fn authtoken(mut self, authtoken: impl Into<String>) -> Self {
+    pub fn authtoken(&mut self, authtoken: impl Into<String>) -> &mut Self {
         self.authtoken = Some(authtoken.into().into());
         self
     }
     /// Shortcut for calling [SessionBuilder::authtoken] with the value of the
     /// NGROK_AUTHTOKEN environment variable.
-    pub fn authtoken_from_env(mut self) -> Self {
+    pub fn authtoken_from_env(&mut self) -> &mut Self {
         self.authtoken = env::var("NGROK_AUTHTOKEN").ok().map(From::from);
         self
     }
@@ -366,9 +366,14 @@ impl SessionBuilder {
     /// details.
     ///
     /// [heartbeat_interval parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#heartbeat_interval
-    pub fn heartbeat_interval(mut self, heartbeat_interval: Duration) -> Self {
-        self.heartbeat_interval = Some(heartbeat_interval);
-        self
+    pub fn heartbeat_interval(
+        &mut self,
+        heartbeat_interval: Duration,
+    ) -> Result<&mut Self, InvalidHeartbeatInterval> {
+        let nanos = heartbeat_interval.as_nanos();
+        let nanos = i64::try_from(nanos).map_err(|_| InvalidHeartbeatInterval(nanos))?;
+        self.heartbeat_interval = Some(nanos);
+        Ok(self)
     }
 
     /// Configures the duration to wait for a response to a heartbeat before
@@ -378,9 +383,14 @@ impl SessionBuilder {
     /// details.
     ///
     /// [heartbeat_tolerance parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#heartbeat_tolerance
-    pub fn heartbeat_tolerance(mut self, heartbeat_tolerance: Duration) -> Self {
-        self.heartbeat_tolerance = Some(heartbeat_tolerance);
-        self
+    pub fn heartbeat_tolerance(
+        &mut self,
+        heartbeat_tolerance: Duration,
+    ) -> Result<&mut Self, InvalidHeartbeatTolerance> {
+        let nanos = heartbeat_tolerance.as_nanos();
+        let nanos = i64::try_from(nanos).map_err(|_| InvalidHeartbeatTolerance(nanos))?;
+        self.heartbeat_tolerance = Some(nanos);
+        Ok(self)
     }
 
     /// Configures the opaque, machine-readable metadata string for this session.
@@ -391,7 +401,7 @@ impl SessionBuilder {
     /// See the [metdata parameter in the ngrok docs] for additional details.
     ///
     /// [metdata parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#metadata
-    pub fn metadata(mut self, metadata: impl Into<String>) -> Self {
+    pub fn metadata(&mut self, metadata: impl Into<String>) -> &mut Self {
         self.metadata = Some(metadata.into());
         self
     }
@@ -402,9 +412,23 @@ impl SessionBuilder {
     /// See the [server_addr parameter in the ngrok docs] for additional details.
     ///
     /// [server_addr parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#server_addr
-    pub fn server_addr(mut self, addr: impl Into<String>) -> Self {
-        self.server_addr = addr.into();
-        self
+    pub fn server_addr(&mut self, addr: impl Into<String>) -> Result<&mut Self, InvalidServerAddr> {
+        let addr = addr.into();
+        let server_uri: Uri = format!("http://{addr}")
+            .parse()
+            .map_err(|_| InvalidServerAddr(addr.clone()))?;
+
+        self.server_host = server_uri
+            .host()
+            .map(String::from)
+            .ok_or_else(|| InvalidServerAddr(addr.clone()))?;
+
+        rustls::ServerName::try_from(self.server_host.as_str())
+            .map_err(|_| InvalidServerAddr(addr.clone()))?;
+
+        self.server_port = server_uri.port_u16().unwrap_or(443);
+
+        Ok(self)
     }
 
     /// Sets the default certificate in PEM format to validate ngrok Session TLS connections.
@@ -414,7 +438,7 @@ impl SessionBuilder {
     /// [root_cas parameter in the ngrok docs]
     ///
     /// [root_cas parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#root_cas
-    pub fn ca_cert(mut self, ca_cert: Bytes) -> Self {
+    pub fn ca_cert(&mut self, ca_cert: Bytes) -> &mut Self {
         self.ca_cert = Some(ca_cert);
         self
     }
@@ -428,7 +452,7 @@ impl SessionBuilder {
     /// for deeper TLS configuration.
     ///
     /// [root_cas parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#root_cas
-    pub fn tls_config(mut self, config: rustls::ClientConfig) -> Self {
+    pub fn tls_config(&mut self, config: rustls::ClientConfig) -> &mut Self {
         self.tls_config = Some(config);
         self
     }
@@ -437,7 +461,7 @@ impl SessionBuilder {
     /// ngrok service. Use this option if you need to connect through an outbound
     /// proxy. In the event of network disruptions, it will be called each time
     /// the session reconnects.
-    pub fn connector(mut self, connect: impl Connector) -> Self {
+    pub fn connector(&mut self, connect: impl Connector) -> &mut Self {
         self.connector = Arc::new(connect);
         self
     }
@@ -452,7 +476,7 @@ impl SessionBuilder {
     /// Do not block inside this callback. It will cause the Dashboard or API
     /// stop operation to time out. Do not call [std::process::exit] inside this
     /// callback, it will also cause the operation to time out.
-    pub fn handle_stop_command(mut self, handler: impl CommandHandler<Stop>) -> Self {
+    pub fn handle_stop_command(&mut self, handler: impl CommandHandler<Stop>) -> &mut Self {
         self.handlers.on_stop = Some(Arc::new(handler));
         self
     }
@@ -468,7 +492,7 @@ impl SessionBuilder {
     /// Do not block inside this callback. It will cause the Dashboard or API
     /// stop operation to time out. Do not call [std::process::exit] inside this
     /// callback, it will also cause the operation to time out.
-    pub fn handle_restart_command(mut self, handler: impl CommandHandler<Restart>) -> Self {
+    pub fn handle_restart_command(&mut self, handler: impl CommandHandler<Restart>) -> &mut Self {
         self.handlers.on_restart = Some(Arc::new(handler));
         self
     }
@@ -484,7 +508,7 @@ impl SessionBuilder {
     /// Do not block inside this callback. It will cause the Dashboard or API
     /// stop operation to time out. Do not call [std::process::exit] inside this
     /// callback, it will also cause the operation to time out.
-    pub fn handle_update_command(mut self, handler: impl CommandHandler<Update>) -> Self {
+    pub fn handle_update_command(&mut self, handler: impl CommandHandler<Update>) -> &mut Self {
         self.handlers.on_update = Some(Arc::new(handler));
         self
     }
@@ -493,7 +517,7 @@ impl SessionBuilder {
     ///
     /// If the handler returns an error, the heartbeat task will exit, resulting
     /// in the session eventually dying as well.
-    pub fn handle_heartbeat(mut self, callback: impl HeartbeatHandler) -> Self {
+    pub fn handle_heartbeat(&mut self, callback: impl HeartbeatHandler) -> &mut Self {
         self.heartbeat_handler = Some(Arc::new(callback));
         self
     }
@@ -508,11 +532,11 @@ impl SessionBuilder {
     ///
     /// [RFC 7230]: https://datatracker.ietf.org/doc/html/rfc7230#section-3.2.6
     pub fn client_info(
-        mut self,
+        &mut self,
         client_type: impl Into<String>,
         version: impl Into<String>,
         comments: Option<impl Into<String>>,
-    ) -> Self {
+    ) -> &mut Self {
         self.versions.push_front((
             client_type.into(),
             version.into(),
@@ -573,7 +597,8 @@ impl SessionBuilder {
         let conn = self
             .connector
             .connect(
-                self.server_addr.clone(),
+                self.server_host.clone(),
+                self.server_port,
                 Arc::new(self.get_or_create_tls_config()),
                 err.into(),
             )
@@ -581,19 +606,16 @@ impl SessionBuilder {
 
         let mut heartbeat_config = HeartbeatConfig::default();
         if let Some(interval) = self.heartbeat_interval {
-            heartbeat_config.interval = interval;
+            heartbeat_config.interval = Duration::from_nanos(interval as u64);
         }
         if let Some(tolerance) = self.heartbeat_tolerance {
-            heartbeat_config.tolerance = tolerance;
+            heartbeat_config.tolerance = Duration::from_nanos(tolerance as u64);
         }
         heartbeat_config.handler = self.heartbeat_handler.clone();
+
         // convert these while we have ownership
-        let interval_nanos = heartbeat_config.interval.as_nanos();
-        let heartbeat_interval = i64::try_from(interval_nanos)
-            .map_err(|_| ConnectError::InvalidHeartbeatInterval(interval_nanos))?;
-        let tolerance_nanos = heartbeat_config.interval.as_nanos();
-        let heartbeat_tolerance = i64::try_from(tolerance_nanos)
-            .map_err(|_| ConnectError::InvalidHeartbeatTolerance(tolerance_nanos))?;
+        let heartbeat_interval = heartbeat_config.interval.as_nanos() as i64;
+        let heartbeat_tolerance = heartbeat_config.tolerance.as_nanos() as i64;
 
         let mut raw = RawSession::start(conn, heartbeat_config, self.handlers.clone())
             .await

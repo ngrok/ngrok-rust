@@ -30,17 +30,17 @@ impl OidcOptions {
     }
 
     /// Allow the oidc user with the given email to access the tunnel.
-    pub fn allow_email(mut self, email: impl Into<String>) -> Self {
+    pub fn allow_email(&mut self, email: impl Into<String>) -> &mut Self {
         self.allow_emails.push(email.into());
         self
     }
     /// Allow the oidc user with the given email domain to access the tunnel.
-    pub fn allow_domain(mut self, domain: impl Into<String>) -> Self {
+    pub fn allow_domain(&mut self, domain: impl Into<String>) -> &mut Self {
         self.allow_domains.push(domain.into());
         self
     }
     /// Request the given scope from the oidc provider.
-    pub fn scope(mut self, scope: impl Into<String>) -> Self {
+    pub fn scope(&mut self, scope: impl Into<String>) -> &mut Self {
         self.scopes.push(scope.into());
         self
     }

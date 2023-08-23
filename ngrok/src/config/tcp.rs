@@ -72,33 +72,33 @@ impl_builder! {
 /// The options for a TCP edge.
 impl TcpTunnelBuilder {
     /// Add the provided CIDR to the allowlist.
-    pub fn allow_cidr(mut self, cidr: impl Into<String>) -> Self {
+    pub fn allow_cidr(&mut self, cidr: impl Into<String>) -> &mut Self {
         self.options.common_opts.cidr_restrictions.allow(cidr);
         self
     }
     /// Add the provided CIDR to the denylist.
-    pub fn deny_cidr(mut self, cidr: impl Into<String>) -> Self {
+    pub fn deny_cidr(&mut self, cidr: impl Into<String>) -> &mut Self {
         self.options.common_opts.cidr_restrictions.deny(cidr);
         self
     }
     /// Sets the PROXY protocol version for connections over this tunnel.
-    pub fn proxy_proto(mut self, proxy_proto: ProxyProto) -> Self {
+    pub fn proxy_proto(&mut self, proxy_proto: ProxyProto) -> &mut Self {
         self.options.common_opts.proxy_proto = proxy_proto;
         self
     }
     /// Sets the opaque metadata string for this tunnel.
-    pub fn metadata(mut self, metadata: impl Into<String>) -> Self {
+    pub fn metadata(&mut self, metadata: impl Into<String>) -> &mut Self {
         self.options.common_opts.metadata = Some(metadata.into());
         self
     }
     /// Sets the ForwardsTo string for this tunnel. This can be viewed via the
     /// API or dashboard.
-    pub fn forwards_to(mut self, forwards_to: impl Into<String>) -> Self {
+    pub fn forwards_to(&mut self, forwards_to: impl Into<String>) -> &mut Self {
         self.options.common_opts.forwards_to = Some(forwards_to.into());
         self
     }
     /// Sets the TCP address to request for this edge.
-    pub fn remote_addr(mut self, remote_addr: impl Into<String>) -> Self {
+    pub fn remote_addr(&mut self, remote_addr: impl Into<String>) -> &mut Self {
         self.options.remote_addr = Some(remote_addr.into());
         self
     }
@@ -119,7 +119,7 @@ mod test {
         // pass to a function accepting the trait to avoid
         // "creates a temporary which is freed while still in use"
         tunnel_test(
-            TcpTunnelBuilder {
+            &TcpTunnelBuilder {
                 session: None,
                 options: Default::default(),
             }
@@ -133,7 +133,7 @@ mod test {
         );
     }
 
-    fn tunnel_test<C>(tunnel_cfg: C)
+    fn tunnel_test<C>(tunnel_cfg: &C)
     where
         C: TunnelConfig,
     {
