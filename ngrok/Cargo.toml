@@ -1,6 +1,6 @@
 [package]
 name = "ngrok"
-version = "0.14.0-pre.2"
+version = "0.14.0-pre.3"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "The ngrok agent SDK"
@@ -32,6 +32,7 @@ regex = "1.7.3"
 tokio-socks = "0.5.1"
 hyper-proxy = "0.9.1"
 url = "2.4.0"
+rustls-native-certs = "0.6.3"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.45.0", features = ["Win32_Foundation"] }

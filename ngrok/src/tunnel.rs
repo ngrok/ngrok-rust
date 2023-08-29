@@ -102,6 +102,8 @@ macro_rules! tunnel_trait {
             fn forwards_to(&self) -> &str;
             /// Returns the arbitrary metadata string for this tunnel.
             fn metadata(&self) -> &str;
+            /// Returns the protocol for this tunnel.
+            fn proto(&self) -> &str;
             /// Close the tunnel.
             ///
             /// This is an RPC call that must be `.await`ed.
@@ -285,6 +287,10 @@ macro_rules! make_tunnel_type {
 
             fn metadata(&self) -> &str {
                 self.inner.metadata()
+            }
+
+            fn proto(&self) -> &str {
+                self.inner.proto()
             }
         }
 

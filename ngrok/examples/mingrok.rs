@@ -11,6 +11,7 @@ use futures::{
 use ngrok::prelude::*;
 use tokio::sync::oneshot;
 use tracing::info;
+use url::Url;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -21,7 +22,8 @@ async fn main() -> Result<(), Error> {
 
     let forwards_to = std::env::args()
         .nth(1)
-        .ok_or_else(|| anyhow::anyhow!("missing forwarding address"))?;
+        .ok_or_else(|| anyhow::anyhow!("missing forwarding address"))
+        .and_then(|s| Ok(Url::parse(&s)?))?;
 
     loop {
         let (stop_tx, stop_rx) = oneshot::channel();
@@ -55,18 +57,13 @@ async fn main() -> Result<(), Error> {
             .connect()
             .await?
             .http_endpoint()
-            .forwards_to(&forwards_to)
+            .forwards_to(forwards_to.as_str())
             .listen()
             .await?;
 
-        info!(url = tun.url(), forwards_to, "started tunnel");
+        info!(url = tun.url(), %forwards_to, "started tunnel");
 
-        let mut fut = if forwards_to.contains('/') {
-            tun.forward_pipe(&forwards_to)
-        } else {
-            tun.forward_http(&forwards_to)
-        }
-        .fuse();
+        let mut fut = TunnelExt::forward(&mut tun, forwards_to.clone()).fuse();
 
         let mut stop_rx = stop_rx.fuse();
         let mut restart_rx = restart_rx.fuse();
