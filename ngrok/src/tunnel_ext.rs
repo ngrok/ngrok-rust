@@ -1,3 +1,5 @@
+#[cfg(not(target_os = "windows"))]
+use std::borrow::Cow;
 #[cfg(target_os = "windows")]
 use std::time::Duration;
 #[cfg(feature = "hyper")]
@@ -73,6 +75,15 @@ pub trait TunnelExt: Tunnel + Send {
     /// This currently supports http, https, tls, and tcp on all platforms, unix
     /// sockets on unix platforms, and named pipes on Windows via the "pipe"
     /// scheme.
+    ///
+    /// Unix socket URLs can be formatted as `unix://path/to/socket` or
+    /// `unix:path/to/socket` for relative paths or as `unix:///path/to/socket` or
+    /// `unix:/path/to/socket` for absolute paths.
+    ///
+    /// Windows named pipe URLs can be formatted as `pipe:mypipename` or
+    /// `pipe://host/mypipename`. If no host is provided, as with
+    /// `pipe:///mypipename` or `pipe:/mypipename`, the leading slash will be
+    /// preserved.
     #[tracing::instrument(skip_all, fields(tunnel_id = self.id(), url = %url))]
     async fn forward(&mut self, url: Url) -> Result<(), io::Error> {
         loop {
@@ -154,7 +165,12 @@ async fn connect<T: Tunnel + Send + ?Sized>(
     let host = url.host_str().unwrap_or("localhost");
     Ok(match url.scheme() {
         "tcp" => {
-            let port = url.port().ok_or(io::ErrorKind::InvalidInput)?;
+            let port = url.port().ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("missing port for tcp forwarding url {url}"),
+                )
+            })?;
             let conn = connect_tcp(host, port).in_current_span().await?;
             Box::new(conn)
         }
@@ -172,7 +188,7 @@ async fn connect<T: Tunnel + Send + ?Sized>(
             // TODO: if the tunnel uses proxyproto, wrap conn here before terminating tls
 
             let domain = rustls::ServerName::try_from(host)
-                .map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))?;
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
             Box::new(
                 async_rustls::TlsConnector::from(tls_config().map_err(|e| e.kind())?)
                     .connect(domain, conn.compat())
@@ -182,22 +198,36 @@ async fn connect<T: Tunnel + Send + ?Sized>(
         }
 
         #[cfg(not(target_os = "windows"))]
-        "unix" => Box::new(
-            UnixStream::connect(&format!(
-                "{}/{}",
-                url.host_str().unwrap_or_default(),
-                url.path()
-            ))
-            .await?,
-        ),
+        "unix" => {
+            //
+            let mut addr = Cow::Borrowed(url.path());
+            if let Some(host) = url.host_str() {
+                // note: if host exists, there should always be a leading / in
+                // the path, but we should consider it a relative path.
+                addr = Cow::Owned(format!("{host}{addr}"));
+            }
+            Box::new(UnixStream::connect(&*addr).await?)
+        }
 
         #[cfg(target_os = "windows")]
         "pipe" => {
-            let addr = format!(
-                "\\\\{}\\{}",
-                url.host_str().unwrap_or("."),
-                url.path().replace("/", "\\")
-            );
+            let mut pipe_name = url.path();
+            if url.host_str().is_some() {
+                pipe_name = pipe_name.strip_prefix('/').unwrap_or(pipe_name);
+            }
+            if pipe_name.is_empty() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("missing pipe name in forwarding url {url}"),
+                ));
+            }
+            let host = url
+                .host_str()
+                // Consider localhost to mean "." for the pipe name
+                .map(|h| if h == "localhost" { "." } else { h })
+                .unwrap_or(".");
+            // Finally, assemble the full name.
+            let addr = format!("\\\\{host}\\pipe\\{pipe_name}");
             // loop behavior copied from docs
             // https://docs.rs/tokio/latest/tokio/net/windows/named_pipe/struct.NamedPipeClient.html
             let local_conn = loop {
@@ -211,7 +241,12 @@ async fn connect<T: Tunnel + Send + ?Sized>(
             };
             Box::new(local_conn)
         }
-        _ => return Err(io::ErrorKind::InvalidInput.into()),
+        _ => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("unrecognized scheme in forwarding url: {url}"),
+            ))
+        }
     })
 }
 
