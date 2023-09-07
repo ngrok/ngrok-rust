@@ -7,6 +7,8 @@ use axum::{
 };
 use ngrok::prelude::*;
 
+// const CA_CERT: &[u8] = include_bytes!("ca.crt");
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // build our application with a single route
@@ -19,21 +21,7 @@ async fn main() -> anyhow::Result<()> {
         ),
     );
 
-    // run it with hyper on localhost:8000
-    // axum::Server::bind(&"0.0.0.0:8000".parse().unwrap())
-    // Or with an ngrok tunnel
-    axum::Server::builder(start_tunnel().await?)
-        .serve(app.into_make_service_with_connect_info::<SocketAddr>())
-        .await
-        .unwrap();
-
-    Ok(())
-}
-
-// const CA_CERT: &[u8] = include_bytes!("ca.crt");
-
-async fn start_tunnel() -> anyhow::Result<impl UrlInfo + Tunnel> {
-    let tun = ngrok::Session::builder()
+    let mut tun = ngrok::Session::builder()
         .authtoken_from_env()
         .connect()
         .await?
@@ -67,10 +55,12 @@ async fn start_tunnel() -> anyhow::Result<impl UrlInfo + Tunnel> {
         // .websocket_tcp_conversion()
         // .webhook_verification("twilio", "asdf"),
         .metadata("example tunnel metadata from rust")
-        .listen()
+        .listen_and_serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await?;
 
-    println!("Tunnel started on URL: {:?}", tun.url());
+    println!("tunnel started on {url}", url = tun.url());
 
-    Ok(tun)
+    tun.join().await??;
+
+    Ok(())
 }

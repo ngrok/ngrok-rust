@@ -2,8 +2,21 @@ use std::{
     collections::HashMap,
     io,
 };
+#[cfg(feature = "hyper")]
+use std::{
+    error::Error as StdError,
+    future::Future,
+};
 
 use async_trait::async_trait;
+#[cfg(feature = "hyper")]
+use hyper::{
+    body::HttpBody,
+    service::Service,
+    Body,
+    Request,
+    Response,
+};
 use tokio::task::JoinHandle;
 use url::Url;
 
@@ -96,6 +109,38 @@ where
     T: Tunnel + TunnelExt + Send + 'static,
 {
     let handle = tokio::spawn(async move { listener.forward(to_url).await });
+
+    Ok(Forwarder {
+        join: handle,
+        inner: info,
+    })
+}
+
+#[cfg(feature = "hyper")]
+pub(crate) fn serve_http<T, S, R, B, D, BE, E, SE, F, FE, SF>(
+    listener: T,
+    info: T,
+    svc: S,
+) -> Result<Forwarder<T>, RpcError>
+where
+    T: Tunnel + Send + 'static,
+    for<'a> S: Service<&'a crate::Conn, Response = R, Error = E, Future = SF> + Send + 'static,
+    R: Service<Request<Body>, Response = Response<B>, Error = SE, Future = F> + Send + 'static,
+    B: HttpBody<Data = D, Error = BE> + Send + 'static,
+    D: Send + 'static,
+    BE: StdError + Send + Sync + 'static,
+    E: StdError + Send + Sync + 'static,
+    FE: StdError + Send + Sync + 'static,
+    SE: StdError + Send + Sync + 'static,
+    F: Future<Output = Result<Response<B>, FE>> + Send + 'static,
+    SF: Future<Output = Result<R, E>> + Send + 'static,
+{
+    let server = hyper::Server::builder(listener).serve(svc);
+    let handle = tokio::spawn(async move {
+        server
+            .await
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+    });
 
     Ok(Forwarder {
         join: handle,
