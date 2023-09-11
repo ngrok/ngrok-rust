@@ -452,7 +452,12 @@ mod test {
             assert_eq!("<id>", oidc.client_id);
             assert_eq!("<secret>", *oidc.client_secret);
             assert!(oidc.sealed_client_secret.is_empty());
-        }
+
+            let user_agent_filter = endpoint.user_agent_filter.unwrap();
+            assert_eq!([r"bar/(\d+)", r"buz/(\d+)"].to_vec(), user_agent_filter.allow);
+            assert_eq!([r"foo/(\d+)"].to_vec(), user_agent_filter.deny);
+
+            }
 
         assert_eq!(HashMap::new(), tunnel_cfg.labels());
     }
