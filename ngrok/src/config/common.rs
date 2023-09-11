@@ -3,21 +3,8 @@ use std::{
     env,
     process,
 };
-#[cfg(feature = "hyper")]
-use std::{
-    error::Error as StdError,
-    future::Future,
-};
 
 use async_trait::async_trait;
-#[cfg(feature = "hyper")]
-use hyper::{
-    body::HttpBody,
-    service::Service,
-    Body,
-    Request,
-    Response,
-};
 use once_cell::sync::OnceCell;
 use url::Url;
 
@@ -71,25 +58,6 @@ pub trait ForwarderBuilder: TunnelBuilder {
     /// Start listening for new connections on this tunnel and forward all
     /// connections to the provided URL.
     async fn listen_and_forward(&self, to_url: Url) -> Result<Forwarder<Self::Tunnel>, RpcError>;
-
-    #[cfg(feature = "hyper")]
-    /// Start listening for new connections on this tunnel and serve them all
-    /// via the provided service.
-    async fn listen_and_serve<S, R, B, D, BE, E, SE, F, FE, SF>(
-        &self,
-        service: S,
-    ) -> Result<Forwarder<Self::Tunnel>, RpcError>
-    where
-        for<'a> S: Service<&'a crate::Conn, Response = R, Error = E, Future = SF> + Send + 'static,
-        R: Service<Request<Body>, Response = Response<B>, Error = SE, Future = F> + Send + 'static,
-        B: HttpBody<Data = D, Error = BE> + Send + 'static,
-        D: Send + 'static,
-        BE: StdError + Send + Sync + 'static,
-        E: StdError + Send + Sync + 'static,
-        FE: StdError + Send + Sync + 'static,
-        SE: StdError + Send + Sync + 'static,
-        F: Future<Output = Result<Response<B>, FE>> + Send + 'static,
-        SF: Future<Output = Result<R, E>> + Send + 'static;
 }
 
 macro_rules! impl_builder {
@@ -109,19 +77,6 @@ macro_rules! impl_builder {
             use $crate::session::RpcError;
             use async_trait::async_trait;
             use url::Url;
-            #[cfg(feature = "hyper")]
-            use hyper::{
-                body::HttpBody,
-                Response,
-                Request,
-                service::Service,
-                Body,
-            };
-            #[cfg(feature = "hyper")]
-            use std::{
-                error::Error as StdError,
-                future::Future,
-            };
 
             use super::*;
 
@@ -159,32 +114,6 @@ macro_rules! impl_builder {
                     let tunnel = cfg.listen().await?;
                     let info = tunnel.make_info();
                     $crate::forwarder::forward(tunnel, info, to_url)
-                }
-
-                #[cfg(feature = "hyper")]
-                async fn listen_and_serve<S, R, B, D, BE, E, SE, F, FE, SF>(
-                    &self,
-                    service: S,
-                ) -> Result<Forwarder<Self::Tunnel>, RpcError>
-                where
-                    for<'a> S: Service<&'a crate::Conn, Response = R, Error = E, Future = SF> + Send + 'static,
-                    R: Service<Request<Body>, Response = Response<B>, Error = SE, Future = F>
-                        + Send
-                        + 'static,
-                    B: HttpBody<Data = D, Error = BE> + Send + 'static,
-                    D: Send + 'static,
-                    BE: StdError + Send + Sync + 'static,
-                    E: StdError + Send + Sync + 'static,
-                    FE: StdError + Send + Sync + 'static,
-                    SE: StdError + Send + Sync + 'static,
-                    F: Future<Output = Result<Response<B>, FE>> + Send + 'static,
-                    SF: Future<Output = Result<R, E>> + Send + 'static
-                {
-                    let mut cfg = self.clone();
-                    cfg.forwards_to(default_forwards_to());
-                    let tunnel = cfg.listen().await?;
-                    let info = tunnel.make_info();
-                    $crate::forwarder::serve_http(tunnel, info, service)
                 }
             }
         }
