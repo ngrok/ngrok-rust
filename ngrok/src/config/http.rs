@@ -35,8 +35,8 @@ use crate::{
         CircuitBreaker,
         Compression,
         HttpEndpoint,
-        WebsocketTcpConverter,
         UserAgentFilter,
+        WebsocketTcpConverter,
     },
     session::RpcError,
     tunnel::HttpTunnel,
@@ -308,9 +308,9 @@ impl HttpTunnelBuilder {
         allow: impl Into<Vec<String>>,
         deny: impl Into<Vec<String>>,
     ) -> &mut Self {
-        self.options.user_agent_filter = Some(UserAgentFilter{
-            allow: allow.into().into(),
-            deny: deny.into().into(),
+        self.options.user_agent_filter = Some(UserAgentFilter {
+            allow: allow.into(),
+            deny: deny.into(),
         });
         self
     }
@@ -330,14 +330,14 @@ mod test {
 
     #[test]
     fn test_interface_to_proto() {
-        let allow_pattern: Vec<&str> = vec!(
-            r"bar/(\d+)",                // Matches one or more digits
-            r"buz/(\d+)",                // Matches one or more digits
-        );
+        let allow_pattern: Vec<&str> = vec![
+            r"bar/(\d+)", // Matches one or more digits
+            r"buz/(\d+)", // Matches one or more digits
+        ];
         let allow_ua: Vec<String> = allow_pattern.iter().map(|&s| s.to_string()).collect();
-        let deny_pattern: Vec<&str> = vec!(
-            r"foo/(\d+)",                // Matches one or more digits
-        );
+        let deny_pattern: Vec<&str> = vec![
+            r"foo/(\d+)", // Matches one or more digits
+        ];
         let deny_ua: Vec<String> = deny_pattern.iter().map(|&s| s.to_string()).collect();
         // pass to a function accepting the trait to avoid
         // "creates a temporary which is freed while still in use"
@@ -346,7 +346,7 @@ mod test {
                 session: None,
                 options: Default::default(),
             }
-            .user_agent_filter(allow_ua,deny_ua)
+            .user_agent_filter(allow_ua, deny_ua)
             .allow_cidr(ALLOW_CIDR)
             .deny_cidr(DENY_CIDR)
             .proxy_proto(ProxyProto::V2)

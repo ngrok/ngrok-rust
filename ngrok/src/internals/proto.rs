@@ -621,7 +621,6 @@ pub struct HttpEndpoint {
     pub websocket_tcp_converter: Option<WebsocketTcpConverter>,
     #[serde(rename = "UserAgentFilter")]
     pub user_agent_filter: Option<UserAgentFilter>,
-
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -736,10 +735,9 @@ pub struct WebsocketTcpConverter {}
 pub struct UserAgentFilter {
     #[serde(default, skip_serializing_if = "is_default")]
     pub allow: Vec<String>,
-   #[serde(default, skip_serializing_if = "is_default")]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub deny: Vec<String>,
 }
-
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
