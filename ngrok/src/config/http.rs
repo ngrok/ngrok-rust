@@ -135,6 +135,7 @@ impl TunnelConfig for HttpOptions {
             websocket_tcp_converter: self
                 .websocket_tcp_conversion
                 .then_some(WebsocketTcpConverter {}),
+            user_agent_filter: self.common_opts.user_agent_filter(),
             ..Default::default()
         };
 
@@ -298,6 +299,17 @@ impl HttpTunnelBuilder {
         });
         self
     }
+
+    /// Add the provided regex to the allowlist.
+    pub fn allow_user_agent(&mut self, regex: impl Into<String>) -> &mut Self {
+        self.options.common_opts.user_agent_filter.allow(regex);
+        self
+    }
+    /// Add the provided regex to the denylist.
+    pub fn deny_user_agent(&mut self, regex: impl Into<String>) -> &mut Self {
+        self.options.common_opts.user_agent_filter.deny(regex);
+        self
+    }
 }
 
 #[cfg(test)]
@@ -311,6 +323,8 @@ mod test {
     const CA_CERT: &[u8] = "test ca cert".as_bytes();
     const CA_CERT2: &[u8] = "test ca cert2".as_bytes();
     const DOMAIN: &str = "test domain";
+    const ALLOW_AGENT: &str = r"bar/(\d)+";
+    const DENY_AGENT: &str = r"foo/(\d)+";
 
     #[test]
     fn test_interface_to_proto() {
@@ -321,6 +335,8 @@ mod test {
                 session: None,
                 options: Default::default(),
             }
+            .allow_user_agent(ALLOW_AGENT)
+            .deny_user_agent(DENY_AGENT)
             .allow_cidr(ALLOW_CIDR)
             .deny_cidr(DENY_CIDR)
             .proxy_proto(ProxyProto::V2)
@@ -426,6 +442,10 @@ mod test {
             assert_eq!("<id>", oidc.client_id);
             assert_eq!("<secret>", *oidc.client_secret);
             assert!(oidc.sealed_client_secret.is_empty());
+
+            let user_agent_filter = endpoint.user_agent_filter.unwrap();
+            assert_eq!(Vec::from([ALLOW_AGENT]), user_agent_filter.allow);
+            assert_eq!(Vec::from([DENY_AGENT]), user_agent_filter.deny);
         }
 
         assert_eq!(HashMap::new(), tunnel_cfg.labels());

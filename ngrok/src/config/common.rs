@@ -14,6 +14,7 @@ use crate::{
         BindOpts,
         IpRestriction,
         MutualTls,
+        UserAgentFilter,
     },
     session::RpcError,
     Session,
@@ -143,6 +144,24 @@ impl CidrRestrictions {
     }
 }
 
+/// Restrictions placed on the origin of incoming connections to the edge.
+#[derive(Clone, Default)]
+pub(crate) struct UaFilter {
+    /// Rejects connections that do not match the given CIDRs
+    pub(crate) allow: Vec<String>,
+    /// Rejects connections that match the given CIDRs and allows all other CIDRs.
+    pub(crate) deny: Vec<String>,
+}
+
+impl UaFilter {
+    pub(crate) fn allow(&mut self, allow: impl Into<String>) {
+        self.allow.push(allow.into());
+    }
+    pub(crate) fn deny(&mut self, deny: impl Into<String>) {
+        self.deny.push(deny.into());
+    }
+}
+
 // Common
 #[derive(Default, Clone)]
 pub(crate) struct CommonOpts {
@@ -156,6 +175,8 @@ pub(crate) struct CommonOpts {
     // Tunnel backend metadata. Viewable via the dashboard and API, but has no
     // bearing on tunnel behavior.
     pub(crate) forwards_to: Option<String>,
+    // Flitering placed on the origin of incoming connections to the edge.
+    pub(crate) user_agent_filter: UaFilter,
 }
 
 impl CommonOpts {
@@ -163,6 +184,10 @@ impl CommonOpts {
     pub(crate) fn ip_restriction(&self) -> Option<IpRestriction> {
         (!self.cidr_restrictions.allowed.is_empty() || !self.cidr_restrictions.denied.is_empty())
             .then_some(self.cidr_restrictions.clone().into())
+    }
+    pub(crate) fn user_agent_filter(&self) -> Option<UserAgentFilter> {
+        (!self.user_agent_filter.allow.is_empty() || !self.user_agent_filter.deny.is_empty())
+            .then_some(self.user_agent_filter.clone().into())
     }
 }
 
@@ -172,6 +197,15 @@ impl From<CidrRestrictions> for IpRestriction {
         IpRestriction {
             allow_cidrs: cr.allowed,
             deny_cidrs: cr.denied,
+        }
+    }
+}
+
+impl From<UaFilter> for UserAgentFilter {
+    fn from(ua: UaFilter) -> Self {
+        UserAgentFilter {
+            allow: ua.allow,
+            deny: ua.deny,
         }
     }
 }
