@@ -278,6 +278,33 @@ async fn http_headers() -> Result<(), Error> {
 }
 
 #[traced_test]
+#[cfg_attr(not(feature = "authenticated-tests"), ignore)]
+#[test]
+async fn user_agent() -> Result<(), Error> {
+    let tun = serve_http(
+        defaults,
+        |tun| tun.allow_user_agent("foo.*").deny_user_agent(".*"),
+        hello_router(),
+    )
+    .await?;
+
+    let client = reqwest::Client::new();
+    let resp = client.get(&tun.url).send().await?;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    let client = reqwest::Client::builder()
+        .user_agent("foobarbaz")
+        .build()
+        .expect("build reqwest client");
+
+    let resp = client.get(&tun.url).send().await?;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(resp.text().await?, "Hello, world!");
+
+    Ok(())
+}
+
+#[traced_test]
 #[cfg_attr(not(feature = "paid-tests"), ignore)]
 #[test]
 async fn basic_auth() -> Result<(), Error> {
