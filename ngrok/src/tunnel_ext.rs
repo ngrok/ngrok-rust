@@ -50,8 +50,6 @@ use tokio_util::compat::{
 use tracing::{
     debug,
     field,
-    info_span,
-    warn,
     Instrument,
     Span,
 };
@@ -62,16 +60,26 @@ use windows_sys::Win32::Foundation::ERROR_PIPE_BUSY;
 use crate::{
     prelude::*,
     session::IoStream,
-    Conn,
+    EdgeConn,
+    EndpointConn,
 };
 
 #[allow(deprecated)]
-impl<T> TunnelExt for T where T: Tunnel + ProtoInfo + Send {}
+#[async_trait]
+impl<T> TunnelExt for T
+where
+    T: Tunnel + Send,
+    <T as Tunnel>::Conn: ConnExt,
+{
+    async fn forward(&mut self, url: Url) -> Result<(), io::Error> {
+        forward_tunnel(self, url).await
+    }
+}
 
 /// Extension methods auto-implemented for all tunnel types
 #[async_trait]
 #[deprecated = "superceded by the `listen_and_forward` builder method"]
-pub trait TunnelExt: Tunnel + ProtoInfo + Send {
+pub trait TunnelExt: Tunnel + Send {
     /// Forward incoming tunnel connections to the provided url based on its
     /// scheme.
     /// This currently supports http, https, tls, and tcp on all platforms, unix
@@ -86,56 +94,83 @@ pub trait TunnelExt: Tunnel + ProtoInfo + Send {
     /// `pipe://host/mypipename`. If no host is provided, as with
     /// `pipe:///mypipename` or `pipe:/mypipename`, the leading slash will be
     /// preserved.
-    #[tracing::instrument(skip_all, fields(tunnel_id = self.id(), url = %url))]
-    async fn forward(&mut self, url: Url) -> Result<(), io::Error> {
-        loop {
-            let tunnel_conn = if let Some(conn) = self
-                .try_next()
-                .await
-                .map_err(|err| io::Error::new(io::ErrorKind::NotConnected, err))?
-            {
-                conn
-            } else {
-                return Ok(());
-            };
+    async fn forward(&mut self, url: Url) -> Result<(), io::Error>;
+}
 
-            let span = info_span!(
-                "forward_one",
-                remote_addr = %tunnel_conn.remote_addr(),
-                forward_addr = field::Empty
-            );
+#[async_trait]
+pub(crate) trait ConnExt {
+    async fn forward_to(mut self, url: &Url) -> Result<JoinHandle<()>, io::Error>;
+}
 
-            debug!(parent: &span, "accepted tunnel connection");
+#[tracing::instrument(skip_all, fields(tunnel_id = tun.id(), url = %url))]
+pub(crate) async fn forward_tunnel<T>(tun: &mut T, url: Url) -> Result<(), io::Error>
+where
+    T: Tunnel + 'static + ?Sized,
+    <T as Tunnel>::Conn: ConnExt,
+{
+    loop {
+        let tunnel_conn = if let Some(conn) = tun
+            .try_next()
+            .await
+            .map_err(|err| io::Error::new(io::ErrorKind::NotConnected, err))?
+        {
+            conn
+        } else {
+            return Ok(());
+        };
 
-            let local_conn = match connect(self, &tunnel_conn, &url)
-                .instrument(span.clone())
-                .await
-            {
-                Ok(conn) => conn,
-                Err(error) => {
-                    warn!(%error, "error establishing local connection");
-
-                    span.in_scope(|| on_err(self, error, tunnel_conn));
-
-                    continue;
-                }
-            };
-
-            debug!(
-                parent: &span,
-                "established local connection, joining streams"
-            );
-
-            span.in_scope(|| join_streams(tunnel_conn, local_conn));
-        }
+        tunnel_conn.forward_to(&url).await?;
     }
 }
 
-fn on_err<T: Tunnel + ProtoInfo + Send + ?Sized>(tunnel: &T, err: io::Error, conn: Conn) {
-    match tunnel.proto() {
-        #[cfg(feature = "hyper")]
-        "http" | "https" => drop(serve_gateway_error(err, conn)),
-        _ => {}
+#[async_trait]
+impl ConnExt for EdgeConn {
+    async fn forward_to(self, url: &Url) -> Result<JoinHandle<()>, io::Error> {
+        let upstream = match connect(
+            self.edge_type() == EdgeType::Tls && self.passthrough_tls(),
+            false,
+            url,
+        )
+        .await
+        {
+            Ok(conn) => conn,
+            Err(e) => {
+                #[cfg(feature = "hyper")]
+                if self.edge_type() == EdgeType::Https {
+                    serve_gateway_error(format!("{e}"), self);
+                }
+                return Err(e);
+            }
+        };
+
+        Ok(join_streams(self, upstream))
+    }
+}
+
+#[async_trait]
+impl ConnExt for EndpointConn {
+    async fn forward_to(self, url: &Url) -> Result<JoinHandle<()>, io::Error> {
+        let upstream = match connect(
+            self.proto() == "tls" && self.inner.info.header.passthrough_tls,
+            false,
+            url,
+        )
+        .await
+        {
+            Ok(conn) => conn,
+            Err(e) => {
+                #[cfg(feature = "hyper")]
+                match self.proto() {
+                    "http" | "https" => {
+                        serve_gateway_error(format!("{e}"), self);
+                    }
+                    _ => {}
+                }
+                return Err(e);
+            }
+        };
+
+        Ok(join_streams(self, upstream))
     }
 }
 
@@ -162,13 +197,14 @@ fn tls_config() -> Result<Arc<ClientConfig>, &'static io::Error> {
 // Takes the tunnel and connection to make additional decisions on how to wrap
 // the forwarded connection, i.e. reordering tls termination and proxyproto.
 // Note: this additional wrapping logic currently unimplemented.
-async fn connect<T: Tunnel + Send + ?Sized>(
-    _tunnel: &mut T,
-    _conn: &Conn,
+async fn connect(
+    tunnel_tls: bool,
+    _tunnel_proxyproto: bool,
     url: &Url,
 ) -> Result<Box<dyn IoStream>, io::Error> {
     let host = url.host_str().unwrap_or("localhost");
-    Ok(match url.scheme() {
+    let mut backend_tls: bool = false;
+    let mut conn: Box<dyn IoStream> = match url.scheme() {
         "tcp" => {
             let port = url.port().ok_or_else(|| {
                 io::Error::new(
@@ -190,16 +226,8 @@ async fn connect<T: Tunnel + Send + ?Sized>(
             let port = url.port().unwrap_or(443);
             let conn = connect_tcp(host, port).in_current_span().await?;
 
-            // TODO: if the tunnel uses proxyproto, wrap conn here before terminating tls
-
-            let domain = rustls::ServerName::try_from(host)
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
-            Box::new(
-                async_rustls::TlsConnector::from(tls_config().map_err(|e| e.kind())?)
-                    .connect(domain, conn.compat())
-                    .await?
-                    .compat(),
-            )
+            backend_tls = true;
+            Box::new(conn)
         }
 
         #[cfg(not(target_os = "windows"))]
@@ -252,7 +280,22 @@ async fn connect<T: Tunnel + Send + ?Sized>(
                 format!("unrecognized scheme in forwarding url: {url}"),
             ))
         }
-    })
+    };
+
+    if backend_tls && !tunnel_tls {
+        let domain = rustls::ServerName::try_from(host)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+        conn = Box::new(
+            async_rustls::TlsConnector::from(tls_config().map_err(|e| e.kind())?)
+                .connect(domain, conn.compat())
+                .await?
+                .compat(),
+        )
+    }
+
+    // TODO: proxyproto, header rewrites?
+
+    Ok(conn)
 }
 
 async fn connect_tcp(host: &str, port: u16) -> Result<TcpStream, io::Error> {
@@ -279,7 +322,6 @@ fn join_streams(
 }
 
 #[cfg(feature = "hyper")]
-#[allow(dead_code)]
 fn serve_gateway_error(
     err: impl fmt::Display + Send + 'static,
     conn: impl AsyncRead + AsyncWrite + Unpin + Send + 'static,

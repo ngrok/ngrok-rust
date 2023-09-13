@@ -89,6 +89,7 @@ use crate::{
         TlsTunnelBuilder,
         TunnelConfig,
     },
+    conn::ConnInner,
     internals::{
         proto::{
             AuthExtra,
@@ -109,7 +110,6 @@ use crate::{
     },
     tunnel::{
         AcceptError,
-        Conn,
         TunnelInner,
         TunnelInnerInfo,
     },
@@ -126,7 +126,7 @@ struct BoundTunnel {
     extra: BindExtra,
     labels: HashMap<String, String>,
     forwards_to: String,
-    tx: Sender<Result<Conn, AcceptError>>,
+    tx: Sender<Result<ConnInner, AcceptError>>,
 }
 
 type TunnelConns = HashMap<String, BoundTunnel>;
@@ -139,8 +139,7 @@ type TunnelConns = HashMap<String, BoundTunnel>;
 pub struct Session {
     // Note: this is implicitly used to detect when the session (and its
     // tunnels) have been dropped in order to shut down the accept loop.
-    #[allow(dead_code)]
-    dropref: awaitdrop::Ref,
+    _dropref: awaitdrop::Ref,
     inner: Arc<ArcSwap<SessionInner>>,
 }
 
@@ -665,7 +664,10 @@ impl SessionBuilder {
             dropped.wait(),
         ));
 
-        Ok(Session { dropref, inner })
+        Ok(Session {
+            _dropref: dropref,
+            inner,
+        })
     }
 
     pub(crate) fn get_or_create_tls_config(&self) -> rustls::ClientConfig {
@@ -989,11 +991,21 @@ async fn accept_one(
     let inner = inner.load();
     let guard = inner.tunnels.read().await;
     let res = if let Some(tun) = guard.get(&id) {
+        let mut header = conn.header;
+        // Note: this is a bit of a hack. Normally, passthrough_tls is only
+        // a thing on edge connections, but we're making sure it's set for
+        // endpoint connections as well. In their case, we have to look at the
+        // options used to bind the endpoint.
+        if let Some(BindOpts::Tls(opts)) = &tun.opts {
+            header.passthrough_tls = opts.tls_termination.is_none();
+        }
         tun.tx
-            .send(Ok(Conn {
-                remote_addr,
+            .send(Ok(ConnInner {
+                info: crate::conn::Info {
+                    remote_addr,
+                    header,
+                },
                 stream: conn.stream,
-                header: conn.header,
             }))
             .await
     } else {

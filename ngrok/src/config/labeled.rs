@@ -48,7 +48,7 @@ impl TunnelConfig for LabeledOptions {
 
 impl_builder! {
     /// A builder for a labeled tunnel.
-    LabeledTunnelBuilder, LabeledOptions, LabeledTunnel, |l: &LabeledTunnel| l.proto()
+    LabeledTunnelBuilder, LabeledOptions, LabeledTunnel, edge
 }
 
 impl LabeledTunnelBuilder {

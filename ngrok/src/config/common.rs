@@ -61,7 +61,7 @@ pub trait ForwarderBuilder: TunnelBuilder {
 }
 
 macro_rules! impl_builder {
-    ($(#[$m:meta])* $name:ident, $opts:ty, $tun:ident, $get_proto:expr) => {
+    ($(#[$m:meta])* $name:ident, $opts:ty, $tun:ident, $edgepoint:tt) => {
         $(#[$m])*
         #[derive(Clone)]
         pub struct $name {

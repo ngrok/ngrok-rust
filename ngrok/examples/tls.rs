@@ -5,7 +5,10 @@ use axum::{
     routing::get,
     Router,
 };
-use ngrok::prelude::*;
+use ngrok::{
+    prelude::*,
+    tunnel::TlsTunnel,
+};
 
 const CERT: &[u8] = include_bytes!("domain.crt");
 const KEY: &[u8] = include_bytes!("domain.key");
@@ -34,7 +37,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn start_tunnel() -> anyhow::Result<impl Tunnel> {
+async fn start_tunnel() -> anyhow::Result<TlsTunnel> {
     let sess = ngrok::Session::builder()
         .authtoken_from_env()
         .connect()

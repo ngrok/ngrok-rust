@@ -7,15 +7,12 @@ use async_trait::async_trait;
 use tokio::task::JoinHandle;
 use url::Url;
 
-#[allow(deprecated)]
-use crate::prelude::TunnelExt;
 use crate::{
     prelude::{
-        LabelsInfo,
-        ProtoInfo,
+        EdgeInfo,
+        EndpointInfo,
         TunnelCloser,
         TunnelInfo,
-        UrlInfo,
     },
     session::RpcError,
     Tunnel,
@@ -63,39 +60,35 @@ where
     }
 }
 
-impl<T> UrlInfo for Forwarder<T>
+impl<T> EndpointInfo for Forwarder<T>
 where
-    T: UrlInfo,
+    T: EndpointInfo,
 {
+    fn proto(&self) -> &str {
+        self.inner.proto()
+    }
+
     fn url(&self) -> &str {
         self.inner.url()
     }
 }
 
-impl<T> LabelsInfo for Forwarder<T>
+impl<T> EdgeInfo for Forwarder<T>
 where
-    T: LabelsInfo,
+    T: EdgeInfo,
 {
     fn labels(&self) -> &HashMap<String, String> {
         self.inner.labels()
     }
 }
 
-impl<T> ProtoInfo for Forwarder<T>
-where
-    T: ProtoInfo,
-{
-    fn proto(&self) -> &str {
-        self.inner.proto()
-    }
-}
-
-#[allow(deprecated)]
 pub(crate) fn forward<T>(mut listener: T, info: T, to_url: Url) -> Result<Forwarder<T>, RpcError>
 where
-    T: Tunnel + TunnelExt + Send + 'static,
+    T: Tunnel + Send + 'static,
+    <T as Tunnel>::Conn: crate::tunnel_ext::ConnExt,
 {
-    let handle = tokio::spawn(async move { listener.forward(to_url).await });
+    let handle =
+        tokio::spawn(async move { crate::tunnel_ext::forward_tunnel(&mut listener, to_url).await });
 
     Ok(Forwarder {
         join: handle,

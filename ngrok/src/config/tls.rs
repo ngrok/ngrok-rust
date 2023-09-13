@@ -84,7 +84,7 @@ impl TunnelConfig for TlsOptions {
 
 impl_builder! {
     /// A builder for a tunnel backing a TCP endpoint.
-    TlsTunnelBuilder, TlsOptions, TlsTunnel, |_| "tls"
+    TlsTunnelBuilder, TlsOptions, TlsTunnel, endpoint
 }
 
 impl TlsTunnelBuilder {

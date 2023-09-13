@@ -60,7 +60,7 @@ impl TunnelConfig for TcpOptions {
 
 impl_builder! {
     /// A builder for a tunnel backing a TCP endpoint.
-    TcpTunnelBuilder, TcpOptions, TcpTunnel, |_| "tcp"
+    TcpTunnelBuilder, TcpOptions, TcpTunnel, endpoint
 }
 
 /// The options for a TCP edge.

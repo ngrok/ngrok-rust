@@ -162,7 +162,7 @@ impl From<(String, String)> for BasicAuthCredential {
 
 impl_builder! {
     /// A builder for a tunnel backing an HTTP endpoint.
-    HttpTunnelBuilder, HttpOptions, HttpTunnel, |_| "http"
+    HttpTunnelBuilder, HttpOptions, HttpTunnel, endpoint
 }
 
 impl HttpTunnelBuilder {

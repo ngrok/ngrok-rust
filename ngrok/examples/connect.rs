@@ -39,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
     futures::future::pending().await
 }
 
-fn handle_tunnel(mut tunnel: impl UrlInfo + Tunnel, sess: ngrok::Session) {
+fn handle_tunnel(mut tunnel: impl EndpointInfo + Tunnel, sess: ngrok::Session) {
     info!("bound new tunnel: {}", tunnel.url());
     tokio::spawn(async move {
         loop {
