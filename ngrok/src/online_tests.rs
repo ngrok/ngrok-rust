@@ -283,7 +283,7 @@ async fn http_headers() -> Result<(), Error> {
 async fn user_agent() -> Result<(), Error> {
     let tun = serve_http(
         defaults,
-        |tun| tun.allow_user_agent("foo.*").deny_user_agent(".*"),
+        |tun| tun.allow_ua("foo.*").deny_ua(".*"),
         hello_router(),
     )
     .await?;

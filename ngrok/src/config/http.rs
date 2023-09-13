@@ -301,12 +301,12 @@ impl HttpTunnelBuilder {
     }
 
     /// Add the provided regex to the allowlist.
-    pub fn allow_user_agent(&mut self, regex: impl Into<String>) -> &mut Self {
+    pub fn allow_ua(&mut self, regex: impl Into<String>) -> &mut Self {
         self.options.common_opts.user_agent_filter.allow(regex);
         self
     }
     /// Add the provided regex to the denylist.
-    pub fn deny_user_agent(&mut self, regex: impl Into<String>) -> &mut Self {
+    pub fn deny_ua(&mut self, regex: impl Into<String>) -> &mut Self {
         self.options.common_opts.user_agent_filter.deny(regex);
         self
     }
@@ -335,8 +335,8 @@ mod test {
                 session: None,
                 options: Default::default(),
             }
-            .allow_user_agent(ALLOW_AGENT)
-            .deny_user_agent(DENY_AGENT)
+            .allow_ua(ALLOW_AGENT)
+            .deny_ua(DENY_AGENT)
             .allow_cidr(ALLOW_CIDR)
             .deny_cidr(DENY_CIDR)
             .proxy_proto(ProxyProto::V2)
