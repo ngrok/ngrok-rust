@@ -16,6 +16,7 @@ use anyhow::{
     Error,
 };
 use axum::{
+    extract::connect_info::Connected,
     routing::get,
     Router,
 };
@@ -128,7 +129,11 @@ async fn serve_http(
     Ok(start_http_server(tun, router))
 }
 
-fn start_http_server(tun: impl UrlTunnel, router: Router) -> TunnelGuard {
+fn start_http_server<T>(tun: T, router: Router) -> TunnelGuard
+where
+    T: EndpointInfo + Tunnel,
+    for<'a> SocketAddr: Connected<&'a <T as Tunnel>::Conn>,
+{
     let url = tun.url().into();
 
     let (tx, rx) = oneshot::channel::<()>();

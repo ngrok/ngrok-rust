@@ -5,7 +5,10 @@ use axum::{
     routing::get,
     Router,
 };
-use ngrok::prelude::*;
+use ngrok::{
+    prelude::*,
+    tunnel::LabeledTunnel,
+};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -30,7 +33,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn start_tunnel() -> anyhow::Result<impl Tunnel> {
+async fn start_tunnel() -> anyhow::Result<LabeledTunnel> {
     let sess = ngrok::Session::builder()
         .authtoken_from_env()
         .connect()

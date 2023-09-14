@@ -6,9 +6,11 @@ use std::{
 
 use async_trait::async_trait;
 use once_cell::sync::OnceCell;
+use url::Url;
 
 pub use crate::internals::proto::ProxyProto;
 use crate::{
+    forwarder::Forwarder,
     internals::proto::{
         BindExtra,
         BindOpts,
@@ -50,8 +52,17 @@ pub trait TunnelBuilder: From<Session> {
     async fn listen(&self) -> Result<Self::Tunnel, RpcError>;
 }
 
+/// Trait representing things that can be built into an ngrok tunnel and then
+/// forwarded to a provided URL.
+#[async_trait]
+pub trait ForwarderBuilder: TunnelBuilder {
+    /// Start listening for new connections on this tunnel and forward all
+    /// connections to the provided URL.
+    async fn listen_and_forward(&self, to_url: Url) -> Result<Forwarder<Self::Tunnel>, RpcError>;
+}
+
 macro_rules! impl_builder {
-    ($(#[$m:meta])* $name:ident, $opts:ty, $tun:ident) => {
+    ($(#[$m:meta])* $name:ident, $opts:ty, $tun:ident, $edgepoint:tt) => {
         $(#[$m])*
         #[derive(Clone)]
         pub struct $name {
@@ -60,35 +71,57 @@ macro_rules! impl_builder {
             session: Option<Session>,
         }
 
-        impl From<Session> for $name {
-            fn from(session: Session) -> Self {
-                $name {
-                    options: Default::default(),
-                    session: session.into(),
+        mod __builder_impl {
+            use $crate::forwarder::Forwarder;
+            use $crate::config::common::ForwarderBuilder;
+            use $crate::config::common::TunnelBuilder;
+            use $crate::session::RpcError;
+            use async_trait::async_trait;
+            use url::Url;
+
+            use super::*;
+
+            impl From<Session> for $name {
+                fn from(session: Session) -> Self {
+                    $name {
+                        options: Default::default(),
+                        session: session.into(),
+                    }
                 }
             }
-        }
 
-        #[async_trait]
-        impl TunnelBuilder for $name {
-            type Tunnel = $tun;
+            #[async_trait]
+            impl TunnelBuilder for $name {
+                type Tunnel = $tun;
 
-            async fn listen(&self) -> Result<$tun, RpcError> {
-                Ok($tun {
-                    inner: self
-                        .session
-                        .as_ref()
-                        .unwrap()
-                        .start_tunnel(&self.options)
-                        .await?,
-                })
+                async fn listen(&self) -> Result<$tun, RpcError> {
+                    Ok($tun {
+                        inner: self
+                            .session
+                            .as_ref()
+                            .unwrap()
+                            .start_tunnel(&self.options)
+                            .await?,
+                    })
+                }
+            }
+
+            #[async_trait]
+            impl ForwarderBuilder for $name {
+                async fn listen_and_forward(&self, to_url: Url) -> Result<Forwarder<$tun>, RpcError> {
+                    let mut cfg = self.clone();
+                    let url_str: &str = to_url.as_ref();
+                    cfg.forwards_to(url_str);
+                    let tunnel = cfg.listen().await?;
+                    let info = tunnel.make_info();
+                    $crate::forwarder::forward(tunnel, info, to_url)
+                }
             }
         }
     };
 }
+
 /// Tunnel configuration trait, implemented by our top-level config objects.
-///
-/// "Sealed," i.e. not implementable outside of the crate.
 pub(crate) trait TunnelConfig {
     /// The "forwards to" metadata.
     ///

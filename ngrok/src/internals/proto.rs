@@ -379,11 +379,16 @@ impl ProxyHeader {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+/// The edge type for an incomming connection.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum EdgeType {
+    /// EdgeType Undefined
     Undefined,
+    /// A TCP Edge
     Tcp,
+    /// A TLS Edge
     Tls,
+    /// A HTTPs Edge
     Https,
 }
 
@@ -400,7 +405,7 @@ impl FromStr for EdgeType {
 }
 
 impl EdgeType {
-    pub fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             EdgeType::Undefined => "0",
             EdgeType::Tcp => "1",

@@ -36,29 +36,49 @@ pub mod session;
 /// Types for working with ngrok tunnels.
 pub mod tunnel;
 
+/// Types for working with ngrok connections.
+pub mod conn;
+
+/// Types for working with connection forwarders.
+pub mod forwarder;
 mod tunnel_ext;
 
+#[doc(inline)]
+pub use conn::{
+    Conn,
+    EdgeConn,
+    EndpointConn,
+};
 #[doc(inline)]
 pub use internals::proto::Error;
 #[doc(inline)]
 pub use session::Session;
 #[doc(inline)]
-pub use tunnel::{
-    Conn,
-    Tunnel,
-};
+pub use tunnel::Tunnel;
 
 /// A prelude of traits for working with ngrok types.
 pub mod prelude {
+    #[allow(deprecated)]
     #[doc(inline)]
     pub use crate::{
-        config::TunnelBuilder,
+        config::{
+            ForwarderBuilder,
+            TunnelBuilder,
+        },
+        conn::{
+            Conn,
+            ConnInfo,
+            EdgeConnInfo,
+            EndpointConnInfo,
+        },
+        internals::proto::EdgeType,
         internals::proto::Error,
         tunnel::{
-            LabelsTunnel,
-            ProtoTunnel,
+            EdgeInfo,
+            EndpointInfo,
             Tunnel,
-            UrlTunnel,
+            TunnelCloser,
+            TunnelInfo,
         },
         tunnel_ext::TunnelExt,
     };

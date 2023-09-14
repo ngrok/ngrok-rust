@@ -138,8 +138,7 @@ pub enum AcceptError {
 pub struct RpcClient {
     // This is held so that the heartbeat task doesn't get shutdown. Eventually
     // we may use it to request heartbeats via the `Session`.
-    #[allow(dead_code)]
-    heartbeat: HeartbeatCtl,
+    _heartbeat: HeartbeatCtl,
     open: Box<dyn TypedOpenClose + Send>,
 }
 
@@ -215,7 +214,7 @@ impl RawSession {
 
         let sess = RawSession {
             client: RpcClient {
-                heartbeat: hbctl,
+                _heartbeat: hbctl,
                 open: Box::new(open),
             },
             incoming: IncomingStreams {
@@ -226,11 +225,6 @@ impl RawSession {
         };
 
         Ok(sess)
-    }
-
-    #[allow(dead_code)]
-    pub async fn accept(&mut self) -> Result<TunnelStream, AcceptError> {
-        self.incoming.accept().await
     }
 
     pub fn split(self) -> (RpcClient, IncomingStreams) {

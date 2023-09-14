@@ -4,17 +4,13 @@ use std::{
     str::FromStr,
 };
 
-use async_trait::async_trait;
 use bytes::{
     self,
     Bytes,
 };
 use thiserror::Error;
 
-use super::{
-    common::ProxyProto,
-    TunnelBuilder,
-};
+use super::common::ProxyProto;
 use crate::{
     config::{
         common::{
@@ -37,7 +33,6 @@ use crate::{
         HttpEndpoint,
         WebsocketTcpConverter,
     },
-    session::RpcError,
     tunnel::HttpTunnel,
     Session,
 };
@@ -168,7 +163,7 @@ impl From<(String, String)> for BasicAuthCredential {
 
 impl_builder! {
     /// A builder for a tunnel backing an HTTP endpoint.
-    HttpTunnelBuilder, HttpOptions, HttpTunnel
+    HttpTunnelBuilder, HttpOptions, HttpTunnel, endpoint
 }
 
 impl HttpTunnelBuilder {
