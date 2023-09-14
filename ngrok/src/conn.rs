@@ -16,9 +16,12 @@ use tokio::io::{
     AsyncWrite,
 };
 
-use crate::internals::proto::{
-    EdgeType,
-    ProxyHeader,
+use crate::{
+    config::ProxyProto,
+    internals::proto::{
+        EdgeType,
+        ProxyHeader,
+    },
 };
 /// A connection from an ngrok tunnel.
 ///
@@ -33,6 +36,7 @@ pub(crate) struct ConnInner {
 pub(crate) struct Info {
     pub(crate) header: ProxyHeader,
     pub(crate) remote_addr: SocketAddr,
+    pub(crate) proxy_proto: ProxyProto,
 }
 
 impl ConnInfo for Info {

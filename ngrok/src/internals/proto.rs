@@ -505,7 +505,7 @@ rpc_req!(SrvInfo, SrvInfoResp, SRV_INFO_REQ);
 /// to use with this tunnel.
 ///
 /// [ProxyProto::None] disables PROXY protocol support.
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
 pub enum ProxyProto {
     /// No PROXY protocol
     #[default]

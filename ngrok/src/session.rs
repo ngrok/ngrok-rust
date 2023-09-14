@@ -85,6 +85,7 @@ use crate::{
     config::{
         HttpTunnelBuilder,
         LabeledTunnelBuilder,
+        ProxyProto,
         TcpTunnelBuilder,
         TlsTunnelBuilder,
         TunnelConfig,
@@ -96,7 +97,10 @@ use crate::{
             BindExtra,
             BindOpts,
             Error,
+            HttpEndpoint,
             SecretString,
+            TcpEndpoint,
+            TlsEndpoint,
         },
         raw_session::{
             AcceptError as RawAcceptError,
@@ -999,11 +1003,22 @@ async fn accept_one(
         if let Some(BindOpts::Tls(opts)) = &tun.opts {
             header.passthrough_tls = opts.tls_termination.is_none();
         }
+        let proxy_proto = if let Some(
+            BindOpts::Tls(TlsEndpoint { proxy_proto, .. })
+            | BindOpts::Http(HttpEndpoint { proxy_proto, .. })
+            | BindOpts::Tcp(TcpEndpoint { proxy_proto, .. }),
+        ) = tun.opts
+        {
+            proxy_proto
+        } else {
+            ProxyProto::None
+        };
         tun.tx
             .send(Ok(ConnInner {
                 info: crate::conn::Info {
                     remote_addr,
                     header,
+                    proxy_proto,
                 },
                 stream: conn.stream,
             }))
