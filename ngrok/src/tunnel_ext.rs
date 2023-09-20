@@ -18,7 +18,6 @@ use async_rustls::rustls::{
     RootCertStore,
 };
 use async_trait::async_trait;
-use bytes::BytesMut;
 use futures::stream::TryStreamExt;
 #[cfg(feature = "hyper")]
 use hyper::{
@@ -29,7 +28,7 @@ use hyper::{
     StatusCode,
 };
 use once_cell::sync::Lazy;
-use proxy_protocol::version2::ParseError;
+use proxy_protocol::ProxyHeader;
 #[cfg(target_os = "windows")]
 use tokio::net::windows::named_pipe::ClientOptions;
 #[cfg(not(target_os = "windows"))]
@@ -39,10 +38,8 @@ use tokio::time;
 use tokio::{
     io::{
         copy_bidirectional,
-        AsyncBufReadExt,
         AsyncRead,
         AsyncWrite,
-        AsyncWriteExt,
     },
     net::TcpStream,
     task::JoinHandle,
@@ -65,6 +62,7 @@ use windows_sys::Win32::Foundation::ERROR_PIPE_BUSY;
 use crate::{
     config::ProxyProto,
     prelude::*,
+    proxy_proto,
     session::IoStream,
     EdgeConn,
     EndpointConn,
@@ -156,58 +154,6 @@ impl ConnExt for EdgeConn {
     }
 }
 
-async fn read_proxy_protocol<S>(
-    buffered: &mut S,
-    proxy_protocol: ProxyProto,
-) -> Result<Option<BytesMut>, io::Error>
-where
-    S: tokio::io::AsyncBufRead + Unpin,
-{
-    Some(match proxy_protocol {
-        ProxyProto::V1 => {
-            // Proxy protocol v1 is just one line ended by crlf. Easy peasy.
-            let mut buf = vec![0u8; 108];
-            buffered.read_until(b'\n', &mut buf).await?;
-            proxy_protocol::parse(&mut buf.as_slice())
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
-        }
-        ProxyProto::V2 => {
-            // Proxy protocol v2 is dynamically sized.
-            // We need at least 16 bytes to know how long the header is.
-            // Once we have at least that much, we know how much more we need to
-            // fill the buffer.
-            let mut need_bytes = 16;
-            loop {
-                let mut buf = buffered.fill_buf().await?;
-                let orig_len = buf.len();
-                if orig_len < need_bytes {
-                    continue;
-                }
-                match proxy_protocol::parse(&mut buf) {
-                    Ok(hdr) => {
-                        // The amount consumed is the total buffered length
-                        // minus whatever is left over in the buffer.
-                        let consumed = orig_len - buf.len();
-                        buffered.consume(consumed);
-                        break hdr;
-                    }
-                    Err(proxy_protocol::ParseError::Version2 {
-                        source: ParseError::InsufficientLengthSpecified { needs, .. },
-                    }) => {
-                        need_bytes = needs;
-                        continue;
-                    }
-                    Err(e) => return Err(io::Error::new(io::ErrorKind::InvalidData, e)),
-                }
-            }
-        }
-        _ => return Ok(None),
-    })
-    .map(proxy_protocol::encode)
-    .transpose()
-    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
-}
-
 impl ConnExt for EndpointConn {
     fn forward_to(self, url: &Url) -> JoinHandle<Result<(), io::Error>> {
         let url = url.clone();
@@ -217,9 +163,23 @@ impl ConnExt for EndpointConn {
             let proto_http = matches!(self.proto(), "http" | "https");
             let passthrough_tls = self.inner.info.passthrough_tls();
 
-            let mut buffered = tokio::io::BufStream::new(self);
-
-            let proxy_header = read_proxy_protocol(&mut buffered, proxy_proto).await?;
+            let (mut stream, proxy_header) = match proxy_proto {
+                ProxyProto::None => (crate::proxy_proto::Stream::disabled(self), None),
+                _ => {
+                    let mut stream = crate::proxy_proto::Stream::incoming(self);
+                    let header = stream
+                        .proxy_header()
+                        .await?
+                        .map_err(|e| {
+                            io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                format!("invalid proxy-protocol header: {}", e),
+                            )
+                        })?
+                        .cloned();
+                    (stream, header)
+                }
+            };
 
             let mut upstream = match connect(proto_tls && passthrough_tls, proxy_header, &url).await
             {
@@ -227,14 +187,14 @@ impl ConnExt for EndpointConn {
                 Err(error) => {
                     #[cfg(feature = "hyper")]
                     if proto_http {
-                        serve_gateway_error(format!("{error}"), buffered);
+                        serve_gateway_error(format!("{error}"), stream);
                     }
                     warn!(%error, "error connecting to upstream");
                     return Err(error);
                 }
             };
 
-            copy_bidirectional(&mut buffered, &mut upstream).await?;
+            copy_bidirectional(&mut stream, &mut upstream).await?;
             Ok(())
         })
     }
@@ -265,7 +225,7 @@ fn tls_config() -> Result<Arc<ClientConfig>, &'static io::Error> {
 // Note: this additional wrapping logic currently unimplemented.
 async fn connect(
     tunnel_tls: bool,
-    proxy_proto_header: Option<BytesMut>,
+    proxy_proto_header: Option<ProxyHeader>,
     url: &Url,
 ) -> Result<Box<dyn IoStream>, io::Error> {
     let host = url.host_str().unwrap_or("localhost");
@@ -349,9 +309,12 @@ async fn connect(
     };
 
     // We have to write the proxy header _before_ tls termination
-    if let Some(mut header) = proxy_proto_header {
-        conn.write_all_buf(&mut header).await?;
-    }
+    if let Some(header) = proxy_proto_header {
+        conn = Box::new(
+            proxy_proto::Stream::outgoing(conn, header)
+                .expect("re-serializing proxy header should always succeed"),
+        )
+    };
 
     if backend_tls && !tunnel_tls {
         let domain = rustls::ServerName::try_from(host)

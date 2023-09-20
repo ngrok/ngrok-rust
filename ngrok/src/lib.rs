@@ -31,6 +31,8 @@ pub mod config {
     mod webhook_verification;
 }
 
+mod proxy_proto;
+
 /// Types for working with the ngrok session.
 pub mod session;
 /// Types for working with ngrok tunnels.
