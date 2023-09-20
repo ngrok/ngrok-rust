@@ -772,11 +772,11 @@ pub struct TlsEndpoint {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct TlsTermination {
-    #[serde(with = "base64bytes", skip_serializing_if = "is_default")]
+    #[serde(default, with = "base64bytes", skip_serializing_if = "is_default")]
     pub cert: Vec<u8>,
     #[serde(skip_serializing_if = "is_default", default)]
     pub key: SecretBytes,
-    #[serde(with = "base64bytes", skip_serializing_if = "is_default")]
+    #[serde(default, with = "base64bytes", skip_serializing_if = "is_default")]
     pub sealed_key: Vec<u8>,
 }
 

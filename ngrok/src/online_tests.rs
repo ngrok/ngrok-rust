@@ -1,4 +1,5 @@
 use std::{
+    io,
     io::prelude::*,
     net::SocketAddr,
     str::FromStr,
@@ -9,17 +10,26 @@ use std::{
         },
         Arc,
     },
+    time::Duration,
 };
 
 use anyhow::{
     anyhow,
     Error,
 };
+use async_rustls::{
+    rustls,
+    rustls::{
+        ClientConfig,
+        RootCertStore,
+    },
+};
 use axum::{
     extract::connect_info::Connected,
     routing::get,
     Router,
 };
+use bytes::Bytes;
 use flate2::read::GzDecoder;
 use futures::{
     channel::oneshot,
@@ -32,7 +42,9 @@ use hyper::{
     StatusCode,
     Uri,
 };
+use once_cell::sync::Lazy;
 use paste::paste;
+use proxy_protocol::ProxyHeader;
 use rand::{
     distributions::Alphanumeric,
     thread_rng,
@@ -43,6 +55,7 @@ use tokio::{
         AsyncReadExt,
         AsyncWriteExt,
     },
+    net::TcpStream,
     sync::mpsc,
     test,
 };
@@ -50,7 +63,9 @@ use tokio_tungstenite::{
     connect_async,
     tungstenite::Message,
 };
+use tokio_util::compat::*;
 use tracing_test::traced_test;
+use url::Url;
 
 use crate::{
     config::{
@@ -682,6 +697,84 @@ async fn session_tls_config() -> Result<(), Error> {
         .tls_config(default_tls_config)
         .connect()
         .await?;
+
+    Ok(())
+}
+
+fn tls_client_config() -> Result<Arc<ClientConfig>, &'static io::Error> {
+    static CONFIG: Lazy<Result<Arc<ClientConfig>, io::Error>> = Lazy::new(|| {
+        let der_certs = rustls_native_certs::load_native_certs()?
+            .into_iter()
+            .map(|c| c.0)
+            .collect::<Vec<_>>();
+        let der_certs = der_certs.as_slice();
+        let mut root_store = RootCertStore::empty();
+        root_store.add_parsable_certificates(der_certs);
+        let config = ClientConfig::builder()
+            .with_safe_defaults()
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
+        Ok(Arc::new(config))
+    });
+
+    Ok(CONFIG.as_ref()?.clone())
+}
+
+#[traced_test]
+#[cfg_attr(not(feature = "paid-tests"), ignore)]
+#[test]
+async fn forward_proxy_protocol_tls() -> Result<(), Error> {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let addr = listener.local_addr()?;
+
+    let sess = Session::builder().authtoken_from_env().connect().await?;
+    let forwarder = sess
+        .tls_endpoint()
+        .proxy_proto(ProxyProto::V2)
+        .termination(Bytes::default(), Bytes::default())
+        .listen_and_forward(format!("tls://{}", addr).parse()?)
+        .await?;
+
+    let tunnel_url: Url = forwarder.url().to_string().parse()?;
+
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        let tunnel_conn = TcpStream::connect(format!(
+            "{}:{}",
+            tunnel_url.host_str().unwrap(),
+            tunnel_url.port().unwrap_or(443)
+        ))
+        .await?;
+
+        let domain = rustls::ServerName::try_from(tunnel_url.host_str().unwrap())
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+
+        let mut tls_conn = async_rustls::TlsConnector::from(
+            tls_client_config().map_err(|e| io::Error::from(e.kind()))?,
+        )
+        .connect(domain, tunnel_conn.compat())
+        .await?
+        .compat();
+
+        tls_conn.write_all(b"Hello, world!").await
+    });
+
+    let (conn, _) = listener.accept().await?;
+
+    let mut proxy_conn = crate::proxy_proto::Stream::incoming(conn);
+    let proxy_header = proxy_conn
+        .proxy_header()
+        .await?
+        .unwrap()
+        .map(Clone::clone)
+        .unwrap();
+
+    match proxy_header {
+        ProxyHeader::Version2 { .. } => {}
+        _ => unreachable!("we configured v2"),
+    }
+
+    // TODO: actually accept the tls connection from the server side
 
     Ok(())
 }
