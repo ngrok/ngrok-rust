@@ -429,7 +429,5 @@ mod test {
             .expect("read stream");
 
         assert_eq!(buf, "Hello, world!");
-
-        panic!();
     }
 }
