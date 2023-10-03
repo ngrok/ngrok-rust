@@ -52,8 +52,10 @@ impl ReadState {
         }
     }
 
+    /// Read the header from the stream *once*. Once a header has been read, or
+    /// it's been determined that no header is coming, this will be a no-op.
     #[instrument(level = "trace", skip(reader))]
-    fn poll_read_header(
+    fn poll_read_header_once(
         &mut self,
         cx: &mut Context,
         mut reader: Pin<&mut impl AsyncRead>,
@@ -144,8 +146,10 @@ impl WriteState {
         proxy_protocol::encode(hdr).map(WriteState::Writing)
     }
 
+    /// Write the header *once*. After its written to the stream, this will be a
+    /// no-op.
     #[instrument(level = "trace", skip(writer))]
-    fn poll_write_header(
+    fn poll_write_header_once(
         &mut self,
         cx: &mut Context,
         mut writer: Pin<&mut impl AsyncWrite>,
@@ -224,7 +228,7 @@ where
     ) -> Poll<io::Result<Result<Option<&ProxyHeader>, &ParseError>>> {
         let this = self.project();
 
-        ready!(this.read_state.poll_read_header(cx, this.inner))?;
+        ready!(this.read_state.poll_read_header_once(cx, this.inner))?;
 
         Ok(this.read_state.header()).into()
     }
@@ -238,7 +242,7 @@ where
 
         futures::future::poll_fn(|cx| {
             let this = this.as_mut().project();
-            this.read_state.poll_read_header(cx, this.inner)
+            this.read_state.poll_read_header_once(cx, this.inner)
         })
         .await?;
 
@@ -258,7 +262,9 @@ where
     ) -> Poll<io::Result<()>> {
         let mut this = self.project();
 
-        ready!(this.read_state.poll_read_header(cx, this.inner.as_mut()))?;
+        ready!(this
+            .read_state
+            .poll_read_header_once(cx, this.inner.as_mut()))?;
 
         match this.read_state {
             ReadState::Error(_, remainder) | ReadState::Header(_, remainder) => {
@@ -290,7 +296,9 @@ where
     ) -> Poll<Result<usize, io::Error>> {
         let mut this = self.project();
 
-        ready!(this.write_state.poll_write_header(cx, this.inner.as_mut()))?;
+        ready!(this
+            .write_state
+            .poll_write_header_once(cx, this.inner.as_mut()))?;
 
         this.inner.poll_write(cx, buf)
     }
