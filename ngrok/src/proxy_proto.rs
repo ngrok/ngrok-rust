@@ -173,7 +173,9 @@ impl WriteState {
                         Poll::Pending | Poll::Ready(Err(_)) => {
                             *self = WriteState::Writing(buf);
                             ready!(write_res)?;
-                            return Ok(()).into();
+                            unreachable!(
+                                "ready! will return for us on either Pending or Ready(Err)"
+                            );
                         }
                         Poll::Ready(Ok(written)) => {
                             buf.advance(written);
