@@ -28,6 +28,7 @@ use hyper::{
     StatusCode,
 };
 use once_cell::sync::Lazy;
+use proxy_protocol::ProxyHeader;
 #[cfg(target_os = "windows")]
 use tokio::net::windows::named_pipe::ClientOptions;
 #[cfg(not(target_os = "windows"))]
@@ -50,6 +51,7 @@ use tokio_util::compat::{
 use tracing::{
     debug,
     field,
+    warn,
     Instrument,
     Span,
 };
@@ -58,7 +60,9 @@ use url::Url;
 use windows_sys::Win32::Foundation::ERROR_PIPE_BUSY;
 
 use crate::{
+    config::ProxyProto,
     prelude::*,
+    proxy_proto,
     session::IoStream,
     EdgeConn,
     EndpointConn,
@@ -97,9 +101,8 @@ pub trait TunnelExt: Tunnel + Send {
     async fn forward(&mut self, url: Url) -> Result<(), io::Error>;
 }
 
-#[async_trait]
 pub(crate) trait ConnExt {
-    async fn forward_to(mut self, url: &Url) -> Result<JoinHandle<()>, io::Error>;
+    fn forward_to(self, url: &Url) -> JoinHandle<io::Result<()>>;
 }
 
 #[tracing::instrument(skip_all, fields(tunnel_id = tun.id(), url = %url))]
@@ -119,58 +122,81 @@ where
             return Ok(());
         };
 
-        tunnel_conn.forward_to(&url).await?;
+        tunnel_conn.forward_to(&url);
     }
 }
 
-#[async_trait]
 impl ConnExt for EdgeConn {
-    async fn forward_to(self, url: &Url) -> Result<JoinHandle<()>, io::Error> {
-        let upstream = match connect(
-            self.edge_type() == EdgeType::Tls && self.passthrough_tls(),
-            false,
-            url,
-        )
-        .await
-        {
-            Ok(conn) => conn,
-            Err(e) => {
-                #[cfg(feature = "hyper")]
-                if self.edge_type() == EdgeType::Https {
-                    serve_gateway_error(format!("{e}"), self);
+    fn forward_to(mut self, url: &Url) -> JoinHandle<io::Result<()>> {
+        let url = url.clone();
+        tokio::spawn(async move {
+            let mut upstream = match connect(
+                self.edge_type() == EdgeType::Tls && self.passthrough_tls(),
+                None, // Edges don't support proxyproto (afaik)
+                &url,
+            )
+            .await
+            {
+                Ok(conn) => conn,
+                Err(error) => {
+                    #[cfg(feature = "hyper")]
+                    if self.edge_type() == EdgeType::Https {
+                        serve_gateway_error(format!("{error}"), self);
+                    }
+                    warn!(%error, "error connecting to upstream");
+                    return Err(error);
                 }
-                return Err(e);
-            }
-        };
+            };
 
-        Ok(join_streams(self, upstream))
+            copy_bidirectional(&mut self, &mut upstream).await?;
+            Ok(())
+        })
     }
 }
 
-#[async_trait]
 impl ConnExt for EndpointConn {
-    async fn forward_to(self, url: &Url) -> Result<JoinHandle<()>, io::Error> {
-        let upstream = match connect(
-            self.proto() == "tls" && self.inner.info.header.passthrough_tls,
-            false,
-            url,
-        )
-        .await
-        {
-            Ok(conn) => conn,
-            Err(e) => {
-                #[cfg(feature = "hyper")]
-                match self.proto() {
-                    "http" | "https" => {
-                        serve_gateway_error(format!("{e}"), self);
-                    }
-                    _ => {}
-                }
-                return Err(e);
-            }
-        };
+    fn forward_to(self, url: &Url) -> JoinHandle<Result<(), io::Error>> {
+        let url = url.clone();
+        tokio::spawn(async move {
+            let proxy_proto = self.inner.info.proxy_proto;
+            let proto_tls = self.proto() == "tls";
+            let proto_http = matches!(self.proto(), "http" | "https");
+            let passthrough_tls = self.inner.info.passthrough_tls();
 
-        Ok(join_streams(self, upstream))
+            let (mut stream, proxy_header) = match proxy_proto {
+                ProxyProto::None => (crate::proxy_proto::Stream::disabled(self), None),
+                _ => {
+                    let mut stream = crate::proxy_proto::Stream::incoming(self);
+                    let header = stream
+                        .proxy_header()
+                        .await?
+                        .map_err(|e| {
+                            io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                format!("invalid proxy-protocol header: {}", e),
+                            )
+                        })?
+                        .cloned();
+                    (stream, header)
+                }
+            };
+
+            let mut upstream = match connect(proto_tls && passthrough_tls, proxy_header, &url).await
+            {
+                Ok(conn) => conn,
+                Err(error) => {
+                    #[cfg(feature = "hyper")]
+                    if proto_http {
+                        serve_gateway_error(format!("{error}"), stream);
+                    }
+                    warn!(%error, "error connecting to upstream");
+                    return Err(error);
+                }
+            };
+
+            copy_bidirectional(&mut stream, &mut upstream).await?;
+            Ok(())
+        })
     }
 }
 
@@ -199,7 +225,7 @@ fn tls_config() -> Result<Arc<ClientConfig>, &'static io::Error> {
 // Note: this additional wrapping logic currently unimplemented.
 async fn connect(
     tunnel_tls: bool,
-    _tunnel_proxyproto: bool,
+    proxy_proto_header: Option<ProxyHeader>,
     url: &Url,
 ) -> Result<Box<dyn IoStream>, io::Error> {
     let host = url.host_str().unwrap_or("localhost");
@@ -282,6 +308,14 @@ async fn connect(
         }
     };
 
+    // We have to write the proxy header _before_ tls termination
+    if let Some(header) = proxy_proto_header {
+        conn = Box::new(
+            proxy_proto::Stream::outgoing(conn, header)
+                .expect("re-serializing proxy header should always succeed"),
+        )
+    };
+
     if backend_tls && !tunnel_tls {
         let domain = rustls::ServerName::try_from(host)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
@@ -293,7 +327,7 @@ async fn connect(
         )
     }
 
-    // TODO: proxyproto, header rewrites?
+    // TODO: header rewrites?
 
     Ok(conn)
 }
@@ -304,21 +338,6 @@ async fn connect_tcp(host: &str, port: u16) -> Result<TcpStream, io::Error> {
         Span::current().record("forward_addr", field::display(addr));
     }
     Ok(conn)
-}
-
-fn join_streams(
-    mut left: impl AsyncRead + AsyncWrite + Unpin + Send + 'static,
-    mut right: impl AsyncRead + AsyncWrite + Unpin + Send + 'static,
-) -> JoinHandle<()> {
-    tokio::spawn(
-        async move {
-            match copy_bidirectional(&mut left, &mut right).await {
-                Ok((l_bytes, r_bytes)) => debug!("joined streams closed, bytes from tunnel: {l_bytes}, bytes from local: {r_bytes}"),
-                Err(e) => debug!("joined streams error: {e}"),
-            };
-        }
-        .in_current_span(),
-    )
 }
 
 #[cfg(feature = "hyper")]
