@@ -30,6 +30,8 @@ use tracing::instrument;
 // 536 is the smallest possible TCP segment, which both v1 and v2 are guaranteed
 // to fit into.
 const MAX_HEADER_LEN: usize = 536;
+// v2 headers start with at least 16 bytes
+const MIN_HEADER_LEN: usize = 16;
 
 #[derive(Debug)]
 enum ReadState {
@@ -107,6 +109,13 @@ impl ReadState {
             // Create a view into the header buffer so that failed parse
             // attempts don't consume it.
             let mut hdr_view = &*hdr_buf;
+
+            // Don't try to parse unless we have a minimum number of bytes to
+            // avoid spurious "NotProxyHeader" errors.
+            if hdr_view.len() < MIN_HEADER_LEN {
+                *self = ReadState::Reading(last_err, hdr_buf);
+                continue;
+            }
 
             match proxy_protocol::parse(&mut hdr_view) {
                 Ok(hdr) => {
@@ -312,25 +321,92 @@ where
 
 #[cfg(test)]
 mod test {
-    use std::time::Duration;
+    use std::{
+        cmp,
+        io,
+        pin::Pin,
+        task::{
+            ready,
+            Context,
+            Poll,
+        },
+        time::Duration,
+    };
 
     use bytes::{
         BufMut,
         BytesMut,
     };
-    use proxy_protocol::ProxyHeader;
+    use proxy_protocol::{
+        version2::{
+            self,
+            ProxyCommand,
+        },
+        ProxyHeader,
+    };
     use tokio::io::{
+        AsyncRead,
         AsyncReadExt,
         AsyncWriteExt,
+        ReadBuf,
     };
 
     use super::Stream;
+
+    #[pin_project::pin_project]
+    struct ShortReader<S> {
+        #[pin]
+        inner: S,
+        min: usize,
+        max: usize,
+    }
+
+    impl<S> AsyncRead for ShortReader<S>
+    where
+        S: AsyncRead,
+    {
+        fn poll_read(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            let mut this = self.project();
+            loop {
+                let max_bytes =
+                    *this.min + cmp::max(1, rand::random::<usize>() % (*this.max - *this.min));
+                let mut tmp = vec![0; max_bytes];
+                let mut tmp_buf = ReadBuf::new(&mut tmp);
+                let res = ready!(this.inner.as_mut().poll_read(cx, &mut tmp_buf));
+
+                buf.put_slice(tmp_buf.filled());
+
+                res?;
+
+                // Hack: Don't end our short read with a '\r'. There's a bug in
+                // proxy_protocol that will cause a panic if it only gets \r and
+                // not \r\n.
+                if let Some(b'\r') = tmp_buf.filled().last() {
+                    continue;
+                }
+                break;
+            }
+
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    impl<S> ShortReader<S> {
+        fn new(inner: S, min: usize, max: usize) -> Self {
+            ShortReader { inner, min, max }
+        }
+    }
 
     const INPUT: &str = "PROXY TCP4 192.168.0.1 192.168.0.11 56324 443\r\n";
     const PARTIAL_INPUT: &str = "PROXY TCP4 192.168.0.1";
     const FINAL_INPUT: &str = " 192.168.0.11 56324 443\r\n";
 
-    // Test attributes of the underlying crate to verify assumptions.
+    // Smoke test to ensure that the proxy protocol parser works as expected.
+    // Not actually testing our code.
     #[test]
     fn test_proxy_protocol() {
         let mut buf = BytesMut::from(INPUT);
@@ -348,27 +424,80 @@ mod test {
 
     #[tokio::test]
     #[tracing_test::traced_test]
+    async fn test_header_stream_v2() {
+        let (left, mut right) = tokio::io::duplex(1024);
+
+        let header = ProxyHeader::Version2 {
+            command: ProxyCommand::Proxy,
+            transport_protocol: version2::ProxyTransportProtocol::Stream,
+            addresses: version2::ProxyAddresses::Ipv4 {
+                source: "127.0.0.1:1".parse().unwrap(),
+                destination: "127.0.0.2:2".parse().unwrap(),
+            },
+        };
+
+        let input = proxy_protocol::encode(header).unwrap();
+
+        let mut proxy_stream = Stream::incoming(ShortReader::new(left, 2, 5));
+
+        // Chunk our writes to ensure that our reader is resilient across split inputs.
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+
+            right.write_all(&input).await.expect("write header");
+
+            right
+                .write_all(b"Hello, world!")
+                .await
+                .expect("write hello");
+
+            right.shutdown().await.expect("shutdown");
+        });
+
+        let hdr = proxy_stream
+            .proxy_header()
+            .await
+            .expect("read header")
+            .expect("decode header")
+            .expect("header exists");
+
+        assert!(matches!(hdr, ProxyHeader::Version2 { .. }));
+
+        let mut buf = String::new();
+
+        proxy_stream
+            .read_to_string(&mut buf)
+            .await
+            .expect("read rest");
+
+        assert_eq!(buf, "Hello, world!");
+
+        // Get the header again - should be the same.
+        let hdr = proxy_stream
+            .proxy_header()
+            .await
+            .expect("read header")
+            .expect("decode header")
+            .expect("header exists");
+
+        assert!(matches!(hdr, ProxyHeader::Version2 { .. }));
+    }
+
+    #[tokio::test]
+    #[tracing_test::traced_test]
     async fn test_header_stream() {
         let (left, mut right) = tokio::io::duplex(1024);
 
-        let mut proxy_stream = Stream::incoming(left);
+        let mut proxy_stream = Stream::incoming(ShortReader::new(left, 2, 5));
 
         // Chunk our writes to ensure that our reader is resilient across split inputs.
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
 
             right
-                .write_all(PARTIAL_INPUT.as_bytes())
+                .write_all(INPUT.as_bytes())
                 .await
                 .expect("write header");
-            tokio::time::sleep(Duration::from_millis(50)).await;
-
-            right
-                .write_all(FINAL_INPUT.as_bytes())
-                .await
-                .expect("write header");
-
-            tokio::time::sleep(Duration::from_millis(50)).await;
 
             right
                 .write_all(b"Hello, world!")
