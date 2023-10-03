@@ -112,7 +112,9 @@ impl ReadState {
 
             // Don't try to parse unless we have a minimum number of bytes to
             // avoid spurious "NotProxyHeader" errors.
-            if hdr_view.len() < MIN_HEADER_LEN {
+            // Also hack around a bug in the proxy_protocol crate that results
+            // in panics when the input ends in \r without the \n.
+            if hdr_view.len() < MIN_HEADER_LEN || matches!(hdr_view.last(), Some(b'\r')) {
                 *self = ReadState::Reading(last_err, hdr_buf);
                 continue;
             }
@@ -373,25 +375,15 @@ mod test {
             buf: &mut ReadBuf<'_>,
         ) -> Poll<io::Result<()>> {
             let mut this = self.project();
-            loop {
-                let max_bytes =
-                    *this.min + cmp::max(1, rand::random::<usize>() % (*this.max - *this.min));
-                let mut tmp = vec![0; max_bytes];
-                let mut tmp_buf = ReadBuf::new(&mut tmp);
-                let res = ready!(this.inner.as_mut().poll_read(cx, &mut tmp_buf));
+            let max_bytes =
+                *this.min + cmp::max(1, rand::random::<usize>() % (*this.max - *this.min));
+            let mut tmp = vec![0; max_bytes];
+            let mut tmp_buf = ReadBuf::new(&mut tmp);
+            let res = ready!(this.inner.as_mut().poll_read(cx, &mut tmp_buf));
 
-                buf.put_slice(tmp_buf.filled());
+            buf.put_slice(tmp_buf.filled());
 
-                res?;
-
-                // Hack: Don't end our short read with a '\r'. There's a bug in
-                // proxy_protocol that will cause a panic if it only gets \r and
-                // not \r\n.
-                if let Some(b'\r') = tmp_buf.filled().last() {
-                    continue;
-                }
-                break;
-            }
+            res?;
 
             Poll::Ready(Ok(()))
         }
