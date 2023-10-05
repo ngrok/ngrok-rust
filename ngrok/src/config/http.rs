@@ -335,8 +335,8 @@ mod test {
                 session: None,
                 options: Default::default(),
             }
-            .allow_ua(ALLOW_AGENT)
-            .deny_ua(DENY_AGENT)
+            .allow_user_agent(ALLOW_AGENT)
+            .deny_user_agent(DENY_AGENT)
             .allow_cidr(ALLOW_CIDR)
             .deny_cidr(DENY_CIDR)
             .proxy_proto(ProxyProto::V2)
