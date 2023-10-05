@@ -147,9 +147,10 @@ impl CidrRestrictions {
 /// Restrictions placed on the origin of incoming connections to the edge.
 #[derive(Clone, Default)]
 pub(crate) struct UaFilter {
-    /// Rejects connections that do not match the given CIDRs
+    /// Rejects connections that do not match the given regular expression
     pub(crate) allow: Vec<String>,
-    /// Rejects connections that match the given CIDRs and allows all other CIDRs.
+    /// Rejects connections that match the given regular expression and allows all other regular
+    /// expressions.
     pub(crate) deny: Vec<String>,
 }
 
