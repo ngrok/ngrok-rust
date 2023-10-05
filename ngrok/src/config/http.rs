@@ -301,12 +301,12 @@ impl HttpTunnelBuilder {
     }
 
     /// Add the provided regex to the allowlist.
-    pub fn allow_ua(&mut self, regex: impl Into<String>) -> &mut Self {
+    pub fn allow_user_agent(&mut self, regex: impl Into<String>) -> &mut Self {
         self.options.common_opts.user_agent_filter.allow(regex);
         self
     }
     /// Add the provided regex to the denylist.
-    pub fn deny_ua(&mut self, regex: impl Into<String>) -> &mut Self {
+    pub fn deny_user_agent(&mut self, regex: impl Into<String>) -> &mut Self {
         self.options.common_opts.user_agent_filter.deny(regex);
         self
     }
