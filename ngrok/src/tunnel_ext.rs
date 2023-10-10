@@ -29,6 +29,11 @@ use hyper::{
 };
 use once_cell::sync::Lazy;
 use proxy_protocol::ProxyHeader;
+#[cfg(feature = "hyper")]
+use tokio::io::{
+    AsyncRead,
+    AsyncWrite,
+};
 #[cfg(target_os = "windows")]
 use tokio::net::windows::named_pipe::ClientOptions;
 #[cfg(not(target_os = "windows"))]
@@ -36,11 +41,7 @@ use tokio::net::UnixStream;
 #[cfg(target_os = "windows")]
 use tokio::time;
 use tokio::{
-    io::{
-        copy_bidirectional,
-        AsyncRead,
-        AsyncWrite,
-    },
+    io::copy_bidirectional,
     net::TcpStream,
     task::JoinHandle,
 };
@@ -48,8 +49,9 @@ use tokio_util::compat::{
     FuturesAsyncReadCompatExt,
     TokioAsyncReadCompatExt,
 };
+#[cfg(feature = "hyper")]
+use tracing::debug;
 use tracing::{
-    debug,
     field,
     warn,
     Instrument,
@@ -160,6 +162,7 @@ impl ConnExt for EndpointConn {
         tokio::spawn(async move {
             let proxy_proto = self.inner.info.proxy_proto;
             let proto_tls = self.proto() == "tls";
+            #[cfg(feature = "hyper")]
             let proto_http = matches!(self.proto(), "http" | "https");
             let passthrough_tls = self.inner.info.passthrough_tls();
 
@@ -223,6 +226,7 @@ fn tls_config() -> Result<Arc<ClientConfig>, &'static io::Error> {
 // Takes the tunnel and connection to make additional decisions on how to wrap
 // the forwarded connection, i.e. reordering tls termination and proxyproto.
 // Note: this additional wrapping logic currently unimplemented.
+#[allow(clippy::unused_io_amount)]
 async fn connect(
     tunnel_tls: bool,
     proxy_proto_header: Option<ProxyHeader>,
@@ -313,7 +317,7 @@ async fn connect(
         conn = Box::new(
             proxy_proto::Stream::outgoing(conn, header)
                 .expect("re-serializing proxy header should always succeed"),
-        )
+        );
     };
 
     if backend_tls && !tunnel_tls {
