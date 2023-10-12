@@ -284,9 +284,8 @@ where
                 if !remainder.is_empty() {
                     let available = std::cmp::min(remainder.len(), buf.remaining());
                     buf.put_slice(&remainder.split_to(available));
-                    if buf.remaining() == 0 {
-                        return Poll::Ready(Ok(()));
-                    }
+                    // Make sure Ready is returned regardless of inner's state
+                    return Poll::Ready(Ok(()));
                 }
             }
             ReadState::None => {}
