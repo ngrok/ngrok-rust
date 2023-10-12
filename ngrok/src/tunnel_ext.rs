@@ -226,7 +226,6 @@ fn tls_config() -> Result<Arc<ClientConfig>, &'static io::Error> {
 // Takes the tunnel and connection to make additional decisions on how to wrap
 // the forwarded connection, i.e. reordering tls termination and proxyproto.
 // Note: this additional wrapping logic currently unimplemented.
-#[allow(clippy::unused_io_amount)]
 async fn connect(
     tunnel_tls: bool,
     proxy_proto_header: Option<ProxyHeader>,
@@ -317,7 +316,7 @@ async fn connect(
         conn = Box::new(
             proxy_proto::Stream::outgoing(conn, header)
                 .expect("re-serializing proxy header should always succeed"),
-        );
+        )
     };
 
     if backend_tls && !tunnel_tls {
