@@ -146,7 +146,7 @@ Changes to `ngrok-rust` are tracked under [CHANGELOG.md](https://github.com/ngro
 # Join the ngrok Community
 
 - Check out [our official docs](https://docs.ngrok.com)
-- Read about updates on [our blog](https://blog.ngrok.com)
+- Read about updates on [our blog](https://ngrok.com/blog)
 - Open an [issue](https://github.com/ngrok/ngrok-rust/issues) or [pull request](https://github.com/ngrok/ngrok-rust/pulls)
 - Join our [Slack community](https://ngrok.com/slack)
 - Follow us on [X / Twitter (@ngrokHQ)](https://twitter.com/ngrokhq)
