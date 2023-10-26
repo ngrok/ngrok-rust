@@ -38,6 +38,7 @@ use crate::{
         CircuitBreaker,
         Compression,
         HttpEndpoint,
+        UserAgentFilter,
         WebsocketTcpConverter,
     },
     tunnel::HttpTunnel,
@@ -73,6 +74,34 @@ impl FromStr for Scheme {
     }
 }
 
+/// Restrictions placed on the origin of incoming connections to the edge.
+#[derive(Clone, Default)]
+pub(crate) struct UaFilter {
+    /// Rejects connections that do not match the given regular expression
+    pub(crate) allow: Vec<String>,
+    /// Rejects connections that match the given regular expression and allows
+    /// all other regular expressions.
+    pub(crate) deny: Vec<String>,
+}
+
+impl UaFilter {
+    pub(crate) fn allow(&mut self, allow: impl Into<String>) {
+        self.allow.push(allow.into());
+    }
+    pub(crate) fn deny(&mut self, deny: impl Into<String>) {
+        self.deny.push(deny.into());
+    }
+}
+
+impl From<UaFilter> for UserAgentFilter {
+    fn from(ua: UaFilter) -> Self {
+        UserAgentFilter {
+            allow: ua.allow,
+            deny: ua.deny,
+        }
+    }
+}
+
 /// The options for a HTTP edge.
 #[derive(Default, Clone)]
 struct HttpOptions {
@@ -90,6 +119,15 @@ struct HttpOptions {
     pub(crate) oauth: Option<OauthOptions>,
     pub(crate) oidc: Option<OidcOptions>,
     pub(crate) webhook_verification: Option<WebhookVerification>,
+    // Flitering placed on the origin of incoming connections to the edge.
+    pub(crate) user_agent_filter: UaFilter,
+}
+
+impl HttpOptions {
+    fn user_agent_filter(&self) -> Option<UserAgentFilter> {
+        (!self.user_agent_filter.allow.is_empty() || !self.user_agent_filter.deny.is_empty())
+            .then_some(self.user_agent_filter.clone().into())
+    }
 }
 
 impl TunnelConfig for HttpOptions {
@@ -138,7 +176,7 @@ impl TunnelConfig for HttpOptions {
             websocket_tcp_converter: self
                 .websocket_tcp_conversion
                 .then_some(WebsocketTcpConverter {}),
-            user_agent_filter: self.common_opts.user_agent_filter(),
+            user_agent_filter: self.user_agent_filter(),
             ..Default::default()
         };
 
@@ -320,12 +358,12 @@ impl HttpTunnelBuilder {
 
     /// Add the provided regex to the allowlist.
     pub fn allow_user_agent(&mut self, regex: impl Into<String>) -> &mut Self {
-        self.options.common_opts.user_agent_filter.allow(regex);
+        self.options.user_agent_filter.allow(regex);
         self
     }
     /// Add the provided regex to the denylist.
     pub fn deny_user_agent(&mut self, regex: impl Into<String>) -> &mut Self {
-        self.options.common_opts.user_agent_filter.deny(regex);
+        self.options.user_agent_filter.deny(regex);
         self
     }
 
