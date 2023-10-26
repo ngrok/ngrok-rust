@@ -68,17 +68,23 @@ impl TunnelConfig for TcpOptions {
 
 impl_builder! {
     /// A builder for a tunnel backing a TCP endpoint.
+    ///
+    /// https://ngrok.com/docs/tcp/
     TcpTunnelBuilder, TcpOptions, TcpTunnel, endpoint
 }
 
 /// The options for a TCP edge.
 impl TcpTunnelBuilder {
     /// Add the provided CIDR to the allowlist.
+    ///
+    /// https://ngrok.com/docs/tcp/ip-restrictions/
     pub fn allow_cidr(&mut self, cidr: impl Into<String>) -> &mut Self {
         self.options.common_opts.cidr_restrictions.allow(cidr);
         self
     }
     /// Add the provided CIDR to the denylist.
+    ///
+    /// https://ngrok.com/docs/tcp/ip-restrictions/
     pub fn deny_cidr(&mut self, cidr: impl Into<String>) -> &mut Self {
         self.options.common_opts.cidr_restrictions.deny(cidr);
         self
@@ -89,6 +95,8 @@ impl TcpTunnelBuilder {
         self
     }
     /// Sets the opaque metadata string for this tunnel.
+    ///
+    /// https://ngrok.com/docs/api/resources/tunnels/#tunnel-fields
     pub fn metadata(&mut self, metadata: impl Into<String>) -> &mut Self {
         self.options.common_opts.metadata = Some(metadata.into());
         self
@@ -99,11 +107,15 @@ impl TcpTunnelBuilder {
     /// This overrides the default process info if using
     /// [TunnelBuilder::listen], and is in turn overridden by the url provided
     /// to [ForwarderBuilder::listen_and_forward].
+    ///
+    /// https://ngrok.com/docs/api/resources/tunnels/#tunnel-fields
     pub fn forwards_to(&mut self, forwards_to: impl Into<String>) -> &mut Self {
         self.options.common_opts.forwards_to = Some(forwards_to.into());
         self
     }
     /// Sets the TCP address to request for this edge.
+    ///
+    /// https://ngrok.com/docs/network-edge/domains-and-tcp-addresses/#tcp-addresses
     pub fn remote_addr(&mut self, remote_addr: impl Into<String>) -> &mut Self {
         self.options.remote_addr = Some(remote_addr.into());
         self

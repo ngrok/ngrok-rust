@@ -4,6 +4,8 @@ use crate::internals::proto::{
 };
 
 /// Oidc Options configuration
+///
+/// https://ngrok.com/docs/http/openid-connect/
 #[derive(Clone, Default)]
 pub struct OidcOptions {
     issuer_url: String,

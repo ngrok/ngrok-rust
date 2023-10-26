@@ -62,12 +62,16 @@ impl_builder! {
 impl LabeledTunnelBuilder {
     /// Sets the opaque metadata string for this tunnel.
     /// Viewable via the API.
+    ///
+    /// https://ngrok.com/docs/api/resources/tunnels/#tunnel-fields
     pub fn metadata(&mut self, metadata: impl Into<String>) -> &mut Self {
         self.options.common_opts.metadata = Some(metadata.into());
         self
     }
 
     /// Add a label, value pair for this tunnel.
+    ///
+    /// https://ngrok.com/docs/network-edge/edges/#tunnel-group
     pub fn label(&mut self, label: impl Into<String>, value: impl Into<String>) -> &mut Self {
         self.options.labels.insert(label.into(), value.into());
         self
@@ -79,6 +83,8 @@ impl LabeledTunnelBuilder {
     /// This overrides the default process info if using
     /// [TunnelBuilder::listen], and is in turn overridden by the url provided
     /// to [ForwarderBuilder::listen_and_forward].
+    ///
+    /// https://ngrok.com/docs/api/resources/tunnels/#tunnel-fields
     pub fn forwards_to(&mut self, forwards_to: impl Into<String>) -> &mut Self {
         self.options.common_opts.forwards_to = forwards_to.into().into();
         self

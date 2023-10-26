@@ -209,16 +209,22 @@ impl From<(String, String)> for BasicAuthCredential {
 
 impl_builder! {
     /// A builder for a tunnel backing an HTTP endpoint.
+    ///
+    /// https://ngrok.com/docs/http/
     HttpTunnelBuilder, HttpOptions, HttpTunnel, endpoint
 }
 
 impl HttpTunnelBuilder {
     /// Add the provided CIDR to the allowlist.
+    ///
+    /// https://ngrok.com/docs/http/ip-restrictions/
     pub fn allow_cidr(&mut self, cidr: impl Into<String>) -> &mut Self {
         self.options.common_opts.cidr_restrictions.allow(cidr);
         self
     }
     /// Add the provided CIDR to the denylist.
+    ///
+    /// https://ngrok.com/docs/http/ip-restrictions/
     pub fn deny_cidr(&mut self, cidr: impl Into<String>) -> &mut Self {
         self.options.common_opts.cidr_restrictions.deny(cidr);
         self
@@ -229,6 +235,8 @@ impl HttpTunnelBuilder {
         self
     }
     /// Sets the opaque metadata string for this tunnel.
+    ///
+    /// https://ngrok.com/docs/api/resources/tunnels/#tunnel-fields
     pub fn metadata(&mut self, metadata: impl Into<String>) -> &mut Self {
         self.options.common_opts.metadata = Some(metadata.into());
         self
@@ -239,6 +247,8 @@ impl HttpTunnelBuilder {
     /// This overrides the default process info if using
     /// [TunnelBuilder::listen], and is in turn overridden by the url provided
     /// to [ForwarderBuilder::listen_and_forward].
+    ///
+    /// https://ngrok.com/docs/api/resources/tunnels/#tunnel-fields
     pub fn forwards_to(&mut self, forwards_to: impl Into<String>) -> &mut Self {
         self.options.common_opts.forwards_to = Some(forwards_to.into());
         self
@@ -249,6 +259,8 @@ impl HttpTunnelBuilder {
         self
     }
     /// Sets the domain to request for this edge.
+    ///
+    /// https://ngrok.com/docs/network-edge/domains-and-tcp-addresses/#domains
     pub fn domain(&mut self, domain: impl Into<String>) -> &mut Self {
         self.options.domain = Some(domain.into());
         self
@@ -257,22 +269,30 @@ impl HttpTunnelBuilder {
     ///
     /// These will be used to authenticate client certificates for requests at
     /// the ngrok edge.
+    ///
+    /// https://ngrok.com/docs/http/mutual-tls/
     pub fn mutual_tlsca(&mut self, mutual_tlsca: Bytes) -> &mut Self {
         self.options.mutual_tlsca.push(mutual_tlsca);
         self
     }
     /// Enables gzip compression.
+    ///
+    /// https://ngrok.com/docs/http/compression/
     pub fn compression(&mut self) -> &mut Self {
         self.options.compression = true;
         self
     }
     /// Enables the websocket-to-tcp converter.
+    ///
+    /// https://ngrok.com/docs/http/websocket-tcp-converter/
     pub fn websocket_tcp_conversion(&mut self) -> &mut Self {
         self.options.websocket_tcp_conversion = true;
         self
     }
     /// Sets the 5XX response ratio at which the ngrok edge will stop sending
     /// requests to this tunnel.
+    ///
+    /// https://ngrok.com/docs/http/circuit-breaker/
     pub fn circuit_breaker(&mut self, circuit_breaker: f64) -> &mut Self {
         self.options.circuit_breaker = circuit_breaker;
         self
@@ -290,6 +310,8 @@ impl HttpTunnelBuilder {
     }
 
     /// Adds a header to all requests to this edge.
+    ///
+    /// https://ngrok.com/docs/http/request-headers/
     pub fn request_header(
         &mut self,
         name: impl Into<String>,
@@ -299,6 +321,8 @@ impl HttpTunnelBuilder {
         self
     }
     /// Adds a header to all responses coming from this edge.
+    ///
+    /// https://ngrok.com/docs/http/response-headers/
     pub fn response_header(
         &mut self,
         name: impl Into<String>,
@@ -308,11 +332,15 @@ impl HttpTunnelBuilder {
         self
     }
     /// Removes a header from requests to this edge.
+    ///
+    /// https://ngrok.com/docs/http/request-headers/
     pub fn remove_request_header(&mut self, name: impl Into<String>) -> &mut Self {
         self.options.request_headers.remove(name);
         self
     }
     /// Removes a header from responses from this edge.
+    ///
+    /// https://ngrok.com/docs/http/response-headers/
     pub fn remove_response_header(&mut self, name: impl Into<String>) -> &mut Self {
         self.options.response_headers.remove(name);
         self
@@ -320,6 +348,8 @@ impl HttpTunnelBuilder {
 
     /// Adds the provided credentials to the list of basic authentication
     /// credentials.
+    ///
+    /// https://ngrok.com/docs/http/basic-auth/
     pub fn basic_auth(
         &mut self,
         username: impl Into<String>,
@@ -332,18 +362,24 @@ impl HttpTunnelBuilder {
     }
 
     /// Set the OAuth configuraton for this edge.
+    ///
+    /// https://ngrok.com/docs/http/oauth/
     pub fn oauth(&mut self, oauth: impl Borrow<OauthOptions>) -> &mut Self {
         self.options.oauth = Some(oauth.borrow().to_owned());
         self
     }
 
     /// Set the OIDC configuration for this edge.
+    ///
+    /// https://ngrok.com/docs/http/openid-connect/
     pub fn oidc(&mut self, oidc: impl Borrow<OidcOptions>) -> &mut Self {
         self.options.oidc = Some(oidc.borrow().to_owned());
         self
     }
 
     /// Configures webhook verification for this edge.
+    ///
+    /// https://ngrok.com/docs/http/webhook-verification/
     pub fn webhook_verification(
         &mut self,
         provider: impl Into<String>,
@@ -357,11 +393,15 @@ impl HttpTunnelBuilder {
     }
 
     /// Add the provided regex to the allowlist.
+    ///
+    /// https://ngrok.com/docs/http/user-agent-filter/
     pub fn allow_user_agent(&mut self, regex: impl Into<String>) -> &mut Self {
         self.options.user_agent_filter.allow(regex);
         self
     }
     /// Add the provided regex to the denylist.
+    ///
+    /// https://ngrok.com/docs/http/user-agent-filter/
     pub fn deny_user_agent(&mut self, regex: impl Into<String>) -> &mut Self {
         self.options.user_agent_filter.deny(regex);
         self
