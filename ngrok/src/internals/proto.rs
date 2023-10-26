@@ -9,6 +9,7 @@ use std::{
     },
     str::FromStr,
     string::FromUtf8Error,
+    sync::Arc,
 };
 
 use muxado::typed::StreamType;
@@ -51,6 +52,42 @@ pub trait Error: error::Error {
     /// `format!("{error}")`.
     fn msg(&self) -> String {
         format!("{self}")
+    }
+}
+
+impl<E> Error for Box<E>
+where
+    E: Error,
+{
+    fn error_code(&self) -> Option<&str> {
+        <E as Error>::error_code(self)
+    }
+    fn msg(&self) -> String {
+        <E as Error>::msg(self)
+    }
+}
+
+impl<E> Error for Arc<E>
+where
+    E: Error,
+{
+    fn error_code(&self) -> Option<&str> {
+        <E as Error>::error_code(self)
+    }
+    fn msg(&self) -> String {
+        <E as Error>::msg(self)
+    }
+}
+
+impl<'a, E> Error for &'a E
+where
+    E: Error,
+{
+    fn error_code(&self) -> Option<&str> {
+        <E as Error>::error_code(self)
+    }
+    fn msg(&self) -> String {
+        <E as Error>::msg(self)
     }
 }
 
