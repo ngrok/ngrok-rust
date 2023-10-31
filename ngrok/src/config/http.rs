@@ -85,6 +85,7 @@ struct HttpOptions {
     pub(crate) circuit_breaker: f64,
     pub(crate) request_headers: Headers,
     pub(crate) response_headers: Headers,
+    pub(crate) rewrite_host: bool,
     pub(crate) basic_auth: Vec<(String, String)>,
     pub(crate) oauth: Option<OauthOptions>,
     pub(crate) oidc: Option<OidcOptions>,
@@ -239,6 +240,17 @@ impl HttpTunnelBuilder {
         self
     }
 
+    /// Automatically rewrite the host header to the one in the provided URL
+    /// when calling [ForwarderBuilder::listen_and_forward]. Does nothing if
+    /// using [TunnelBuilder::listen]. Defaults to `false`.
+    ///
+    /// If you need to set the host header to a specific value, use
+    /// `cfg.request_header("host", "some.host.com")` instead.
+    pub fn host_header_rewrite(&mut self, rewrite: bool) -> &mut Self {
+        self.options.rewrite_host = rewrite;
+        self
+    }
+
     /// Adds a header to all requests to this edge.
     pub fn request_header(
         &mut self,
@@ -319,6 +331,9 @@ impl HttpTunnelBuilder {
 
     pub(crate) async fn for_forwarding_to(&mut self, to_url: &Url) -> &mut Self {
         self.options.common_opts.for_forwarding_to(to_url);
+        if let Some(host) = to_url.host_str().filter(|_| self.options.rewrite_host) {
+            self.request_header("host", host);
+        }
         self
     }
 }
