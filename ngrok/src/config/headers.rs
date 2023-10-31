@@ -13,10 +13,10 @@ pub(crate) struct Headers {
 
 impl Headers {
     pub(crate) fn add(&mut self, name: impl Into<String>, value: impl Into<String>) {
-        self.added.insert(name.into(), value.into());
+        self.added.insert(name.into().to_lowercase(), value.into());
     }
     pub(crate) fn remove(&mut self, name: impl Into<String>) {
-        self.removed.push(name.into());
+        self.removed.push(name.into().to_lowercase());
     }
     pub(crate) fn has_entries(&self) -> bool {
         !self.added.is_empty() || !self.removed.is_empty()
