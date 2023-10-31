@@ -9,6 +9,7 @@ use bytes::{
     Bytes,
 };
 use thiserror::Error;
+use url::Url;
 
 use super::common::ProxyProto;
 // These are used for doc comment links.
@@ -313,6 +314,11 @@ impl HttpTunnelBuilder {
     /// Add the provided regex to the denylist.
     pub fn deny_user_agent(&mut self, regex: impl Into<String>) -> &mut Self {
         self.options.common_opts.user_agent_filter.deny(regex);
+        self
+    }
+
+    pub(crate) async fn for_forwarding_to(&mut self, to_url: &Url) -> &mut Self {
+        self.options.common_opts.for_forwarding_to(to_url);
         self
     }
 }

@@ -112,8 +112,7 @@ macro_rules! impl_builder {
             impl ForwarderBuilder for $name {
                 async fn listen_and_forward(&self, to_url: Url) -> Result<Forwarder<$tun>, RpcError> {
                     let mut cfg = self.clone();
-                    let url_str: &str = to_url.as_ref();
-                    cfg.forwards_to(url_str);
+                    cfg.for_forwarding_to(&to_url).await;
                     let tunnel = cfg.listen().await?;
                     let info = tunnel.make_info();
                     $crate::forwarder::forward(tunnel, info, to_url)
@@ -223,6 +222,11 @@ impl CommonOpts {
     pub(crate) fn user_agent_filter(&self) -> Option<UserAgentFilter> {
         (!self.user_agent_filter.allow.is_empty() || !self.user_agent_filter.deny.is_empty())
             .then_some(self.user_agent_filter.clone().into())
+    }
+
+    pub(crate) fn for_forwarding_to(&mut self, to_url: &Url) -> &mut Self {
+        self.forwards_to = Some(to_url.as_str().into());
+        self
     }
 }
 
