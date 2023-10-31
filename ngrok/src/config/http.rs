@@ -433,12 +433,12 @@ mod test {
             assert_eq!(0.5f64, endpoint.circuit_breaker.unwrap().error_threshold);
 
             let request_headers = endpoint.request_headers.unwrap();
-            assert_eq!(["X-Req-Yup:true"].to_vec(), request_headers.add);
-            assert_eq!(["X-Req-Nope"].to_vec(), request_headers.remove);
+            assert_eq!(["x-req-yup:true"].to_vec(), request_headers.add);
+            assert_eq!(["x-req-nope"].to_vec(), request_headers.remove);
 
             let response_headers = endpoint.response_headers.unwrap();
-            assert_eq!(["X-Res-Yup:true"].to_vec(), response_headers.add);
-            assert_eq!(["X-Res-Nope"].to_vec(), response_headers.remove);
+            assert_eq!(["x-res-yup:true"].to_vec(), response_headers.add);
+            assert_eq!(["x-res-nope"].to_vec(), response_headers.remove);
 
             let webhook = endpoint.webhook_verification.unwrap();
             assert_eq!("twilio", webhook.provider);
