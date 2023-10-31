@@ -1,5 +1,11 @@
 use std::collections::HashMap;
 
+// These are used for doc comment links.
+#[allow(unused_imports)]
+use crate::config::{
+    ForwarderBuilder,
+    TunnelBuilder,
+};
 use crate::{
     config::common::{
         default_forwards_to,
@@ -67,6 +73,10 @@ impl LabeledTunnelBuilder {
 
     /// Sets the ForwardsTo string for this tunnel. This can be viewed via the
     /// API or dashboard.
+    ///
+    /// This overrides the default process info if using
+    /// [TunnelBuilder::listen], and is in turn overridden by the url provided
+    /// to [ForwarderBuilder::listen_and_forward].
     pub fn forwards_to(&mut self, forwards_to: impl Into<String>) -> &mut Self {
         self.options.common_opts.forwards_to = forwards_to.into().into();
         self

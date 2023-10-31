@@ -58,6 +58,8 @@ pub trait TunnelBuilder: From<Session> {
 pub trait ForwarderBuilder: TunnelBuilder {
     /// Start listening for new connections on this tunnel and forward all
     /// connections to the provided URL.
+    ///
+    /// This will also set the `forwards_to` metadata for the tunnel.
     async fn listen_and_forward(&self, to_url: Url) -> Result<Forwarder<Self::Tunnel>, RpcError>;
 }
 
