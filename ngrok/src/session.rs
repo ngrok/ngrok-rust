@@ -822,21 +822,29 @@ impl Session {
     }
 
     /// Start building a tunnel for an HTTP endpoint.
+    ///
+    /// https://ngrok.com/docs/http/
     pub fn http_endpoint(&self) -> HttpTunnelBuilder {
         self.clone().into()
     }
 
     /// Start building a tunnel for a TCP endpoint.
+    ///
+    /// https://ngrok.com/docs/tcp/
     pub fn tcp_endpoint(&self) -> TcpTunnelBuilder {
         self.clone().into()
     }
 
     /// Start building a tunnel for a TLS endpoint.
+    ///
+    /// https://ngrok.com/docs/tls/
     pub fn tls_endpoint(&self) -> TlsTunnelBuilder {
         self.clone().into()
     }
 
     /// Start building a labeled tunnel.
+    ///
+    /// https://ngrok.com/docs/network-edge/edges/#tunnel-group
     pub fn labeled_tunnel(&self) -> LabeledTunnelBuilder {
         self.clone().into()
     }

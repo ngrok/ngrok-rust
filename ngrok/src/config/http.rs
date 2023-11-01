@@ -38,6 +38,7 @@ use crate::{
         CircuitBreaker,
         Compression,
         HttpEndpoint,
+        UserAgentFilter,
         WebsocketTcpConverter,
     },
     tunnel::HttpTunnel,
@@ -73,6 +74,34 @@ impl FromStr for Scheme {
     }
 }
 
+/// Restrictions placed on the origin of incoming connections to the edge.
+#[derive(Clone, Default)]
+pub(crate) struct UaFilter {
+    /// Rejects connections that do not match the given regular expression
+    pub(crate) allow: Vec<String>,
+    /// Rejects connections that match the given regular expression and allows
+    /// all other regular expressions.
+    pub(crate) deny: Vec<String>,
+}
+
+impl UaFilter {
+    pub(crate) fn allow(&mut self, allow: impl Into<String>) {
+        self.allow.push(allow.into());
+    }
+    pub(crate) fn deny(&mut self, deny: impl Into<String>) {
+        self.deny.push(deny.into());
+    }
+}
+
+impl From<UaFilter> for UserAgentFilter {
+    fn from(ua: UaFilter) -> Self {
+        UserAgentFilter {
+            allow: ua.allow,
+            deny: ua.deny,
+        }
+    }
+}
+
 /// The options for a HTTP edge.
 #[derive(Default, Clone)]
 struct HttpOptions {
@@ -90,6 +119,15 @@ struct HttpOptions {
     pub(crate) oauth: Option<OauthOptions>,
     pub(crate) oidc: Option<OidcOptions>,
     pub(crate) webhook_verification: Option<WebhookVerification>,
+    // Flitering placed on the origin of incoming connections to the edge.
+    pub(crate) user_agent_filter: UaFilter,
+}
+
+impl HttpOptions {
+    fn user_agent_filter(&self) -> Option<UserAgentFilter> {
+        (!self.user_agent_filter.allow.is_empty() || !self.user_agent_filter.deny.is_empty())
+            .then_some(self.user_agent_filter.clone().into())
+    }
 }
 
 impl TunnelConfig for HttpOptions {
@@ -138,7 +176,7 @@ impl TunnelConfig for HttpOptions {
             websocket_tcp_converter: self
                 .websocket_tcp_conversion
                 .then_some(WebsocketTcpConverter {}),
-            user_agent_filter: self.common_opts.user_agent_filter(),
+            user_agent_filter: self.user_agent_filter(),
             ..Default::default()
         };
 
@@ -171,16 +209,22 @@ impl From<(String, String)> for BasicAuthCredential {
 
 impl_builder! {
     /// A builder for a tunnel backing an HTTP endpoint.
+    ///
+    /// https://ngrok.com/docs/http/
     HttpTunnelBuilder, HttpOptions, HttpTunnel, endpoint
 }
 
 impl HttpTunnelBuilder {
     /// Add the provided CIDR to the allowlist.
+    ///
+    /// https://ngrok.com/docs/http/ip-restrictions/
     pub fn allow_cidr(&mut self, cidr: impl Into<String>) -> &mut Self {
         self.options.common_opts.cidr_restrictions.allow(cidr);
         self
     }
     /// Add the provided CIDR to the denylist.
+    ///
+    /// https://ngrok.com/docs/http/ip-restrictions/
     pub fn deny_cidr(&mut self, cidr: impl Into<String>) -> &mut Self {
         self.options.common_opts.cidr_restrictions.deny(cidr);
         self
@@ -191,6 +235,8 @@ impl HttpTunnelBuilder {
         self
     }
     /// Sets the opaque metadata string for this tunnel.
+    ///
+    /// https://ngrok.com/docs/api/resources/tunnels/#tunnel-fields
     pub fn metadata(&mut self, metadata: impl Into<String>) -> &mut Self {
         self.options.common_opts.metadata = Some(metadata.into());
         self
@@ -201,6 +247,8 @@ impl HttpTunnelBuilder {
     /// This overrides the default process info if using
     /// [TunnelBuilder::listen], and is in turn overridden by the url provided
     /// to [ForwarderBuilder::listen_and_forward].
+    ///
+    /// https://ngrok.com/docs/api/resources/tunnels/#tunnel-fields
     pub fn forwards_to(&mut self, forwards_to: impl Into<String>) -> &mut Self {
         self.options.common_opts.forwards_to = Some(forwards_to.into());
         self
@@ -211,6 +259,8 @@ impl HttpTunnelBuilder {
         self
     }
     /// Sets the domain to request for this edge.
+    ///
+    /// https://ngrok.com/docs/network-edge/domains-and-tcp-addresses/#domains
     pub fn domain(&mut self, domain: impl Into<String>) -> &mut Self {
         self.options.domain = Some(domain.into());
         self
@@ -219,22 +269,30 @@ impl HttpTunnelBuilder {
     ///
     /// These will be used to authenticate client certificates for requests at
     /// the ngrok edge.
+    ///
+    /// https://ngrok.com/docs/http/mutual-tls/
     pub fn mutual_tlsca(&mut self, mutual_tlsca: Bytes) -> &mut Self {
         self.options.mutual_tlsca.push(mutual_tlsca);
         self
     }
     /// Enables gzip compression.
+    ///
+    /// https://ngrok.com/docs/http/compression/
     pub fn compression(&mut self) -> &mut Self {
         self.options.compression = true;
         self
     }
     /// Enables the websocket-to-tcp converter.
+    ///
+    /// https://ngrok.com/docs/http/websocket-tcp-converter/
     pub fn websocket_tcp_conversion(&mut self) -> &mut Self {
         self.options.websocket_tcp_conversion = true;
         self
     }
     /// Sets the 5XX response ratio at which the ngrok edge will stop sending
     /// requests to this tunnel.
+    ///
+    /// https://ngrok.com/docs/http/circuit-breaker/
     pub fn circuit_breaker(&mut self, circuit_breaker: f64) -> &mut Self {
         self.options.circuit_breaker = circuit_breaker;
         self
@@ -252,6 +310,8 @@ impl HttpTunnelBuilder {
     }
 
     /// Adds a header to all requests to this edge.
+    ///
+    /// https://ngrok.com/docs/http/request-headers/
     pub fn request_header(
         &mut self,
         name: impl Into<String>,
@@ -261,6 +321,8 @@ impl HttpTunnelBuilder {
         self
     }
     /// Adds a header to all responses coming from this edge.
+    ///
+    /// https://ngrok.com/docs/http/response-headers/
     pub fn response_header(
         &mut self,
         name: impl Into<String>,
@@ -270,11 +332,15 @@ impl HttpTunnelBuilder {
         self
     }
     /// Removes a header from requests to this edge.
+    ///
+    /// https://ngrok.com/docs/http/request-headers/
     pub fn remove_request_header(&mut self, name: impl Into<String>) -> &mut Self {
         self.options.request_headers.remove(name);
         self
     }
     /// Removes a header from responses from this edge.
+    ///
+    /// https://ngrok.com/docs/http/response-headers/
     pub fn remove_response_header(&mut self, name: impl Into<String>) -> &mut Self {
         self.options.response_headers.remove(name);
         self
@@ -282,6 +348,8 @@ impl HttpTunnelBuilder {
 
     /// Adds the provided credentials to the list of basic authentication
     /// credentials.
+    ///
+    /// https://ngrok.com/docs/http/basic-auth/
     pub fn basic_auth(
         &mut self,
         username: impl Into<String>,
@@ -294,18 +362,24 @@ impl HttpTunnelBuilder {
     }
 
     /// Set the OAuth configuraton for this edge.
+    ///
+    /// https://ngrok.com/docs/http/oauth/
     pub fn oauth(&mut self, oauth: impl Borrow<OauthOptions>) -> &mut Self {
         self.options.oauth = Some(oauth.borrow().to_owned());
         self
     }
 
     /// Set the OIDC configuration for this edge.
+    ///
+    /// https://ngrok.com/docs/http/openid-connect/
     pub fn oidc(&mut self, oidc: impl Borrow<OidcOptions>) -> &mut Self {
         self.options.oidc = Some(oidc.borrow().to_owned());
         self
     }
 
     /// Configures webhook verification for this edge.
+    ///
+    /// https://ngrok.com/docs/http/webhook-verification/
     pub fn webhook_verification(
         &mut self,
         provider: impl Into<String>,
@@ -319,13 +393,17 @@ impl HttpTunnelBuilder {
     }
 
     /// Add the provided regex to the allowlist.
+    ///
+    /// https://ngrok.com/docs/http/user-agent-filter/
     pub fn allow_user_agent(&mut self, regex: impl Into<String>) -> &mut Self {
-        self.options.common_opts.user_agent_filter.allow(regex);
+        self.options.user_agent_filter.allow(regex);
         self
     }
     /// Add the provided regex to the denylist.
+    ///
+    /// https://ngrok.com/docs/http/user-agent-filter/
     pub fn deny_user_agent(&mut self, regex: impl Into<String>) -> &mut Self {
-        self.options.common_opts.user_agent_filter.deny(regex);
+        self.options.user_agent_filter.deny(regex);
         self
     }
 

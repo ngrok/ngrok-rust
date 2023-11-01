@@ -4,6 +4,8 @@ use crate::internals::proto::{
 };
 
 /// Oauth Options configuration
+///
+/// https://ngrok.com/docs/http/oauth/
 #[derive(Clone, Default)]
 pub struct OauthOptions {
     /// The OAuth provider to use
