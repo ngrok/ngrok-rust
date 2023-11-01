@@ -4,6 +4,7 @@ use bytes::{
     self,
     Bytes,
 };
+use url::Url;
 
 use super::common::ProxyProto;
 // These are used for doc comment links.
@@ -144,6 +145,11 @@ impl TlsTunnelBuilder {
     pub fn termination(&mut self, cert_pem: Bytes, key_pem: Bytes) -> &mut Self {
         self.options.key_pem = Some(key_pem);
         self.options.cert_pem = Some(cert_pem);
+        self
+    }
+
+    pub(crate) async fn for_forwarding_to(&mut self, to_url: &Url) -> &mut Self {
+        self.options.common_opts.for_forwarding_to(to_url);
         self
     }
 }

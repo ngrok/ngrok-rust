@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use url::Url;
+
 use super::common::ProxyProto;
 // These are used for doc comment links.
 #[allow(unused_imports)]
@@ -104,6 +106,11 @@ impl TcpTunnelBuilder {
     /// Sets the TCP address to request for this edge.
     pub fn remote_addr(&mut self, remote_addr: impl Into<String>) -> &mut Self {
         self.options.remote_addr = Some(remote_addr.into());
+        self
+    }
+
+    pub(crate) async fn for_forwarding_to(&mut self, to_url: &Url) -> &mut Self {
+        self.options.common_opts.for_forwarding_to(to_url);
         self
     }
 }

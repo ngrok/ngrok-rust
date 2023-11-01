@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use url::Url;
+
 // These are used for doc comment links.
 #[allow(unused_imports)]
 use crate::config::{
@@ -79,6 +81,11 @@ impl LabeledTunnelBuilder {
     /// to [ForwarderBuilder::listen_and_forward].
     pub fn forwards_to(&mut self, forwards_to: impl Into<String>) -> &mut Self {
         self.options.common_opts.forwards_to = forwards_to.into().into();
+        self
+    }
+
+    pub(crate) async fn for_forwarding_to(&mut self, to_url: &Url) -> &mut Self {
+        self.options.common_opts.for_forwarding_to(to_url);
         self
     }
 }
