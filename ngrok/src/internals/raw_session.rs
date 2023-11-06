@@ -65,16 +65,22 @@ use super::{
         StartTunnelWithLabel,
         StartTunnelWithLabelResp,
         Stop,
+        StopTunnel,
         Unbind,
         UnbindResp,
         Update,
         PROXY_REQ,
         RESTART_REQ,
         STOP_REQ,
+        STOP_TUNNEL_REQ,
         UPDATE_REQ,
         VERSION,
     },
     rpc::RpcRequest,
+};
+use crate::{
+    tunnel::AcceptError::TunnelClosed,
+    Session,
 };
 
 /// Errors arising from tunneling protocol RPC calls.
@@ -145,6 +151,7 @@ pub struct RpcClient {
 pub struct IncomingStreams {
     runtime: Handle,
     handlers: CommandHandlers,
+    pub(crate) session: Option<Session>,
     accept: Box<dyn TypedAccept + Send>,
 }
 
@@ -220,6 +227,7 @@ impl RawSession {
             incoming: IncomingStreams {
                 runtime,
                 handlers,
+                session: None,
                 accept: Box::new(accept),
             },
         };
@@ -298,7 +306,7 @@ impl RpcClient {
         let req = Auth {
             client_id: id.clone(),
             extra,
-            version: vec![VERSION.into()],
+            version: VERSION.iter().map(|&x| x.into()).collect(),
         };
 
         let resp = self.rpc(req).await?;
@@ -380,6 +388,26 @@ impl RpcClient {
 
 pub const NOT_IMPLEMENTED: &str = "the agent has not defined a callback for this operation";
 
+async fn read_req<T>(stream: &mut TypedStream) -> Result<T, Either<io::Error, serde_json::Error>>
+where
+    T: DeserializeOwned + Debug + 'static,
+{
+    debug!("reading request from stream");
+    let mut buf = vec![];
+    let req = serde_json::from_value(loop {
+        let mut tmp = vec![0u8; 256];
+        let bytes = stream.read(&mut tmp).await.map_err(Either::Left)?;
+        buf.extend_from_slice(&tmp[..bytes]);
+
+        if let Ok(obj) = serde_json::from_slice::<serde_json::Value>(&buf) {
+            break obj;
+        }
+    })
+    .map_err(Either::Right)?;
+    debug!(?req, "read request from stream");
+    Ok(req)
+}
+
 async fn handle_req<T>(
     handler: Option<Arc<dyn CommandHandler<T>>>,
     mut stream: TypedStream,
@@ -388,20 +416,7 @@ where
     T: DeserializeOwned + Debug + 'static,
 {
     let res = async {
-        debug!("reading request from stream");
-        let mut buf = vec![];
-        let req = serde_json::from_value(loop {
-            let mut tmp = vec![0u8; 256];
-            let bytes = stream.read(&mut tmp).await.map_err(Either::Left)?;
-            buf.extend_from_slice(&tmp[..bytes]);
-
-            if let Ok(obj) = serde_json::from_slice::<serde_json::Value>(&buf) {
-                break obj;
-            }
-        })
-        .map_err(Either::Right)?;
-        debug!(?req, "read request from stream");
-
+        let req = read_req(&mut stream).await?;
         let resp = if let Some(handler) = handler {
             debug!("running command handler");
             handler.handle_command(req).await.err()
@@ -446,6 +461,24 @@ impl IncomingStreams {
                 STOP_REQ => {
                     self.runtime
                         .spawn(handle_req(self.handlers.on_stop.clone(), stream));
+                }
+                STOP_TUNNEL_REQ => {
+                    // close the tunnel through the session
+                    if let Some(session) = &self.session {
+                        let req =
+                            read_req::<StopTunnel>(&mut stream)
+                                .await
+                                .map_err(|e| match e {
+                                    Either::Left(err) => ReadHeaderError::from(err),
+                                    Either::Right(err) => ReadHeaderError::from(err),
+                                })?;
+                        session
+                            .close_tunnel_with_error(
+                                req.client_id,
+                                TunnelClosed(req.message.clone(), req.error_code.clone()),
+                            )
+                            .await;
+                    }
                 }
                 PROXY_REQ => {
                     let header = ProxyHeader::read_from_stream(&mut *stream).await?;

@@ -74,6 +74,7 @@ pub use crate::internals::{
         CommandResp,
         Restart,
         Stop,
+        StopTunnel,
         Update,
     },
     raw_session::{
@@ -657,21 +658,26 @@ impl SessionBuilder {
     /// an error.
     pub async fn connect(&self) -> Result<Session, ConnectError> {
         let (dropref, dropped) = awaitdrop::awaitdrop();
-        let (inner, incoming) = self.connect_inner(None).await?;
+        let (inner, mut incoming) = self.connect_inner(None).await?;
 
         let rt = inner.runtime.clone();
 
         let inner = Arc::new(ArcSwap::new(inner.into()));
 
+        let session = Session {
+            _dropref: dropref,
+            inner: inner.clone(),
+        };
+
+        // store the session for use with StopTunnel
+        incoming.session = Some(session.clone());
+
         rt.spawn(future::select(
-            accept_incoming(incoming, inner.clone()).boxed(),
+            accept_incoming(incoming, inner).boxed(),
             dropped.wait(),
         ));
 
-        Ok(Session {
-            _dropref: dropref,
-            inner,
-        })
+        Ok(session)
     }
 
     pub(crate) fn get_or_create_tls_config(&self) -> rustls::ClientConfig {
@@ -942,6 +948,16 @@ impl Session {
         tunnels.insert(tunnel.info.id.clone(), bound);
 
         Ok(tunnel)
+    }
+
+    /// Close a tunnel with an error from the remote.
+    /// Skips the call to unlisten, since the remote has already rejected it.
+    pub(crate) async fn close_tunnel_with_error(&self, id: impl AsRef<str>, err: AcceptError) {
+        let id = id.as_ref();
+        let inner = self.inner.load();
+        if let Some(tun) = inner.tunnels.write().await.remove(id) {
+            let _ = tun.tx.send(Err(err)).await;
+        };
     }
 
     /// Close a tunnel with the given ID.

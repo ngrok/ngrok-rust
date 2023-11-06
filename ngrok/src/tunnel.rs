@@ -43,6 +43,9 @@ pub enum AcceptError {
     /// An error arose during reconnect
     #[error("reconnect error")]
     Reconnect(#[from] Arc<ConnectError>),
+    /// The tunnel was closed.
+    #[error("tunnel closed")]
+    TunnelClosed(String, String),
 }
 
 #[derive(Clone)]
