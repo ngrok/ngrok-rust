@@ -79,7 +79,7 @@ use super::{
     rpc::RpcRequest,
 };
 use crate::{
-    tunnel::AcceptError::TunnelClosed,
+    tunnel::AcceptError::ListenerClosed,
     Session,
 };
 
@@ -475,7 +475,10 @@ impl IncomingStreams {
                         session
                             .close_tunnel_with_error(
                                 req.client_id,
-                                TunnelClosed(req.message.clone(), req.error_code.clone()),
+                                ListenerClosed {
+                                    message: req.message,
+                                    error_code: req.error_code,
+                                },
                             )
                             .await;
                     }

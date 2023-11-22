@@ -529,12 +529,12 @@ pub struct Update {
 #[serde(rename_all = "PascalCase")]
 pub struct StopTunnel {
     /// The id of the tunnel to stop
-    #[serde(rename = "ClientID")]
+    #[serde(rename = "Id")]
     pub client_id: String,
     /// The message on why this tunnel was stopped
     pub message: String,
     /// An optional ngrok error code
-    pub error_code: String,
+    pub error_code: Option<String>,
 }
 
 pub type UpdateResp = CommandResp;

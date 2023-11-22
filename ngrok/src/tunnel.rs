@@ -43,9 +43,14 @@ pub enum AcceptError {
     /// An error arose during reconnect
     #[error("reconnect error")]
     Reconnect(#[from] Arc<ConnectError>),
-    /// The tunnel was closed.
-    #[error("tunnel closed")]
-    TunnelClosed(String, String),
+    /// The listener was closed.
+    #[error("listener closed: {message}{}", error_code.clone().map(|s| format!(", {s}")).unwrap_or_else(String::new))]
+    ListenerClosed {
+        /// The error message.
+        message: String,
+        /// The error code, if any.
+        error_code: Option<String>,
+    },
 }
 
 #[derive(Clone)]
