@@ -35,7 +35,7 @@ async fn main() -> Result<(), Error> {
         let (restart_tx, restart_rx) = oneshot::channel();
         let restart_tx = Arc::new(Mutex::new(Some(restart_tx)));
 
-        let mut tun = ngrok::Session::builder()
+        let mut fwd = ngrok::Session::builder()
             .authtoken_from_env()
             .handle_stop_command(move |req| {
                 let stop_tx = stop_tx.clone();
@@ -63,18 +63,18 @@ async fn main() -> Result<(), Error> {
             .listen_and_forward(forwards_to.clone())
             .await?;
 
-        info!(url = tun.url(), %forwards_to, "started tunnel");
+        info!(url = fwd.url(), %forwards_to, "started forwarder");
 
-        let mut fut = tun.join().fuse();
+        let mut fut = fwd.join().fuse();
         let mut stop_rx = stop_rx.fuse();
         let mut restart_rx = restart_rx.fuse();
 
         select! {
-            res = fut => return Ok(res??),
+            res = fut => info!("{:?}", res?),
             _ = stop_rx => return Ok(()),
             _ = restart_rx => {
                 drop(fut);
-                let _ = tun.close().await;
+                let _ = fwd.close().await;
                 continue
             },
         }

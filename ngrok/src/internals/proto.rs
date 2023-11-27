@@ -37,8 +37,9 @@ pub const STOP_REQ: StreamType = StreamType::clamp(5);
 pub const UPDATE_REQ: StreamType = StreamType::clamp(6);
 pub const BIND_LABELED_REQ: StreamType = StreamType::clamp(7);
 pub const SRV_INFO_REQ: StreamType = StreamType::clamp(8);
+pub const STOP_TUNNEL_REQ: StreamType = StreamType::clamp(9);
 
-pub const VERSION: &str = "2";
+pub const VERSION: &[&str] = &["3", "2"]; // integers in priority order
 
 /// An error that may have an ngrok error code.
 /// All ngrok error codes are documented at https://ngrok.com/docs/errors
@@ -521,6 +522,19 @@ pub struct Update {
     pub version: String,
     /// Whether or not updating to the same major version is sufficient.
     pub permit_major_version: bool,
+}
+
+/// A request from remote to stop a tunnel
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[serde(rename_all = "PascalCase")]
+pub struct StopTunnel {
+    /// The id of the tunnel to stop
+    #[serde(rename = "Id")]
+    pub client_id: String,
+    /// The message on why this tunnel was stopped
+    pub message: String,
+    /// An optional ngrok error code
+    pub error_code: Option<String>,
 }
 
 pub type UpdateResp = CommandResp;
