@@ -117,6 +117,7 @@ macro_rules! tunnel_trait {
             /// [TcpTunnelBuilder::forwards_to], etc. to set this value
             /// explicitly.
             fn forwards_to(&self) -> &str;
+
             /// Returns the arbitrary metadata string for this tunnel.
             fn metadata(&self) -> &str;
         }

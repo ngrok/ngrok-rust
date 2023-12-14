@@ -6,7 +6,7 @@ use bytes::{
 };
 use url::Url;
 
-use super::common::ProxyProto;
+use super::{common::ProxyProto, AppProtocol};
 // These are used for doc comment links.
 #[allow(unused_imports)]
 use crate::config::{
@@ -46,6 +46,12 @@ impl TunnelConfig for TlsOptions {
             .clone()
             .unwrap_or(default_forwards_to().into())
     }
+
+    fn forwards_proto(&self) -> AppProtocol {
+        // not supported
+        AppProtocol::None
+    }
+    
     fn extra(&self) -> BindExtra {
         BindExtra {
             token: Default::default(),

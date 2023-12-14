@@ -89,7 +89,7 @@ use crate::{
         ProxyProto,
         TcpTunnelBuilder,
         TlsTunnelBuilder,
-        TunnelConfig,
+        TunnelConfig, AppProtocol,
     },
     conn::ConnInner,
     internals::{
@@ -131,6 +131,7 @@ struct BoundTunnel {
     extra: BindExtra,
     labels: HashMap<String, String>,
     forwards_to: String,
+    forwards_proto: AppProtocol,
     tx: Sender<Result<ConnInner, AcceptError>>,
 }
 
@@ -700,6 +701,7 @@ impl SessionBuilder {
                 .as_slice(),
         );
 
+        // Todo(del): update config alpn 
         rustls::ClientConfig::builder()
             .with_safe_defaults()
             .with_root_certificates(root_store)
@@ -882,6 +884,7 @@ impl Session {
         let mut extra = tunnel_cfg.extra();
         let labels = tunnel_cfg.labels();
         let forwards_to = tunnel_cfg.forwards_to();
+        let forwards_proto = tunnel_cfg.forwards_proto().clone();
 
         // non-labeled tunnel
         let (tunnel, bound) = if tunnel_cfg.proto() != "" {
@@ -892,6 +895,7 @@ impl Session {
                     extra.clone(),
                     "",
                     &forwards_to,
+                    forwards_proto.clone(),
                 )
                 .await?;
 
@@ -917,13 +921,14 @@ impl Session {
                     extra,
                     labels,
                     forwards_to,
+                    forwards_proto,
                     tx,
                 },
             )
         } else {
             // labeled tunnel
             let resp = client
-                .listen_label(labels.clone(), &extra.metadata, &forwards_to)
+                .listen_label(labels.clone(), &extra.metadata, &forwards_to, forwards_proto.clone())
                 .await?;
 
             let info = TunnelInnerInfo {
@@ -946,6 +951,7 @@ impl Session {
                     proto: Default::default(),
                     opts: Default::default(),
                     forwards_to,
+                    forwards_proto,
                     labels,
                     tx,
                 },
@@ -1079,6 +1085,7 @@ async fn try_reconnect(
                     tun.extra.clone(),
                     id,
                     &tun.forwards_to,
+                    tun.forwards_proto.clone(),
                 )
                 .await
                 .map_err(ConnectError::Rebind)?;
@@ -1086,7 +1093,7 @@ async fn try_reconnect(
             new_tunnels.insert(id.clone(), tun.clone());
         } else {
             let resp = client
-                .listen_label(tun.labels.clone(), &tun.extra.metadata, &tun.forwards_to)
+                .listen_label(tun.labels.clone(), &tun.extra.metadata, &tun.forwards_to, tun.forwards_proto.clone())
                 .await
                 .map_err(ConnectError::Rebind)?;
 

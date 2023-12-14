@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
 use url::Url;
 
@@ -22,6 +22,8 @@ use crate::{
     Session,
 };
 
+use super::AppProtocol;
+
 /// Options for labeled tunnels.
 #[derive(Default, Clone)]
 struct LabeledOptions {
@@ -36,6 +38,13 @@ impl TunnelConfig for LabeledOptions {
             .clone()
             .unwrap_or(default_forwards_to().into())
     }
+
+    fn forwards_proto(&self) -> AppProtocol {
+        self.common_opts
+            .forwards_proto
+            .clone()
+    }
+    
     fn extra(&self) -> BindExtra {
         BindExtra {
             token: Default::default(),
@@ -87,6 +96,15 @@ impl LabeledTunnelBuilder {
     /// https://ngrok.com/docs/api/resources/tunnels/#tunnel-fields
     pub fn forwards_to(&mut self, forwards_to: impl Into<String>) -> &mut Self {
         self.options.common_opts.forwards_to = forwards_to.into().into();
+        self
+    }
+
+    /// Sets the L7 protocol string for this tunnel.
+    pub fn app_protocol(&mut self, forwards_proto: impl Into<String>) -> &mut Self {
+        let proto_str = forwards_proto.into();
+        if let Ok(proto) = AppProtocol::from_str(&proto_str) {
+            self.options.common_opts.forwards_proto = proto;
+        }
         self
     }
 

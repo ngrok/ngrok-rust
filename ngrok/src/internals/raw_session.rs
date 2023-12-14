@@ -80,7 +80,7 @@ use super::{
 };
 use crate::{
     tunnel::AcceptError::ListenerClosed,
-    Session,
+    Session, config::AppProtocol,
 };
 
 /// Errors arising from tunneling protocol RPC calls.
@@ -322,6 +322,7 @@ impl RpcClient {
         extra: BindExtra,
         id: impl Into<String> + Debug,
         forwards_to: impl Into<String> + Debug,
+        forwards_proto: AppProtocol,
     ) -> Result<BindResp<BindOpts>, RpcError> {
         // Sorry, this is awful. Serde untagged unions are pretty fraught and
         // hard to debug, so we're using this macro to specialize this call
@@ -339,6 +340,7 @@ impl RpcClient {
                             client_id: id.into(),
                             proto: protocol.into(),
                             forwards_to: forwards_to.into(),
+                            forwards_proto: forwards_proto,
                             opts,
                             extra,
                         };
@@ -364,11 +366,13 @@ impl RpcClient {
         labels: HashMap<String, String>,
         metadata: impl Into<String> + Debug,
         forwards_to: impl Into<String> + Debug,
+        forwards_proto: AppProtocol,
     ) -> Result<StartTunnelWithLabelResp, RpcError> {
         let req = StartTunnelWithLabel {
             labels,
             metadata: metadata.into(),
             forwards_to: forwards_to.into(),
+            forwards_proto: forwards_proto,
         };
 
         self.rpc(req).await
