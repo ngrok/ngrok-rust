@@ -1,17 +1,19 @@
 use std::{
     collections::HashMap,
     env,
-    process, str::FromStr,
+    process,
+    str::FromStr,
 };
 
 use async_trait::async_trait;
 use once_cell::sync::OnceCell;
-use thiserror::Error;
-use url::Url;
 use serde::{
     Deserialize,
     Serialize,
 };
+use thiserror::Error;
+use url::Url;
+
 pub use crate::internals::proto::ProxyProto;
 use crate::{
     forwarder::Forwarder,
@@ -253,7 +255,6 @@ pub enum AppProtocol {
     #[serde(rename = "http2")]
     HTTP2,
 }
-
 
 /// Errors that can occur while parsing a string into an `AppProtocol`.
 #[derive(Error, Debug, Clone, Eq, PartialEq)]

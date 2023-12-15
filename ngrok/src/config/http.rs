@@ -11,7 +11,10 @@ use bytes::{
 use thiserror::Error;
 use url::Url;
 
-use super::{common::ProxyProto, AppProtocol};
+use super::{
+    common::ProxyProto,
+    AppProtocol,
+};
 // These are used for doc comment links.
 #[allow(unused_imports)]
 use crate::config::{
@@ -139,9 +142,7 @@ impl TunnelConfig for HttpOptions {
     }
 
     fn forwards_proto(&self) -> AppProtocol {
-        self.common_opts
-            .forwards_proto
-            .clone()
+        self.common_opts.forwards_proto.clone()
     }
 
     fn extra(&self) -> BindExtra {

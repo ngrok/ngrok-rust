@@ -1,7 +1,11 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{
+    collections::HashMap,
+    str::FromStr,
+};
 
 use url::Url;
 
+use super::AppProtocol;
 // These are used for doc comment links.
 #[allow(unused_imports)]
 use crate::config::{
@@ -22,8 +26,6 @@ use crate::{
     Session,
 };
 
-use super::AppProtocol;
-
 /// Options for labeled tunnels.
 #[derive(Default, Clone)]
 struct LabeledOptions {
@@ -40,11 +42,9 @@ impl TunnelConfig for LabeledOptions {
     }
 
     fn forwards_proto(&self) -> AppProtocol {
-        self.common_opts
-            .forwards_proto
-            .clone()
+        self.common_opts.forwards_proto.clone()
     }
-    
+
     fn extra(&self) -> BindExtra {
         BindExtra {
             token: Default::default(),

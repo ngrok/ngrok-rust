@@ -84,12 +84,13 @@ pub use crate::internals::{
 };
 use crate::{
     config::{
+        AppProtocol,
         HttpTunnelBuilder,
         LabeledTunnelBuilder,
         ProxyProto,
         TcpTunnelBuilder,
         TlsTunnelBuilder,
-        TunnelConfig, AppProtocol,
+        TunnelConfig,
     },
     conn::ConnInner,
     internals::{
@@ -701,7 +702,6 @@ impl SessionBuilder {
                 .as_slice(),
         );
 
-        // Todo(del): update config alpn 
         rustls::ClientConfig::builder()
             .with_safe_defaults()
             .with_root_certificates(root_store)
@@ -928,7 +928,12 @@ impl Session {
         } else {
             // labeled tunnel
             let resp = client
-                .listen_label(labels.clone(), &extra.metadata, &forwards_to, forwards_proto.clone())
+                .listen_label(
+                    labels.clone(),
+                    &extra.metadata,
+                    &forwards_to,
+                    forwards_proto.clone(),
+                )
                 .await?;
 
             let info = TunnelInnerInfo {
@@ -1093,7 +1098,12 @@ async fn try_reconnect(
             new_tunnels.insert(id.clone(), tun.clone());
         } else {
             let resp = client
-                .listen_label(tun.labels.clone(), &tun.extra.metadata, &tun.forwards_to, tun.forwards_proto.clone())
+                .listen_label(
+                    tun.labels.clone(),
+                    &tun.extra.metadata,
+                    &tun.forwards_to,
+                    tun.forwards_proto.clone(),
+                )
                 .await
                 .map_err(ConnectError::Rebind)?;
 

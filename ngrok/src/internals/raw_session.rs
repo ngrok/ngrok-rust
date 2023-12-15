@@ -79,8 +79,9 @@ use super::{
     rpc::RpcRequest,
 };
 use crate::{
+    config::AppProtocol,
     tunnel::AcceptError::ListenerClosed,
-    Session, config::AppProtocol,
+    Session,
 };
 
 /// Errors arising from tunneling protocol RPC calls.
@@ -340,7 +341,7 @@ impl RpcClient {
                             client_id: id.into(),
                             proto: protocol.into(),
                             forwards_to: forwards_to.into(),
-                            forwards_proto: forwards_proto,
+                            forwards_proto,
                             opts,
                             extra,
                         };
@@ -372,7 +373,7 @@ impl RpcClient {
             labels,
             metadata: metadata.into(),
             forwards_to: forwards_to.into(),
-            forwards_proto: forwards_proto,
+            forwards_proto,
         };
 
         self.rpc(req).await

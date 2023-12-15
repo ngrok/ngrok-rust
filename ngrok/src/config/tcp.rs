@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use url::Url;
 
-use super::{common::ProxyProto, AppProtocol};
+use super::{
+    common::ProxyProto,
+    AppProtocol,
+};
 // These are used for doc comment links.
 #[allow(unused_imports)]
 use crate::config::{
