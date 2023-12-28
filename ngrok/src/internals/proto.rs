@@ -118,11 +118,13 @@ impl<'a> From<&'a str> for ErrResp {
 
 impl error::Error for ErrResp {}
 
+const ERR_URL: &str = "https://ngrok.com/docs/errors";
+
 impl fmt::Display for ErrResp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.msg.fmt(f)?;
-        if let Some(code) = &self.error_code {
-            write!(f, "\n\nERR_NGROK_{code}")?;
+        if let Some(code) = self.error_code.as_ref().map(|s| s.to_lowercase()) {
+            write!(f, "\n\n{ERR_URL}/{code}")?;
         }
         Ok(())
     }
