@@ -2,10 +2,7 @@ use std::collections::HashMap;
 
 use url::Url;
 
-use super::{
-    common::ProxyProto,
-    AppProtocol,
-};
+use super::common::ProxyProto;
 // These are used for doc comment links.
 #[allow(unused_imports)]
 use crate::config::{
@@ -52,9 +49,9 @@ impl TunnelConfig for TcpOptions {
         "tcp".into()
     }
 
-    fn forwards_proto(&self) -> AppProtocol {
+    fn forwards_proto(&self) -> String {
         // not supported
-        AppProtocol::None
+        String::new()
     }
 
     fn opts(&self) -> Option<BindOpts> {

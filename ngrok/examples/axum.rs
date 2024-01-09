@@ -41,7 +41,6 @@ async fn start_tunnel() -> anyhow::Result<HttpTunnel> {
         .connect()
         .await?
         .http_endpoint()
-        // .app_protocol("http2")
         // .allow_cidr("0.0.0.0/0")
         // .basic_auth("ngrok", "online1line")
         // .circuit_breaker(0.5)

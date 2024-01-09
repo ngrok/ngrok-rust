@@ -11,10 +11,7 @@ use bytes::{
 use thiserror::Error;
 use url::Url;
 
-use super::{
-    common::ProxyProto,
-    AppProtocol,
-};
+use super::common::ProxyProto;
 // These are used for doc comment links.
 #[allow(unused_imports)]
 use crate::config::{
@@ -141,8 +138,11 @@ impl TunnelConfig for HttpOptions {
             .unwrap_or(default_forwards_to().into())
     }
 
-    fn forwards_proto(&self) -> AppProtocol {
-        self.common_opts.forwards_proto.clone()
+    fn forwards_proto(&self) -> String {
+        self.common_opts
+            .forwards_proto
+            .clone()
+            .unwrap_or(String::new())
     }
 
     fn extra(&self) -> BindExtra {
@@ -264,14 +264,11 @@ impl HttpTunnelBuilder {
 
     /// Sets the L7 protocol for this tunnel.
     pub fn app_protocol(&mut self, app_protocol: impl Into<String>) -> &mut Self {
-        let proto_str = app_protocol.into();
-        if let Ok(proto) = AppProtocol::from_str(&proto_str) {
-            self.options.common_opts.forwards_proto = proto;
-        }
+        self.options.common_opts.forwards_proto = Some(app_protocol.into());
         self
     }
 
-    /// Sets the L7 protocol string for this tunnel.
+    /// Sets the scheme for this edge.
     pub fn scheme(&mut self, scheme: Scheme) -> &mut Self {
         self.options.scheme = scheme;
         self
@@ -441,7 +438,7 @@ mod test {
 
     const METADATA: &str = "testmeta";
     const TEST_FORWARD: &str = "testforward";
-    const TEST_FORWARD_PROTO: AppProtocol = AppProtocol::None;
+    const TEST_FORWARD_PROTO: &str = "http2";
     const ALLOW_CIDR: &str = "0.0.0.0/0";
     const DENY_CIDR: &str = "10.1.1.1/32";
     const CA_CERT: &[u8] = "test ca cert".as_bytes();
@@ -493,7 +490,7 @@ mod test {
             .webhook_verification("twilio", "asdf")
             .basic_auth("ngrok", "online1line")
             .forwards_to(TEST_FORWARD)
-            .app_protocol("")
+            .app_protocol("http2")
             .options,
         );
     }

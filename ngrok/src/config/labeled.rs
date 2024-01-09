@@ -1,11 +1,7 @@
-use std::{
-    collections::HashMap,
-    str::FromStr,
-};
+use std::collections::HashMap;
 
 use url::Url;
 
-use super::AppProtocol;
 // These are used for doc comment links.
 #[allow(unused_imports)]
 use crate::config::{
@@ -41,8 +37,11 @@ impl TunnelConfig for LabeledOptions {
             .unwrap_or(default_forwards_to().into())
     }
 
-    fn forwards_proto(&self) -> AppProtocol {
-        self.common_opts.forwards_proto.clone()
+    fn forwards_proto(&self) -> String {
+        self.common_opts
+            .forwards_proto
+            .clone()
+            .unwrap_or(String::new())
     }
 
     fn extra(&self) -> BindExtra {
@@ -100,11 +99,8 @@ impl LabeledTunnelBuilder {
     }
 
     /// Sets the L7 protocol string for this tunnel.
-    pub fn app_protocol(&mut self, forwards_proto: impl Into<String>) -> &mut Self {
-        let proto_str = forwards_proto.into();
-        if let Ok(proto) = AppProtocol::from_str(&proto_str) {
-            self.options.common_opts.forwards_proto = proto;
-        }
+    pub fn app_protocol(&mut self, app_protocol: impl Into<String>) -> &mut Self {
+        self.options.common_opts.forwards_proto = Some(app_protocol.into());
         self
     }
 

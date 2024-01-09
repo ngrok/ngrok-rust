@@ -2,16 +2,10 @@ use std::{
     collections::HashMap,
     env,
     process,
-    str::FromStr,
 };
 
 use async_trait::async_trait;
 use once_cell::sync::OnceCell;
-use serde::{
-    Deserialize,
-    Serialize,
-};
-use thiserror::Error;
 use url::Url;
 
 pub use crate::internals::proto::ProxyProto;
@@ -134,7 +128,7 @@ pub(crate) trait TunnelConfig {
     /// Only for display/informational purposes.
     fn forwards_to(&self) -> String;
     /// The L7 protocol the upstream service expects
-    fn forwards_proto(&self) -> AppProtocol;
+    fn forwards_proto(&self) -> String;
     /// Internal-only, extra data sent when binding a tunnel.
     fn extra(&self) -> BindExtra;
     /// The protocol for this tunnel.
@@ -154,7 +148,7 @@ where
         (**self).forwards_to()
     }
 
-    fn forwards_proto(&self) -> AppProtocol {
+    fn forwards_proto(&self) -> String {
         (**self).forwards_proto()
     }
     fn extra(&self) -> BindExtra {
@@ -203,7 +197,7 @@ pub(crate) struct CommonOpts {
     // bearing on tunnel behavior.
     pub(crate) forwards_to: Option<String>,
     // Tunnel L7 app protocol
-    pub(crate) forwards_proto: AppProtocol,
+    pub(crate) forwards_proto: Option<String>,
 }
 
 impl CommonOpts {
@@ -235,49 +229,6 @@ impl From<&[bytes::Bytes]> for MutualTls {
         b.iter().for_each(|c| aggregated.extend(c));
         MutualTls {
             mutual_tls_ca: aggregated,
-        }
-    }
-}
-
-/// Represents the application layer (L7) protocols supported in a network session.
-#[derive(Clone, Default, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub enum AppProtocol {
-    /// No specific protocol is specified.
-    #[default]
-    #[serde(rename = "")]
-    None,
-
-    /// Use HTTP/1.1 protocol.
-    #[serde(rename = "http1")]
-    HTTP1,
-
-    /// Use HTTP/2 protocol.
-    #[serde(rename = "http2")]
-    HTTP2,
-}
-
-/// Errors that can occur while parsing a string into an `AppProtocol`.
-#[derive(Error, Debug, Clone, Eq, PartialEq)]
-pub enum AppProtocolParseError {
-    /// The input string does not match any valid `AppProtocol` variant.
-    #[error("Invalid AppProtocol: {0}")]
-    Invalid(String),
-
-    /// The input string matches a known but unsupported `AppProtocol` variant.
-    #[error("Unsupported AppProtocol: {0}")]
-    Unsupported(String),
-}
-
-impl FromStr for AppProtocol {
-    type Err = AppProtocolParseError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_ref() {
-            "" => Ok(AppProtocol::None), // default
-            "http1" => Ok(AppProtocol::HTTP1),
-            "http2" => Ok(AppProtocol::HTTP2),
-            "http3" => Err(AppProtocolParseError::Unsupported(s.to_string())),
-            _ => Err(AppProtocolParseError::Invalid(s.to_string())),
         }
     }
 }

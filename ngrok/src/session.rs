@@ -84,7 +84,6 @@ pub use crate::internals::{
 };
 use crate::{
     config::{
-        AppProtocol,
         HttpTunnelBuilder,
         LabeledTunnelBuilder,
         ProxyProto,
@@ -132,7 +131,7 @@ struct BoundTunnel {
     extra: BindExtra,
     labels: HashMap<String, String>,
     forwards_to: String,
-    forwards_proto: AppProtocol,
+    forwards_proto: String,
     tx: Sender<Result<ConnInner, AcceptError>>,
 }
 
@@ -884,7 +883,7 @@ impl Session {
         let mut extra = tunnel_cfg.extra();
         let labels = tunnel_cfg.labels();
         let forwards_to = tunnel_cfg.forwards_to();
-        let forwards_proto = tunnel_cfg.forwards_proto().clone();
+        let forwards_proto = tunnel_cfg.forwards_proto();
 
         // non-labeled tunnel
         let (tunnel, bound) = if tunnel_cfg.proto() != "" {
@@ -895,7 +894,7 @@ impl Session {
                     extra.clone(),
                     "",
                     &forwards_to,
-                    forwards_proto.clone(),
+                    &forwards_proto,
                 )
                 .await?;
 
@@ -932,7 +931,7 @@ impl Session {
                     labels.clone(),
                     &extra.metadata,
                     &forwards_to,
-                    forwards_proto.clone(),
+                    &forwards_proto,
                 )
                 .await?;
 
@@ -1090,7 +1089,7 @@ async fn try_reconnect(
                     tun.extra.clone(),
                     id,
                     &tun.forwards_to,
-                    tun.forwards_proto.clone(),
+                    &tun.forwards_proto,
                 )
                 .await
                 .map_err(ConnectError::Rebind)?;
@@ -1102,7 +1101,7 @@ async fn try_reconnect(
                     tun.labels.clone(),
                     &tun.extra.metadata,
                     &tun.forwards_to,
-                    tun.forwards_proto.clone(),
+                    &tun.forwards_proto,
                 )
                 .await
                 .map_err(ConnectError::Rebind)?;
