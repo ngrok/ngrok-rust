@@ -139,10 +139,7 @@ impl TunnelConfig for HttpOptions {
     }
 
     fn forwards_proto(&self) -> String {
-        self.common_opts
-            .forwards_proto
-            .clone()
-            .unwrap_or_default()
+        self.common_opts.forwards_proto.clone().unwrap_or_default()
     }
 
     fn extra(&self) -> BindExtra {
