@@ -41,7 +41,7 @@ impl TunnelConfig for LabeledOptions {
         self.common_opts
             .forwards_proto
             .clone()
-            .unwrap_or(String::new())
+            .unwrap_or_default()
     }
 
     fn extra(&self) -> BindExtra {
