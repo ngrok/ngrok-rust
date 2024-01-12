@@ -137,6 +137,11 @@ impl TunnelConfig for HttpOptions {
             .clone()
             .unwrap_or(default_forwards_to().into())
     }
+
+    fn forwards_proto(&self) -> String {
+        self.common_opts.forwards_proto.clone().unwrap_or_default()
+    }
+
     fn extra(&self) -> BindExtra {
         BindExtra {
             token: Default::default(),
@@ -253,11 +258,19 @@ impl HttpTunnelBuilder {
         self.options.common_opts.forwards_to = Some(forwards_to.into());
         self
     }
+
+    /// Sets the L7 protocol for this tunnel.
+    pub fn app_protocol(&mut self, app_protocol: impl Into<String>) -> &mut Self {
+        self.options.common_opts.forwards_proto = Some(app_protocol.into());
+        self
+    }
+
     /// Sets the scheme for this edge.
     pub fn scheme(&mut self, scheme: Scheme) -> &mut Self {
         self.options.scheme = scheme;
         self
     }
+
     /// Sets the domain to request for this edge.
     ///
     /// https://ngrok.com/docs/network-edge/domains-and-tcp-addresses/#domains
@@ -422,6 +435,7 @@ mod test {
 
     const METADATA: &str = "testmeta";
     const TEST_FORWARD: &str = "testforward";
+    const TEST_FORWARD_PROTO: &str = "http2";
     const ALLOW_CIDR: &str = "0.0.0.0/0";
     const DENY_CIDR: &str = "10.1.1.1/32";
     const CA_CERT: &[u8] = "test ca cert".as_bytes();
@@ -473,6 +487,7 @@ mod test {
             .webhook_verification("twilio", "asdf")
             .basic_auth("ngrok", "online1line")
             .forwards_to(TEST_FORWARD)
+            .app_protocol("http2")
             .options,
         );
     }
@@ -482,7 +497,7 @@ mod test {
         C: TunnelConfig,
     {
         assert_eq!(TEST_FORWARD, tunnel_cfg.forwards_to());
-
+        assert_eq!(TEST_FORWARD_PROTO, tunnel_cfg.forwards_proto());
         let extra = tunnel_cfg.extra();
         assert_eq!(String::default(), *extra.token);
         assert_eq!(METADATA, extra.metadata);

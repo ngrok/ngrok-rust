@@ -36,6 +36,11 @@ impl TunnelConfig for LabeledOptions {
             .clone()
             .unwrap_or(default_forwards_to().into())
     }
+
+    fn forwards_proto(&self) -> String {
+        self.common_opts.forwards_proto.clone().unwrap_or_default()
+    }
+
     fn extra(&self) -> BindExtra {
         BindExtra {
             token: Default::default(),
@@ -87,6 +92,12 @@ impl LabeledTunnelBuilder {
     /// https://ngrok.com/docs/api/resources/tunnels/#tunnel-fields
     pub fn forwards_to(&mut self, forwards_to: impl Into<String>) -> &mut Self {
         self.options.common_opts.forwards_to = forwards_to.into().into();
+        self
+    }
+
+    /// Sets the L7 protocol string for this tunnel.
+    pub fn app_protocol(&mut self, app_protocol: impl Into<String>) -> &mut Self {
+        self.options.common_opts.forwards_proto = Some(app_protocol.into());
         self
     }
 

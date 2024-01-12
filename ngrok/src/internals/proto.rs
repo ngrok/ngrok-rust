@@ -301,6 +301,7 @@ pub struct Bind<T> {
     pub client_id: String,
     pub proto: String,
     pub forwards_to: String,
+    pub forwards_proto: String,
     pub opts: T,
     pub extra: BindExtra,
 }
@@ -349,6 +350,7 @@ rpc_req!(Bind<T>, BindResp<T>, BIND_REQ; T: std::fmt::Debug + Serialize + Deseri
 pub struct StartTunnelWithLabel {
     pub labels: HashMap<String, String>,
     pub forwards_to: String,
+    pub forwards_proto: String,
     pub metadata: String,
 }
 

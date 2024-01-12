@@ -127,6 +127,8 @@ pub(crate) trait TunnelConfig {
     ///
     /// Only for display/informational purposes.
     fn forwards_to(&self) -> String;
+    /// The L7 protocol the upstream service expects
+    fn forwards_proto(&self) -> String;
     /// Internal-only, extra data sent when binding a tunnel.
     fn extra(&self) -> BindExtra;
     /// The protocol for this tunnel.
@@ -144,6 +146,10 @@ where
 {
     fn forwards_to(&self) -> String {
         (**self).forwards_to()
+    }
+
+    fn forwards_proto(&self) -> String {
+        (**self).forwards_proto()
     }
     fn extra(&self) -> BindExtra {
         (**self).extra()
@@ -190,6 +196,8 @@ pub(crate) struct CommonOpts {
     // Tunnel backend metadata. Viewable via the dashboard and API, but has no
     // bearing on tunnel behavior.
     pub(crate) forwards_to: Option<String>,
+    // Tunnel L7 app protocol
+    pub(crate) forwards_proto: Option<String>,
 }
 
 impl CommonOpts {

@@ -46,6 +46,12 @@ impl TunnelConfig for TlsOptions {
             .clone()
             .unwrap_or(default_forwards_to().into())
     }
+
+    fn forwards_proto(&self) -> String {
+        // not supported
+        String::new()
+    }
+
     fn extra(&self) -> BindExtra {
         BindExtra {
             token: Default::default(),
@@ -56,6 +62,7 @@ impl TunnelConfig for TlsOptions {
     fn proto(&self) -> String {
         "tls".into()
     }
+
     fn opts(&self) -> Option<BindOpts> {
         // fill out all the options, translating to proto here
         let mut tls_endpoint = proto::TlsEndpoint::default();

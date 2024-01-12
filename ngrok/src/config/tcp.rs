@@ -48,6 +48,12 @@ impl TunnelConfig for TcpOptions {
     fn proto(&self) -> String {
         "tcp".into()
     }
+
+    fn forwards_proto(&self) -> String {
+        // not supported
+        String::new()
+    }
+
     fn opts(&self) -> Option<BindOpts> {
         // fill out all the options, translating to proto here
         let mut tcp_endpoint = proto::TcpEndpoint::default();
