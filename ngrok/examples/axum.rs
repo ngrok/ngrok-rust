@@ -61,6 +61,7 @@ async fn start_tunnel() -> anyhow::Result<HttpTunnel> {
         //         .allow_domain("<domain>")
         //         .scope("<scope>"),
         // )
+        // .policies(create_policies()?)
         // .proxy_proto(ProxyProto::None)
         // .remove_request_header("X-Req-Nope")
         // .remove_response_header("X-Res-Nope")
@@ -76,4 +77,29 @@ async fn start_tunnel() -> anyhow::Result<HttpTunnel> {
     println!("Tunnel started on URL: {:?}", tun.url());
 
     Ok(tun)
+}
+
+#[allow(dead_code)]
+fn create_policies() -> Result<Policies, InvalidPolicies> {
+    Ok(Policies::new()
+        .add_inbound(
+            Policy::new("deny_put")
+                .add_expression("req.Method == 'PUT'")
+                .add_action(Action::new("deny", None::<String>)?),
+        )
+        .add_outbound(
+            Policy::new("200_response")
+                .add_expression("res.StatusCode == '200'")
+                .add_action(Action::new(
+                    "custom-response",
+                    Some(
+                        r###"{
+                    "status_code": 200,
+                    "content_type": "text/html",
+                    "content": "Custom 200 response."
+                }"###,
+                    ),
+                )?),
+        )
+        .to_owned())
 }

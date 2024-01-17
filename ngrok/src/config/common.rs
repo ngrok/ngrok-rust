@@ -10,6 +10,7 @@ use url::Url;
 
 pub use crate::internals::proto::ProxyProto;
 use crate::{
+    config::policies::Policies,
     forwarder::Forwarder,
     internals::proto::{
         BindExtra,
@@ -198,6 +199,9 @@ pub(crate) struct CommonOpts {
     pub(crate) forwards_to: Option<String>,
     // Tunnel L7 app protocol
     pub(crate) forwards_proto: Option<String>,
+    // Policies that define rules that should be applied to incoming or outgoing
+    // connections to the edge.
+    pub(crate) policies: Option<Policies>,
 }
 
 impl CommonOpts {

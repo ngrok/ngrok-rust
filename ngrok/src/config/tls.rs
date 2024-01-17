@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+    borrow::Borrow,
+    collections::HashMap,
+};
 
 use bytes::{
     self,
@@ -6,7 +9,10 @@ use bytes::{
 };
 use url::Url;
 
-use super::common::ProxyProto;
+use super::{
+    common::ProxyProto,
+    Policies,
+};
 // These are used for doc comment links.
 #[allow(unused_imports)]
 use crate::config::{
@@ -88,6 +94,7 @@ impl TunnelConfig for TlsOptions {
         tls_endpoint.mutual_tls_at_edge =
             (!self.mutual_tlsca.is_empty()).then_some(self.mutual_tlsca.as_slice().into());
         tls_endpoint.tls_termination = tls_termination;
+        tls_endpoint.policies = self.common_opts.policies.clone().map(From::from);
 
         Some(BindOpts::Tls(tls_endpoint))
     }
@@ -171,6 +178,12 @@ impl TlsTunnelBuilder {
         self
     }
 
+    /// Set the policies for this edge.
+    pub fn policies(&mut self, policies: impl Borrow<Policies>) -> &mut Self {
+        self.options.common_opts.policies = Some(policies.borrow().to_owned());
+        self
+    }
+
     pub(crate) async fn for_forwarding_to(&mut self, to_url: &Url) -> &mut Self {
         self.options.common_opts.for_forwarding_to(to_url);
         self
@@ -180,6 +193,7 @@ impl TlsTunnelBuilder {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::config::policies::test::POLICY_JSON;
 
     const METADATA: &str = "testmeta";
     const TEST_FORWARD: &str = "testforward";
@@ -209,6 +223,7 @@ mod test {
             .mutual_tlsca(CA_CERT2.into())
             .termination(CERT.into(), KEY.into())
             .forwards_to(TEST_FORWARD)
+            .policies(Policies::from_json(POLICY_JSON).unwrap())
             .options,
         );
     }

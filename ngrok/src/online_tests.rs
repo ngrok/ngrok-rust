@@ -68,12 +68,6 @@ use tracing_test::traced_test;
 use url::Url;
 
 use crate::{
-    config::{
-        HttpTunnelBuilder,
-        OauthOptions,
-        ProxyProto,
-        Scheme,
-    },
     prelude::*,
     session::{
         SessionBuilder,
@@ -390,6 +384,42 @@ async fn custom_domain() -> Result<(), Error> {
     check_body(format!("https://{subdomain}.ngrok.io"), "Hello, world!").await?;
 
     Ok(())
+}
+
+#[traced_test]
+#[cfg_attr(not(feature = "paid-tests"), ignore)]
+#[test]
+async fn policies() -> Result<(), Error> {
+    let tun = serve_http(
+        defaults,
+        |tun| tun.policies(create_policies().unwrap()),
+        hello_router(),
+    )
+    .await?;
+
+    let client = reqwest::Client::new();
+    let resp = client.get(&tun.url).send().await?;
+    assert_eq!(resp.status(), 222);
+
+    Ok(())
+}
+
+fn create_policies() -> Result<Policies, InvalidPolicies> {
+    Ok(Policies::new()
+        .add_inbound(
+            Policy::new("deny_put")
+                .add_expression("req.Method == 'PUT'")
+                .add_action(Action::new("deny", None::<String>)?),
+        )
+        .add_outbound(
+            Policy::new("222_response")
+                .add_expression("res.StatusCode == '200'")
+                .add_action(Action::new(
+                    "custom-response",
+                    Some("{\"status_code\": 222}"),
+                )?),
+        )
+        .to_owned())
 }
 
 #[traced_test]

@@ -1,0 +1,33 @@
+{
+  "policies": {
+    "inbound": [
+      {
+        "name": "test_in",
+        "expressions": [
+          "req.Method == 'PUT'"
+        ],
+        "actions": [
+          {
+            "type": "deny"
+          }
+        ]
+      }
+    ],
+    "outbound": [
+      {
+        "name": "test_out",
+        "expressions": [
+          "res.StatusCode == '200'"
+        ],
+        "actions": [
+          {
+            "type": "custom-response",
+            "config": {
+              "status_code": 201
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -11,7 +11,10 @@ use bytes::{
 use thiserror::Error;
 use url::Url;
 
-use super::common::ProxyProto;
+use super::{
+    common::ProxyProto,
+    Policies,
+};
 // These are used for doc comment links.
 #[allow(unused_imports)]
 use crate::config::{
@@ -182,6 +185,7 @@ impl TunnelConfig for HttpOptions {
                 .websocket_tcp_conversion
                 .then_some(WebsocketTcpConverter {}),
             user_agent_filter: self.user_agent_filter(),
+            policies: self.common_opts.policies.clone().map(From::from),
             ..Default::default()
         };
 
@@ -420,6 +424,12 @@ impl HttpTunnelBuilder {
         self
     }
 
+    /// Set the policies for this edge.
+    pub fn policies(&mut self, policies: impl Borrow<Policies>) -> &mut Self {
+        self.options.common_opts.policies = Some(policies.borrow().to_owned());
+        self
+    }
+
     pub(crate) async fn for_forwarding_to(&mut self, to_url: &Url) -> &mut Self {
         self.options.common_opts.for_forwarding_to(to_url);
         if let Some(host) = to_url.host_str().filter(|_| self.options.rewrite_host) {
@@ -432,6 +442,7 @@ impl HttpTunnelBuilder {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::config::policies::test::POLICY_JSON;
 
     const METADATA: &str = "testmeta";
     const TEST_FORWARD: &str = "testforward";
@@ -488,6 +499,7 @@ mod test {
             .basic_auth("ngrok", "online1line")
             .forwards_to(TEST_FORWARD)
             .app_protocol("http2")
+            .policies(Policies::from_json(POLICY_JSON).unwrap())
             .options,
         );
     }
