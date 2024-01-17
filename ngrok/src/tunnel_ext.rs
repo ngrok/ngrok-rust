@@ -2,14 +2,15 @@
 use std::borrow::Cow;
 #[cfg(target_os = "windows")]
 use std::time::Duration;
+use std::{
+    collections::HashMap,
+    io,
+    sync::Arc,
+};
 #[cfg(feature = "hyper")]
 use std::{
     convert::Infallible,
     fmt,
-};
-use std::{
-    io,
-    sync::Arc,
 };
 
 use async_rustls::rustls::{
@@ -134,6 +135,7 @@ impl ConnExt for EdgeConn {
         tokio::spawn(async move {
             let mut upstream = match connect(
                 self.edge_type() == EdgeType::Tls && self.passthrough_tls(),
+                self.inner.info.app_protocol.clone(),
                 None, // Edges don't support proxyproto (afaik)
                 &url,
             )
@@ -165,6 +167,7 @@ impl ConnExt for EndpointConn {
             #[cfg(feature = "hyper")]
             let proto_http = matches!(self.proto(), "http" | "https");
             let passthrough_tls = self.inner.info.passthrough_tls();
+            let app_protocol = self.inner.info.app_protocol.clone();
 
             let (mut stream, proxy_header) = match proxy_proto {
                 ProxyProto::None => (crate::proxy_proto::Stream::disabled(self), None),
@@ -184,7 +187,13 @@ impl ConnExt for EndpointConn {
                 }
             };
 
-            let mut upstream = match connect(proto_tls && passthrough_tls, proxy_header, &url).await
+            let mut upstream = match connect(
+                proto_tls && passthrough_tls,
+                app_protocol,
+                proxy_header,
+                &url,
+            )
+            .await
             {
                 Ok(conn) => conn,
                 Err(error) => {
@@ -203,8 +212,9 @@ impl ConnExt for EndpointConn {
     }
 }
 
-fn tls_config() -> Result<Arc<ClientConfig>, &'static io::Error> {
-    static CONFIG: Lazy<Result<Arc<ClientConfig>, io::Error>> = Lazy::new(|| {
+fn tls_config(app_protocol: Option<String>) -> Result<Arc<ClientConfig>, &'static io::Error> {
+    // The root certificate store, lazily loaded once.
+    static ROOT_STORE: Lazy<Result<RootCertStore, io::Error>> = Lazy::new(|| {
         let der_certs = rustls_native_certs::load_native_certs()?
             .into_iter()
             .map(|c| c.0)
@@ -212,14 +222,42 @@ fn tls_config() -> Result<Arc<ClientConfig>, &'static io::Error> {
         let der_certs = der_certs.as_slice();
         let mut root_store = RootCertStore::empty();
         root_store.add_parsable_certificates(der_certs);
-        let config = ClientConfig::builder()
-            .with_safe_defaults()
-            .with_root_certificates(root_store)
-            .with_no_client_auth();
-        Ok(Arc::new(config))
+        Ok(root_store)
     });
+    // A hashmap of tls client configs for different configurations.
+    // There won't need to be a lot of variation among these, and we'll want to
+    // reuse them as much as we can, which is why we initialize them all once
+    // and then pull out the one we need.
+    // Disabling the lint because this is a local static that doesn't escape the
+    // enclosing context. It fine.
+    #[allow(clippy::type_complexity)]
+    static CONFIGS: Lazy<Result<HashMap<Option<String>, Arc<ClientConfig>>, &'static io::Error>> =
+        Lazy::new(|| {
+            let root_store = ROOT_STORE.as_ref()?;
+            Ok([None, Some("http2".to_string())]
+                .into_iter()
+                .map(|p| {
+                    let mut config = ClientConfig::builder()
+                        .with_safe_defaults()
+                        .with_root_certificates(root_store.clone())
+                        .with_no_client_auth();
+                    if let Some("http2") = p.as_deref() {
+                        config
+                            .alpn_protocols
+                            .extend(["h2", "http/1.1"].iter().map(|s| s.as_bytes().to_vec()));
+                    }
+                    (p, Arc::new(config))
+                })
+                .collect())
+        });
 
-    Ok(CONFIG.as_ref()?.clone())
+    let configs: &HashMap<Option<String>, Arc<ClientConfig>> = CONFIGS.as_ref().map_err(|e| *e)?;
+
+    Ok(configs
+        .get(&app_protocol)
+        .or_else(|| configs.get(&None))
+        .unwrap()
+        .clone())
 }
 
 // Establish the connection to forward the tunnel stream to.
@@ -228,6 +266,7 @@ fn tls_config() -> Result<Arc<ClientConfig>, &'static io::Error> {
 // Note: this additional wrapping logic currently unimplemented.
 async fn connect(
     tunnel_tls: bool,
+    app_protocol: Option<String>,
     proxy_proto_header: Option<ProxyHeader>,
     url: &Url,
 ) -> Result<Box<dyn IoStream>, io::Error> {
@@ -323,7 +362,7 @@ async fn connect(
         let domain = rustls::ServerName::try_from(host)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
         conn = Box::new(
-            async_rustls::TlsConnector::from(tls_config().map_err(|e| e.kind())?)
+            async_rustls::TlsConnector::from(tls_config(app_protocol).map_err(|e| e.kind())?)
                 .connect(domain, conn.compat())
                 .await?
                 .compat(),

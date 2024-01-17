@@ -1030,6 +1030,7 @@ async fn accept_one(
     let guard = inner.tunnels.read().await;
     let res = if let Some(tun) = guard.get(&id) {
         let mut header = conn.header;
+        let app_protocol = Some(tun.forwards_proto.to_string()).filter(|s| !s.is_empty());
         // Note: this is a bit of a hack. Normally, passthrough_tls is only
         // a thing on edge connections, but we're making sure it's set for
         // endpoint connections as well. In their case, we have to look at the
@@ -1050,6 +1051,7 @@ async fn accept_one(
         tun.tx
             .send(Ok(ConnInner {
                 info: crate::conn::Info {
+                    app_protocol,
                     remote_addr,
                     header,
                     proxy_proto,
