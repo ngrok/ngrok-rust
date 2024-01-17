@@ -228,6 +228,9 @@ fn tls_config(app_protocol: Option<String>) -> Result<Arc<ClientConfig>, &'stati
     // There won't need to be a lot of variation among these, and we'll want to
     // reuse them as much as we can, which is why we initialize them all once
     // and then pull out the one we need.
+    // Disabling the lint because this is a local static that doesn't escape the
+    // enclosing context. It fine.
+    #[allow(clippy::type_complexity)]
     static CONFIGS: Lazy<Result<HashMap<Option<String>, Arc<ClientConfig>>, &'static io::Error>> =
         Lazy::new(|| {
             let root_store = ROOT_STORE.as_ref()?;
