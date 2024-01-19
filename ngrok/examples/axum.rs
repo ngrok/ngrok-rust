@@ -85,7 +85,7 @@ fn create_policies() -> Result<Policies, InvalidPolicies> {
         .add_inbound(
             Policy::new("deny_put")
                 .add_expression("req.Method == 'PUT'")
-                .add_action(Action::new("deny", None::<String>)?),
+                .add_action(Action::new("deny", None)?),
         )
         .add_outbound(
             Policy::new("200_response")

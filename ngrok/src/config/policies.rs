@@ -40,8 +40,17 @@ pub struct Action {
 
 /// Error representing invalid string for Policies
 #[derive(Debug, Clone, Error)]
-#[error("invalid policies, err: {}", .0)]
-pub struct InvalidPolicies(String);
+pub enum InvalidPolicies {
+    /// Error representing invalid string for Policies
+    #[error("failure to parse policies, err: {}", .0)]
+    ParseError(String),
+    /// Error representing invalid string for Policies
+    #[error("failure to serialize policies, err: {}", .0)]
+    GenerationError(String),
+    /// Error representing invalid string for Policies
+    #[error("failure to read policies file '{}', err: {}", .0, .1)]
+    FileReadError(String, String),
+}
 
 /// Used just for json parsing
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
@@ -58,17 +67,17 @@ impl Policies {
     }
 
     /// Create a new [Policies] from a json string
-    pub fn from_json(json: impl Into<String>) -> Result<Self, InvalidPolicies> {
-        let envelope: Envelope =
-            serde_json::from_str(&json.into()).map_err(|e| InvalidPolicies(e.to_string()))?;
+    pub fn from_json(json: impl AsRef<str>) -> Result<Self, InvalidPolicies> {
+        let envelope: Envelope = serde_json::from_str(json.as_ref())
+            .map_err(|e| InvalidPolicies::ParseError(e.to_string()))?;
         Ok(envelope.policies)
     }
 
     /// Create a new [Policies] from a json file
-    pub fn from_file(json_file_path: impl Into<String>) -> Result<Self, InvalidPolicies> {
-        Policies::from_json(
-            read_to_string(json_file_path.into()).map_err(|e| InvalidPolicies(e.to_string()))?,
-        )
+    pub fn from_file(json_file_path: impl AsRef<str>) -> Result<Self, InvalidPolicies> {
+        Policies::from_json(read_to_string(json_file_path.as_ref()).map_err(|e| {
+            InvalidPolicies::FileReadError(json_file_path.as_ref().to_string(), e.to_string())
+        })?)
     }
 
     /// Convert [Policies] to json string
@@ -76,7 +85,8 @@ impl Policies {
         let envelope = Envelope {
             policies: self.clone(),
         };
-        serde_json::to_string(&envelope).map_err(|e| InvalidPolicies(e.to_string()))
+        serde_json::to_string(&envelope)
+            .map_err(|e| InvalidPolicies::GenerationError(e.to_string()))
     }
 
     /// Add an inbound policy
@@ -101,6 +111,11 @@ impl Policy {
         }
     }
 
+    /// Convert [Policy] to json string
+    pub fn to_json(&self) -> Result<String, InvalidPolicies> {
+        serde_json::to_string(&self).map_err(|e| InvalidPolicies::GenerationError(e.to_string()))
+    }
+
     /// Add an expression
     pub fn add_expression(&mut self, expression: impl Into<String>) -> &mut Self {
         self.expressions.push(expression.into());
@@ -116,18 +131,20 @@ impl Policy {
 
 impl Action {
     /// Create a new [Action]
-    pub fn new(
-        type_: impl Into<String>,
-        config: Option<impl Into<String>>,
-    ) -> Result<Self, InvalidPolicies> {
+    pub fn new(type_: impl Into<String>, config: Option<&str>) -> Result<Self, InvalidPolicies> {
         Ok(Action {
             type_: type_.into(),
             config: config
                 .map(|c| {
-                    serde_json::from_str(&c.into()).map_err(|e| InvalidPolicies(e.to_string()))
+                    serde_json::from_str(c).map_err(|e| InvalidPolicies::ParseError(e.to_string()))
                 })
                 .transpose()?,
         })
+    }
+
+    /// Convert [Action] to json string
+    pub fn to_json(&self) -> Result<String, InvalidPolicies> {
+        serde_json::to_string(&self).map_err(|e| InvalidPolicies::GenerationError(e.to_string()))
     }
 }
 
@@ -221,13 +238,51 @@ pub(crate) mod test {
     }
 
     #[test]
+    fn test_policies_to_json_error() {
+        let error = Policies::from_json("asdf").err().unwrap();
+        assert!(matches!(error, InvalidPolicies::ParseError { .. }));
+    }
+
+    #[test]
+    fn test_policy_to_json() {
+        let policies = Policies::from_json(POLICY_JSON).unwrap();
+        let policy = &policies.outbound[0];
+        let json = policy.to_json().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let policy_map = parsed.as_object().unwrap();
+        assert_eq!("test_out", policy_map["name"]);
+
+        // expressions
+        let expressions = policy_map["expressions"].as_array().unwrap();
+        assert_eq!(1, expressions.len());
+        assert_eq!("res.StatusCode == '200'", expressions[0]);
+
+        // actions
+        let actions = policy_map["actions"].as_array().unwrap();
+        assert_eq!(1, actions.len());
+        assert_eq!("custom-response", actions[0]["type"]);
+        assert_eq!(201, actions[0]["config"]["status_code"]);
+    }
+
+    #[test]
+    fn test_action_to_json() {
+        let policies = Policies::from_json(POLICY_JSON).unwrap();
+        let action = &policies.outbound[0].actions[0];
+        let json = action.to_json().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let action_map = parsed.as_object().unwrap();
+        assert_eq!("custom-response", action_map["type"]);
+        assert_eq!(201, action_map["config"]["status_code"]);
+    }
+
+    #[test]
     fn test_builders() {
         let policies = Policies::from_json(POLICY_JSON).unwrap();
         let policies2 = Policies::new()
             .add_inbound(
                 Policy::new("test_in")
                     .add_expression("req.Method == 'PUT'")
-                    .add_action(Action::new("deny", None::<String>).unwrap()),
+                    .add_action(Action::new("deny", None).unwrap()),
             )
             .add_outbound(
                 Policy::new("test_out")
@@ -246,5 +301,11 @@ pub(crate) mod test {
         let policies = Policies::from_json(POLICY_JSON).unwrap();
         let policies2 = Policies::from_file("assets/policies.json").unwrap();
         assert_eq!(policies, policies2);
+    }
+
+    #[test]
+    fn test_load_file_error() {
+        let error = Policies::from_file("assets/absent.json").err().unwrap();
+        assert!(matches!(error, InvalidPolicies::FileReadError { .. }));
     }
 }
