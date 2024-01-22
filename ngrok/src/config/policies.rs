@@ -14,8 +14,14 @@ use crate::internals::proto;
 /// A set of policies that define rules that should be applied to incoming or outgoing
 /// connections to the edge.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
-#[serde(default)]
 pub struct Policies {
+    policies: PolicySet,
+}
+
+/// A private layer to hold the inbound and outbound policies
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+#[serde(default)]
+struct PolicySet {
     inbound: Vec<Policy>,
     outbound: Vec<Policy>,
 }
@@ -52,12 +58,6 @@ pub enum InvalidPolicies {
     FileReadError(String, String),
 }
 
-/// Used just for json parsing
-#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
-struct Envelope {
-    policies: Policies,
-}
-
 impl Policies {
     /// Create a new empty [Policies] struct
     pub fn new() -> Self {
@@ -68,9 +68,7 @@ impl Policies {
 
     /// Create a new [Policies] from a json string
     pub fn from_json(json: impl AsRef<str>) -> Result<Self, InvalidPolicies> {
-        let envelope: Envelope = serde_json::from_str(json.as_ref())
-            .map_err(|e| InvalidPolicies::ParseError(e.to_string()))?;
-        Ok(envelope.policies)
+        serde_json::from_str(json.as_ref()).map_err(|e| InvalidPolicies::ParseError(e.to_string()))
     }
 
     /// Create a new [Policies] from a json file
@@ -82,22 +80,18 @@ impl Policies {
 
     /// Convert [Policies] to json string
     pub fn to_json(&self) -> Result<String, InvalidPolicies> {
-        let envelope = Envelope {
-            policies: self.clone(),
-        };
-        serde_json::to_string(&envelope)
-            .map_err(|e| InvalidPolicies::GenerationError(e.to_string()))
+        serde_json::to_string(&self).map_err(|e| InvalidPolicies::GenerationError(e.to_string()))
     }
 
     /// Add an inbound policy
     pub fn add_inbound(&mut self, policy: impl Borrow<Policy>) -> &mut Self {
-        self.inbound.push(policy.borrow().to_owned());
+        self.policies.inbound.push(policy.borrow().to_owned());
         self
     }
 
     /// Add an outbound policy
     pub fn add_outbound(&mut self, policy: impl Borrow<Policy>) -> &mut Self {
-        self.outbound.push(policy.borrow().to_owned());
+        self.policies.outbound.push(policy.borrow().to_owned());
         self
     }
 }
@@ -152,8 +146,8 @@ impl Action {
 impl From<Policies> for proto::Policies {
     fn from(o: Policies) -> Self {
         proto::Policies {
-            inbound: o.inbound.into_iter().map(|p| p.into()).collect(),
-            outbound: o.outbound.into_iter().map(|p| p.into()).collect(),
+            inbound: o.policies.inbound.into_iter().map(|p| p.into()).collect(),
+            outbound: o.policies.outbound.into_iter().map(|p| p.into()).collect(),
         }
     }
 }
@@ -205,11 +199,11 @@ pub(crate) mod test {
 
     #[test]
     fn test_json_to_policies() {
-        let policies = Policies::from_json(POLICY_JSON).unwrap();
-        assert_eq!(1, policies.inbound.len());
-        assert_eq!(1, policies.outbound.len());
-        let inbound = &policies.inbound[0];
-        let outbound = &policies.outbound[0];
+        let pol = Policies::from_json(POLICY_JSON).unwrap();
+        assert_eq!(1, pol.policies.inbound.len());
+        assert_eq!(1, pol.policies.outbound.len());
+        let inbound = &pol.policies.inbound[0];
+        let outbound = &pol.policies.outbound[0];
 
         assert_eq!("test_in", inbound.name);
         assert_eq!(1, inbound.expressions.len());
@@ -245,8 +239,8 @@ pub(crate) mod test {
 
     #[test]
     fn test_policy_to_json() {
-        let policies = Policies::from_json(POLICY_JSON).unwrap();
-        let policy = &policies.outbound[0];
+        let pol = Policies::from_json(POLICY_JSON).unwrap();
+        let policy = &pol.policies.outbound[0];
         let json = policy.to_json().unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         let policy_map = parsed.as_object().unwrap();
@@ -266,8 +260,8 @@ pub(crate) mod test {
 
     #[test]
     fn test_action_to_json() {
-        let policies = Policies::from_json(POLICY_JSON).unwrap();
-        let action = &policies.outbound[0].actions[0];
+        let pol = Policies::from_json(POLICY_JSON).unwrap();
+        let action = &pol.policies.outbound[0].actions[0];
         let json = action.to_json().unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         let action_map = parsed.as_object().unwrap();
@@ -300,6 +294,8 @@ pub(crate) mod test {
     fn test_load_file() {
         let policies = Policies::from_json(POLICY_JSON).unwrap();
         let policies2 = Policies::from_file("assets/policies.json").unwrap();
+        assert_eq!("test_in", policies2.policies.inbound[0].name);
+        assert_eq!("test_out", policies2.policies.outbound[0].name);
         assert_eq!(policies, policies2);
     }
 
