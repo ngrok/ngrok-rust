@@ -681,7 +681,7 @@ pub struct HttpEndpoint {
     pub websocket_tcp_converter: Option<WebsocketTcpConverter>,
     #[serde(rename = "UserAgentFilter")]
     pub user_agent_filter: Option<UserAgentFilter>,
-    pub policies: Option<Policies>,
+    pub policy: Option<Policy>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -807,7 +807,7 @@ pub struct TcpEndpoint {
     pub proxy_proto: ProxyProto,
     #[serde(rename = "IPRestriction")]
     pub ip_restriction: Option<IpRestriction>,
-    pub policies: Option<Policies>,
+    pub policy: Option<Policy>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -825,7 +825,7 @@ pub struct TlsEndpoint {
     pub tls_termination: Option<TlsTermination>,
     #[serde(rename = "IPRestriction")]
     pub ip_restriction: Option<IpRestriction>,
-    pub policies: Option<Policies>,
+    pub policy: Option<Policy>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -846,14 +846,14 @@ pub struct LabelEndpoint {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase", default)]
-pub struct Policies {
-    pub inbound: Vec<Policy>,
-    pub outbound: Vec<Policy>,
+pub struct Policy {
+    pub inbound: Vec<Rule>,
+    pub outbound: Vec<Rule>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase", default)]
-pub struct Policy {
+pub struct Rule {
     pub name: String,
     pub expressions: Vec<String>,
     pub actions: Vec<Action>,

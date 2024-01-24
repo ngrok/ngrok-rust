@@ -11,7 +11,7 @@ use url::Url;
 
 use super::{
     common::ProxyProto,
-    Policies,
+    Policy,
 };
 // These are used for doc comment links.
 #[allow(unused_imports)]
@@ -94,7 +94,7 @@ impl TunnelConfig for TlsOptions {
         tls_endpoint.mutual_tls_at_edge =
             (!self.mutual_tlsca.is_empty()).then_some(self.mutual_tlsca.as_slice().into());
         tls_endpoint.tls_termination = tls_termination;
-        tls_endpoint.policies = self.common_opts.policies.clone().map(From::from);
+        tls_endpoint.policy = self.common_opts.policy.clone().map(From::from);
 
         Some(BindOpts::Tls(tls_endpoint))
     }
@@ -178,9 +178,9 @@ impl TlsTunnelBuilder {
         self
     }
 
-    /// Set the policies for this edge.
-    pub fn policies(&mut self, policies: impl Borrow<Policies>) -> &mut Self {
-        self.options.common_opts.policies = Some(policies.borrow().to_owned());
+    /// Set the policy for this edge.
+    pub fn policy(&mut self, policy: impl Borrow<Policy>) -> &mut Self {
+        self.options.common_opts.policy = Some(policy.borrow().to_owned());
         self
     }
 
@@ -223,7 +223,7 @@ mod test {
             .mutual_tlsca(CA_CERT2.into())
             .termination(CERT.into(), KEY.into())
             .forwards_to(TEST_FORWARD)
-            .policies(Policies::from_json(POLICY_JSON).unwrap())
+            .policy(Policy::from_json(POLICY_JSON).unwrap())
             .options,
         );
     }

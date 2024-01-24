@@ -389,10 +389,10 @@ async fn custom_domain() -> Result<(), Error> {
 #[traced_test]
 #[cfg_attr(not(feature = "paid-tests"), ignore)]
 #[test]
-async fn policies() -> Result<(), Error> {
+async fn policy() -> Result<(), Error> {
     let tun = serve_http(
         defaults,
-        |tun| tun.policies(create_policies().unwrap()),
+        |tun| tun.policy(create_policy().unwrap()),
         hello_router(),
     )
     .await?;
@@ -404,15 +404,15 @@ async fn policies() -> Result<(), Error> {
     Ok(())
 }
 
-fn create_policies() -> Result<Policies, InvalidPolicies> {
-    Ok(Policies::new()
+fn create_policy() -> Result<Policy, InvalidPolicy> {
+    Ok(Policy::new()
         .add_inbound(
-            Policy::new("deny_put")
+            Rule::new("deny_put")
                 .add_expression("req.Method == 'PUT'")
                 .add_action(Action::new("deny", None)?),
         )
         .add_outbound(
-            Policy::new("222_response")
+            Rule::new("222_response")
                 .add_expression("res.StatusCode == '200'")
                 .add_action(Action::new(
                     "custom-response",

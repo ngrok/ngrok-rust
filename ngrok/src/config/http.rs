@@ -13,7 +13,7 @@ use url::Url;
 
 use super::{
     common::ProxyProto,
-    Policies,
+    Policy,
 };
 // These are used for doc comment links.
 #[allow(unused_imports)]
@@ -185,7 +185,7 @@ impl TunnelConfig for HttpOptions {
                 .websocket_tcp_conversion
                 .then_some(WebsocketTcpConverter {}),
             user_agent_filter: self.user_agent_filter(),
-            policies: self.common_opts.policies.clone().map(From::from),
+            policy: self.common_opts.policy.clone().map(From::from),
             ..Default::default()
         };
 
@@ -424,9 +424,9 @@ impl HttpTunnelBuilder {
         self
     }
 
-    /// Set the policies for this edge.
-    pub fn policies(&mut self, policies: impl Borrow<Policies>) -> &mut Self {
-        self.options.common_opts.policies = Some(policies.borrow().to_owned());
+    /// Set the policy for this edge.
+    pub fn policy(&mut self, policy: impl Borrow<Policy>) -> &mut Self {
+        self.options.common_opts.policy = Some(policy.borrow().to_owned());
         self
     }
 
@@ -499,7 +499,7 @@ mod test {
             .basic_auth("ngrok", "online1line")
             .forwards_to(TEST_FORWARD)
             .app_protocol("http2")
-            .policies(Policies::from_json(POLICY_JSON).unwrap())
+            .policy(Policy::from_json(POLICY_JSON).unwrap())
             .options,
         );
     }

@@ -7,7 +7,7 @@ use url::Url;
 
 use super::{
     common::ProxyProto,
-    Policies,
+    Policy,
 };
 // These are used for doc comment links.
 #[allow(unused_imports)]
@@ -71,7 +71,7 @@ impl TunnelConfig for TcpOptions {
 
         tcp_endpoint.ip_restriction = self.common_opts.ip_restriction();
 
-        tcp_endpoint.policies = self.common_opts.policies.clone().map(From::from);
+        tcp_endpoint.policy = self.common_opts.policy.clone().map(From::from);
 
         Some(BindOpts::Tcp(tcp_endpoint))
     }
@@ -135,9 +135,9 @@ impl TcpTunnelBuilder {
         self
     }
 
-    /// Set the policies for this edge.
-    pub fn policies(&mut self, policies: impl Borrow<Policies>) -> &mut Self {
-        self.options.common_opts.policies = Some(policies.borrow().to_owned());
+    /// Set the policy for this edge.
+    pub fn policy(&mut self, policy: impl Borrow<Policy>) -> &mut Self {
+        self.options.common_opts.policy = Some(policy.borrow().to_owned());
         self
     }
 
@@ -173,7 +173,7 @@ mod test {
             .metadata(METADATA)
             .remote_addr(REMOTE_ADDR)
             .forwards_to(TEST_FORWARD)
-            .policies(Policies::from_json(POLICY_JSON).unwrap())
+            .policy(Policy::from_json(POLICY_JSON).unwrap())
             .options,
         );
     }
