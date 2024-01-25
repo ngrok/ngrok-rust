@@ -425,9 +425,12 @@ impl HttpTunnelBuilder {
     }
 
     /// Set the policy for this edge.
-    pub fn policy(&mut self, policy: impl Borrow<Policy>) -> &mut Self {
-        self.options.common_opts.policy = Some(policy.borrow().to_owned());
-        self
+    pub fn policy<S>(&mut self, s: S) -> Result<&mut Self, S::Error>
+    where
+        S: TryInto<Policy>,
+    {
+        self.options.common_opts.policy = Some(s.try_into()?);
+        Ok(self)
     }
 
     pub(crate) async fn for_forwarding_to(&mut self, to_url: &Url) -> &mut Self {
@@ -499,7 +502,8 @@ mod test {
             .basic_auth("ngrok", "online1line")
             .forwards_to(TEST_FORWARD)
             .app_protocol("http2")
-            .policy(Policy::from_json(POLICY_JSON).unwrap())
+            .policy(POLICY_JSON)
+            .unwrap()
             .options,
         );
     }

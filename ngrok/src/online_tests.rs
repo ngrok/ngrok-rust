@@ -392,7 +392,7 @@ async fn custom_domain() -> Result<(), Error> {
 async fn policy() -> Result<(), Error> {
     let tun = serve_http(
         defaults,
-        |tun| tun.policy(create_policy().unwrap()),
+        |tun| tun.policy(create_policy()).unwrap(),
         hello_router(),
     )
     .await?;

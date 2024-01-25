@@ -61,7 +61,7 @@ async fn start_tunnel() -> anyhow::Result<HttpTunnel> {
         //         .allow_domain("<domain>")
         //         .scope("<scope>"),
         // )
-        // .policy(create_policy()?)
+        // .policy(create_policy())?
         // .proxy_proto(ProxyProto::None)
         // .remove_request_header("X-Req-Nope")
         // .remove_response_header("X-Res-Nope")

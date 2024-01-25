@@ -1,6 +1,6 @@
 use std::{
-    borrow::Borrow,
     fs::read_to_string,
+    io,
 };
 
 use serde::{
@@ -38,17 +38,14 @@ pub struct Action {
 }
 
 /// Errors in creating or serializing Policies
-#[derive(Debug, Clone, Error)]
+#[derive(Debug, Error)]
 pub enum InvalidPolicy {
     /// Error representing an invalid string for a Policy
-    #[error("failure to parse policy, err: {}", .0)]
-    ParseError(String),
-    /// An error generate a Policy json string
-    #[error("failure to serialize policy, err: {}", .0)]
-    GenerationError(String),
+    #[error("failure to parse or generate policy")]
+    SerializationError(#[from] serde_json::Error),
     /// An error loading a Policy from a file
-    #[error("failure to read policy file '{}', err: {}", .0, .1)]
-    FileReadError(String, String),
+    #[error("failure to read policy file '{}'", .1)]
+    FileReadError(#[source] io::Error, String),
 }
 
 impl Policy {
@@ -60,32 +57,58 @@ impl Policy {
     }
 
     /// Create a new [Policy] from a json string
-    pub fn from_json(json: impl AsRef<str>) -> Result<Self, InvalidPolicy> {
-        serde_json::from_str(json.as_ref()).map_err(|e| InvalidPolicy::ParseError(e.to_string()))
+    fn from_json(json: impl AsRef<str>) -> Result<Self, InvalidPolicy> {
+        serde_json::from_str(json.as_ref()).map_err(InvalidPolicy::SerializationError)
     }
 
     /// Create a new [Policy] from a json file
     pub fn from_file(json_file_path: impl AsRef<str>) -> Result<Self, InvalidPolicy> {
-        Policy::from_json(read_to_string(json_file_path.as_ref()).map_err(|e| {
-            InvalidPolicy::FileReadError(json_file_path.as_ref().to_string(), e.to_string())
-        })?)
+        Policy::from_json(
+            read_to_string(json_file_path.as_ref()).map_err(|e| {
+                InvalidPolicy::FileReadError(e, json_file_path.as_ref().to_string())
+            })?,
+        )
     }
 
     /// Convert [Policy] to json string
     pub fn to_json(&self) -> Result<String, InvalidPolicy> {
-        serde_json::to_string(&self).map_err(|e| InvalidPolicy::GenerationError(e.to_string()))
+        serde_json::to_string(&self).map_err(InvalidPolicy::SerializationError)
     }
 
     /// Add an inbound policy
-    pub fn add_inbound(&mut self, policy: impl Borrow<Rule>) -> &mut Self {
-        self.inbound.push(policy.borrow().to_owned());
+    pub fn add_inbound(&mut self, rule: impl Into<Rule>) -> &mut Self {
+        self.inbound.push(rule.into());
         self
     }
 
     /// Add an outbound policy
-    pub fn add_outbound(&mut self, policy: impl Borrow<Rule>) -> &mut Self {
-        self.outbound.push(policy.borrow().to_owned());
+    pub fn add_outbound(&mut self, rule: impl Into<Rule>) -> &mut Self {
+        self.outbound.push(rule.into());
         self
+    }
+}
+
+impl TryFrom<&Policy> for Policy {
+    type Error = InvalidPolicy;
+
+    fn try_from(other: &Policy) -> Result<Policy, Self::Error> {
+        Ok(other.clone())
+    }
+}
+
+impl TryFrom<Result<Policy, InvalidPolicy>> for Policy {
+    type Error = InvalidPolicy;
+
+    fn try_from(other: Result<Policy, InvalidPolicy>) -> Result<Policy, Self::Error> {
+        other
+    }
+}
+
+impl TryFrom<&str> for Policy {
+    type Error = InvalidPolicy;
+
+    fn try_from(other: &str) -> Result<Policy, Self::Error> {
+        Policy::from_json(other)
     }
 }
 
@@ -100,7 +123,7 @@ impl Rule {
 
     /// Convert [Rule] to json string
     pub fn to_json(&self) -> Result<String, InvalidPolicy> {
-        serde_json::to_string(&self).map_err(|e| InvalidPolicy::GenerationError(e.to_string()))
+        serde_json::to_string(&self).map_err(InvalidPolicy::SerializationError)
     }
 
     /// Add an expression
@@ -116,22 +139,26 @@ impl Rule {
     }
 }
 
+impl From<&mut Rule> for Rule {
+    fn from(other: &mut Rule) -> Self {
+        other.to_owned()
+    }
+}
+
 impl Action {
     /// Create a new [Action]
     pub fn new(type_: impl Into<String>, config: Option<&str>) -> Result<Self, InvalidPolicy> {
         Ok(Action {
             type_: type_.into(),
             config: config
-                .map(|c| {
-                    serde_json::from_str(c).map_err(|e| InvalidPolicy::ParseError(e.to_string()))
-                })
+                .map(|c| serde_json::from_str(c).map_err(InvalidPolicy::SerializationError))
                 .transpose()?,
         })
     }
 
     /// Convert [Action] to json string
     pub fn to_json(&self) -> Result<String, InvalidPolicy> {
-        serde_json::to_string(&self).map_err(|e| InvalidPolicy::GenerationError(e.to_string()))
+        serde_json::to_string(&self).map_err(InvalidPolicy::SerializationError)
     }
 }
 
@@ -225,7 +252,7 @@ pub(crate) mod test {
     #[test]
     fn test_policy_to_json_error() {
         let error = Policy::from_json("asdf").err().unwrap();
-        assert!(matches!(error, InvalidPolicy::ParseError { .. }));
+        assert!(matches!(error, InvalidPolicy::SerializationError { .. }));
     }
 
     #[test]
