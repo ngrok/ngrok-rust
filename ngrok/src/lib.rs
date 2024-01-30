@@ -23,6 +23,8 @@ pub mod config {
     mod oauth;
     pub use oauth::*;
     mod oidc;
+    pub use policies::*;
+    mod policies;
     pub use oidc::*;
     mod tcp;
     pub use tcp::*;
@@ -64,7 +66,19 @@ pub mod prelude {
     #[doc(inline)]
     pub use crate::{
         config::{
+            Action,
             ForwarderBuilder,
+            HttpTunnelBuilder,
+            InvalidPolicy,
+            LabeledTunnelBuilder,
+            OauthOptions,
+            OidcOptions,
+            Policy,
+            ProxyProto,
+            Rule,
+            Scheme,
+            TcpTunnelBuilder,
+            TlsTunnelBuilder,
             TunnelBuilder,
         },
         conn::{

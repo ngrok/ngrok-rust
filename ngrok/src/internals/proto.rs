@@ -681,6 +681,7 @@ pub struct HttpEndpoint {
     pub websocket_tcp_converter: Option<WebsocketTcpConverter>,
     #[serde(rename = "UserAgentFilter")]
     pub user_agent_filter: Option<UserAgentFilter>,
+    pub policy: Option<Policy>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -806,6 +807,7 @@ pub struct TcpEndpoint {
     pub proxy_proto: ProxyProto,
     #[serde(rename = "IPRestriction")]
     pub ip_restriction: Option<IpRestriction>,
+    pub policy: Option<Policy>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -823,6 +825,7 @@ pub struct TlsEndpoint {
     pub tls_termination: Option<TlsTermination>,
     #[serde(rename = "IPRestriction")]
     pub ip_restriction: Option<IpRestriction>,
+    pub policy: Option<Policy>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -839,6 +842,30 @@ pub struct TlsTermination {
 #[serde(rename_all = "PascalCase")]
 pub struct LabelEndpoint {
     pub labels: HashMap<String, String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[serde(rename_all = "PascalCase", default)]
+pub struct Policy {
+    pub inbound: Vec<Rule>,
+    pub outbound: Vec<Rule>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[serde(rename_all = "PascalCase", default)]
+pub struct Rule {
+    pub name: String,
+    pub expressions: Vec<String>,
+    pub actions: Vec<Action>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[serde(rename_all = "PascalCase", default)]
+pub struct Action {
+    #[serde(rename = "Type")]
+    pub type_: String,
+    #[serde(default, with = "base64bytes", skip_serializing_if = "is_default")]
+    pub config: Vec<u8>,
 }
 
 // These are helpers to facilitate the Vec<u8> <-> base64-encoded bytes

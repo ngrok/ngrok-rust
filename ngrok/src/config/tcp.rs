@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use url::Url;
 
-use super::common::ProxyProto;
+use super::{
+    common::ProxyProto,
+    Policy,
+};
 // These are used for doc comment links.
 #[allow(unused_imports)]
 use crate::config::{
@@ -64,6 +67,8 @@ impl TunnelConfig for TcpOptions {
         tcp_endpoint.proxy_proto = self.common_opts.proxy_proto;
 
         tcp_endpoint.ip_restriction = self.common_opts.ip_restriction();
+
+        tcp_endpoint.policy = self.common_opts.policy.clone().map(From::from);
 
         Some(BindOpts::Tcp(tcp_endpoint))
     }
@@ -127,6 +132,15 @@ impl TcpTunnelBuilder {
         self
     }
 
+    /// Set the policy for this edge.
+    pub fn policy<S>(&mut self, s: S) -> Result<&mut Self, S::Error>
+    where
+        S: TryInto<Policy>,
+    {
+        self.options.common_opts.policy = Some(s.try_into()?);
+        Ok(self)
+    }
+
     pub(crate) async fn for_forwarding_to(&mut self, to_url: &Url) -> &mut Self {
         self.options.common_opts.for_forwarding_to(to_url);
         self
@@ -136,6 +150,7 @@ impl TcpTunnelBuilder {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::config::policies::test::POLICY_JSON;
 
     const METADATA: &str = "testmeta";
     const TEST_FORWARD: &str = "testforward";
@@ -158,6 +173,8 @@ mod test {
             .metadata(METADATA)
             .remote_addr(REMOTE_ADDR)
             .forwards_to(TEST_FORWARD)
+            .policy(POLICY_JSON)
+            .unwrap()
             .options,
         );
     }
