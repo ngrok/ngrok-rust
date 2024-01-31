@@ -14,6 +14,7 @@ use crate::internals::proto;
 /// A policy that defines rules that should be applied to incoming or outgoing
 /// connections to the edge.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+#[serde(default)]
 pub struct Policy {
     inbound: Vec<Rule>,
     outbound: Vec<Rule>,
@@ -242,6 +243,13 @@ pub(crate) mod test {
     }
 
     #[test]
+    fn test_empty_json_to_policy() {
+        let policy: Policy = Policy::from_json("{}").unwrap();
+        assert_eq!(0, policy.inbound.len());
+        assert_eq!(0, policy.outbound.len());
+    }
+
+    #[test]
     fn test_policy_to_json() {
         let policy = Policy::from_json(POLICY_JSON).unwrap();
         let json = policy.to_json().unwrap();
@@ -315,6 +323,13 @@ pub(crate) mod test {
         assert_eq!("test_in", policy2.inbound[0].name);
         assert_eq!("test_out", policy2.outbound[0].name);
         assert_eq!(policy, policy2);
+    }
+
+    #[test]
+    fn test_load_inbound_file() {
+        let policy = Policy::from_file("assets/policy-inbound.json").unwrap();
+        assert_eq!("test_in", policy.inbound[0].name);
+        assert_eq!(0, policy.outbound.len());
     }
 
     #[test]
