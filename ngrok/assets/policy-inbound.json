@@ -1,0 +1,15 @@
+{
+  "inbound": [
+    {
+      "name": "test_in",
+      "expressions": [
+        "req.Method == 'PUT'"
+      ],
+      "actions": [
+        {
+          "type": "deny"
+        }
+      ]
+    }
+  ]
+}
