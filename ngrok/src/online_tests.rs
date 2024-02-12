@@ -17,13 +17,6 @@ use anyhow::{
     anyhow,
     Error,
 };
-use async_rustls::{
-    rustls,
-    rustls::{
-        ClientConfig,
-        RootCertStore,
-    },
-};
 use axum::{
     extract::connect_info::Connected,
     routing::get,
@@ -35,6 +28,11 @@ use futures::{
     channel::oneshot,
     prelude::*,
     stream::FuturesUnordered,
+};
+use futures_rustls::rustls::{
+    pki_types,
+    ClientConfig,
+    RootCertStore,
 };
 use hyper::{
     header,
@@ -711,7 +709,6 @@ fn tls_client_config() -> Result<Arc<ClientConfig>, &'static io::Error> {
         let mut root_store = RootCertStore::empty();
         root_store.add_parsable_certificates(der_certs);
         let config = ClientConfig::builder()
-            .with_safe_defaults()
             .with_root_certificates(root_store)
             .with_no_client_auth();
         Ok(Arc::new(config))
@@ -746,10 +743,11 @@ async fn forward_proxy_protocol_tls() -> Result<(), Error> {
         ))
         .await?;
 
-        let domain = rustls::ServerName::try_from(tunnel_url.host_str().unwrap())
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+        let domain = pki_types::ServerName::try_from(tunnel_url.host_str().unwrap())
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?
+            .to_owned();
 
-        let mut tls_conn = async_rustls::TlsConnector::from(
+        let mut tls_conn = futures_rustls::TlsConnector::from(
             tls_client_config().map_err(|e| io::Error::from(e.kind()))?,
         )
         .connect(domain, tunnel_conn.compat())

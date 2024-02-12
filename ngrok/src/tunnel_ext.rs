@@ -13,13 +13,13 @@ use std::{
     fmt,
 };
 
-use async_rustls::rustls::{
-    self,
+use async_trait::async_trait;
+use futures::stream::TryStreamExt;
+use futures_rustls::rustls::{
+    pki_types,
     ClientConfig,
     RootCertStore,
 };
-use async_trait::async_trait;
-use futures::stream::TryStreamExt;
 #[cfg(feature = "hyper")]
 use hyper::{
     server::conn::Http,
@@ -238,7 +238,6 @@ fn tls_config(app_protocol: Option<String>) -> Result<Arc<ClientConfig>, &'stati
                 .into_iter()
                 .map(|p| {
                     let mut config = ClientConfig::builder()
-                        .with_safe_defaults()
                         .with_root_certificates(root_store.clone())
                         .with_no_client_auth();
                     if let Some("http2") = p.as_deref() {
@@ -359,10 +358,11 @@ async fn connect(
     };
 
     if backend_tls && !tunnel_tls {
-        let domain = rustls::ServerName::try_from(host)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+        let domain = pki_types::ServerName::try_from(host)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?
+            .to_owned();
         conn = Box::new(
-            async_rustls::TlsConnector::from(tls_config(app_protocol).map_err(|e| e.kind())?)
+            futures_rustls::TlsConnector::from(tls_config(app_protocol).map_err(|e| e.kind())?)
                 .connect(domain, conn.compat())
                 .await?
                 .compat(),
