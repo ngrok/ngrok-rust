@@ -844,6 +844,7 @@ pub struct LabelEndpoint {
 // These are helpers to facilitate the Vec<u8> <-> base64-encoded bytes
 // representation that the Go messages use
 mod base64bytes {
+    use base64::prelude::*;
     use serde::{
         Deserialize,
         Deserializer,
@@ -852,12 +853,14 @@ mod base64bytes {
     };
 
     pub fn serialize<S: Serializer>(v: &Vec<u8>, s: S) -> Result<S::Ok, S::Error> {
-        base64::encode(v).serialize(s)
+        BASE64_STANDARD.encode(v).serialize(s)
     }
 
     pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
         let s = String::deserialize(d)?;
-        base64::decode(s.as_bytes()).map_err(serde::de::Error::custom)
+        BASE64_STANDARD
+            .decode(s.as_bytes())
+            .map_err(serde::de::Error::custom)
     }
 }
 
