@@ -17,7 +17,9 @@ use std::{
 };
 
 use arc_swap::ArcSwap;
-use async_rustls::rustls::{self,};
+use async_rustls::rustls::{
+    self,
+};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{

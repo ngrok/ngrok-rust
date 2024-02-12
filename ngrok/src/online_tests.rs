@@ -762,12 +762,7 @@ async fn forward_proxy_protocol_tls() -> Result<(), Error> {
     let (conn, _) = listener.accept().await?;
 
     let mut proxy_conn = crate::proxy_proto::Stream::incoming(conn);
-    let proxy_header = proxy_conn
-        .proxy_header()
-        .await?
-        .unwrap()
-        .map(Clone::clone)
-        .unwrap();
+    let proxy_header = proxy_conn.proxy_header().await?.unwrap().cloned().unwrap();
 
     match proxy_header {
         ProxyHeader::Version2 { .. } => {}

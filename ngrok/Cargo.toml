@@ -12,7 +12,13 @@ serde = { version = "1.0.149", features = ["derive"] }
 serde_json = "1.0.89"
 thiserror = "1.0.37"
 base64 = "0.13.1"
-tokio = { version = "1.23.0", features = ["io-util", "net", "sync", "time", "rt"] }
+tokio = { version = "1.23.0", features = [
+	"io-util",
+	"net",
+	"sync",
+	"time",
+	"rt",
+] }
 tracing = "0.1.37"
 async-rustls = { version = "0.3.0" }
 tokio-util = { version = "0.7.4", features = ["compat"] }
@@ -30,7 +36,9 @@ once_cell = "1.17.1"
 hostname = "0.3.1"
 regex = "1.7.3"
 tokio-socks = "0.5.1"
-hyper-proxy = { version = "0.9.1", default-features = false, features = ["rustls"] }
+hyper-proxy = { version = "0.9.1", default-features = false, features = [
+	"rustls",
+] }
 url = "2.4.0"
 rustls-native-certs = "0.6.3"
 proxy-protocol = "0.5.0"
@@ -48,7 +56,10 @@ flate2 = "1.0.25"
 tracing-test = "0.2.3"
 rand = "0.8.5"
 paste = "1.0.11"
-tokio-tungstenite = { version = "0.18.0", features = ["rustls", "rustls-tls-webpki-roots"] }
+tokio-tungstenite = { version = "0.18.0", features = [
+	"rustls",
+	"rustls-tls-webpki-roots",
+] }
 
 [[example]]
 name = "tls"
