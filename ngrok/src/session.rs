@@ -26,7 +26,7 @@ use futures_rustls::rustls::{
     self,
     pki_types,
 };
-use hyper::{
+use hyper_0_14::{
     client::HttpConnector,
     service::Service,
 };
