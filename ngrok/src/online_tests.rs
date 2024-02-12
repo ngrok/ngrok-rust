@@ -1,4 +1,5 @@
 use std::{
+    convert::Infallible,
     io,
     io::prelude::*,
     net::SocketAddr,
@@ -13,13 +14,10 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{
-    anyhow,
-    Error,
-};
+use anyhow::anyhow;
 use axum::{
-    extract::connect_info::Connected,
     routing::get,
+    BoxError,
     Router,
 };
 use bytes::Bytes;
@@ -28,6 +26,7 @@ use futures::{
     channel::oneshot,
     prelude::*,
     stream::FuturesUnordered,
+    TryStreamExt,
 };
 use futures_rustls::rustls::{
     pki_types,
@@ -36,10 +35,18 @@ use futures_rustls::rustls::{
 };
 // use native_tls;
 use hyper::{
-    header,
+    body::Incoming,
     HeaderMap,
+    Request,
+};
+use hyper_0_14::{
+    header,
     StatusCode,
     Uri,
+};
+use hyper_util::{
+    rt::TokioExecutor,
+    server,
 };
 use once_cell::sync::Lazy;
 use paste::paste;
@@ -63,6 +70,10 @@ use tokio_tungstenite::{
     tungstenite::Message,
 };
 use tokio_util::compat::*;
+use tower::{
+    Service,
+    ServiceExt,
+};
 use tracing_test::traced_test;
 use url::Url;
 
@@ -75,13 +86,13 @@ use crate::{
     Session,
 };
 
-async fn setup_session() -> Result<Session, Error> {
+async fn setup_session() -> Result<Session, BoxError> {
     Ok(Session::builder().authtoken_from_env().connect().await?)
 }
 
 #[cfg_attr(not(feature = "online-tests"), ignore)]
 #[test]
-async fn listen() -> Result<(), Error> {
+async fn listen() -> Result<(), BoxError> {
     let _ = Session::builder()
         .authtoken_from_env()
         .connect()
@@ -94,7 +105,7 @@ async fn listen() -> Result<(), Error> {
 
 #[cfg_attr(not(feature = "online-tests"), ignore)]
 #[test]
-async fn tunnel() -> Result<(), Error> {
+async fn tunnel() -> Result<(), BoxError> {
     let tun = setup_session()
         .await?
         .http_endpoint()
@@ -128,7 +139,7 @@ async fn serve_http(
     build_session: impl FnOnce(&mut SessionBuilder) -> &mut SessionBuilder,
     build_tunnel: impl FnOnce(&mut HttpTunnelBuilder) -> &mut HttpTunnelBuilder,
     router: axum::Router,
-) -> Result<TunnelGuard, Error> {
+) -> Result<TunnelGuard, BoxError> {
     let sess = build_session(Session::builder().authtoken_from_env())
         .connect()
         .await?;
@@ -138,20 +149,40 @@ async fn serve_http(
     Ok(start_http_server(tun, router))
 }
 
-fn start_http_server<T>(tun: T, router: Router) -> TunnelGuard
+fn start_http_server<T>(mut tun: T, router: Router) -> TunnelGuard
 where
-    T: EndpointInfo + Tunnel,
-    for<'a> SocketAddr: Connected<&'a <T as Tunnel>::Conn>,
+    T: EndpointInfo + Tunnel + 'static,
+    T::Conn: crate::tunnel_ext::ConnExt,
 {
     let url = tun.url().into();
 
     let (tx, rx) = oneshot::channel::<()>();
 
-    tokio::spawn(futures::future::select(
-        axum::Server::builder(tun)
-            .serve(router.into_make_service_with_connect_info::<SocketAddr>()),
-        rx,
-    ));
+    let mut make_service = router.into_make_service_with_connect_info::<SocketAddr>();
+
+    let server = async move {
+        while let Some(conn) = tun.try_next().await? {
+            let remote_addr = conn.remote_addr();
+            let tower_service = unwrap_infallible(make_service.call(remote_addr).await);
+
+            tokio::spawn(async move {
+                let hyper_service =
+                    hyper::service::service_fn(move |request: Request<Incoming>| {
+                        tower_service.clone().oneshot(request)
+                    });
+
+                if let Err(err) = server::conn::auto::Builder::new(TokioExecutor::new())
+                    .serve_connection_with_upgrades(conn, hyper_service)
+                    .await
+                {
+                    eprintln!("failed to serve connection: {err:#}");
+                }
+            });
+        }
+        Ok::<(), BoxError>(())
+    };
+
+    tokio::spawn(futures::future::select(Box::pin(server), rx));
     TunnelGuard { tx: tx.into(), url }
 }
 
@@ -163,7 +194,7 @@ fn hello_router() -> Router {
     Router::new().route("/", get(|| async { "Hello, world!" }))
 }
 
-async fn check_body(url: impl AsRef<str>, expected: impl AsRef<str>) -> Result<(), Error> {
+async fn check_body(url: impl AsRef<str>, expected: impl AsRef<str>) -> Result<(), BoxError> {
     let body: String = reqwest::get(url.as_ref()).await?.text().await?;
     assert_eq!(body, expected.as_ref());
     Ok(())
@@ -171,7 +202,7 @@ async fn check_body(url: impl AsRef<str>, expected: impl AsRef<str>) -> Result<(
 
 #[cfg_attr(not(feature = "online-tests"), ignore)]
 #[test]
-async fn https() -> Result<(), Error> {
+async fn https() -> Result<(), BoxError> {
     let tun = serve_http(defaults, defaults, hello_router()).await?;
     let url = tun.url.as_str();
 
@@ -184,7 +215,7 @@ async fn https() -> Result<(), Error> {
 
 #[cfg_attr(not(feature = "online-tests"), ignore)]
 #[test]
-async fn http() -> Result<(), Error> {
+async fn http() -> Result<(), BoxError> {
     let tun = serve_http(defaults, |tun| tun.scheme(Scheme::HTTP), hello_router()).await?;
     let url = tun.url.as_str();
 
@@ -197,7 +228,7 @@ async fn http() -> Result<(), Error> {
 
 #[cfg_attr(not(feature = "paid-tests"), ignore)]
 #[test]
-async fn http_compression() -> Result<(), Error> {
+async fn http_compression() -> Result<(), BoxError> {
     let tun = serve_http(defaults, |tun| tun.compression(), hello_router()).await?;
     let url = tun.url.as_str();
 
@@ -226,8 +257,8 @@ async fn http_compression() -> Result<(), Error> {
 
 #[cfg_attr(not(feature = "paid-tests"), ignore)]
 #[test]
-async fn http_headers() -> Result<(), Error> {
-    let (tx, mut rx) = mpsc::channel::<Error>(16);
+async fn http_headers() -> Result<(), BoxError> {
+    let (tx, mut rx) = mpsc::channel::<BoxError>(16);
     // For some reason, the hyper machinery keeps a clone of the `tx`, which
     // causes it to never look closed, even when we drop the tunnel guard, which
     // shuts down the hyper server. Maybe a leaked task? Work around it by
@@ -242,17 +273,14 @@ async fn http_headers() -> Result<(), Error> {
         if let Some(bar) = headers.get("foo") {
             if bar != "bar" {
                 let _ = tx
-                    .send(anyhow!(
-                        "unexpected value for 'foo' request header: {:?}",
-                        bar
-                    ))
+                    .send(format!("unexpected value for 'foo' request header: {:?}", bar).into())
                     .await;
             }
         } else {
-            let _ = tx.send(anyhow!("missing 'foo' request header")).await;
+            let _ = tx.send("missing 'foo' request header".into()).await;
         }
         if headers.get("baz").is_some() {
-            let _ = tx.send(anyhow!("got 'baz' request header")).await;
+            let _ = tx.send("got 'baz' request header".into()).await;
         }
 
         ([("python", "lolnope")], "Hello, world!")
@@ -294,7 +322,7 @@ async fn http_headers() -> Result<(), Error> {
 #[traced_test]
 #[cfg_attr(not(feature = "authenticated-tests"), ignore)]
 #[test]
-async fn user_agent() -> Result<(), Error> {
+async fn user_agent() -> Result<(), BoxError> {
     let tun = serve_http(
         defaults,
         |tun| tun.allow_user_agent("foo.*").deny_user_agent(".*"),
@@ -321,7 +349,7 @@ async fn user_agent() -> Result<(), Error> {
 #[traced_test]
 #[cfg_attr(not(feature = "paid-tests"), ignore)]
 #[test]
-async fn basic_auth() -> Result<(), Error> {
+async fn basic_auth() -> Result<(), BoxError> {
     let tun = serve_http(
         defaults,
         |tun| tun.basic_auth("user", "foobarbaz"),
@@ -347,7 +375,7 @@ async fn basic_auth() -> Result<(), Error> {
 #[traced_test]
 #[cfg_attr(not(feature = "paid-tests"), ignore)]
 #[test]
-async fn oauth() -> Result<(), Error> {
+async fn oauth() -> Result<(), BoxError> {
     let tun = serve_http(
         defaults,
         |tun| tun.oauth(OauthOptions::new("google")),
@@ -368,7 +396,7 @@ async fn oauth() -> Result<(), Error> {
 #[traced_test]
 #[cfg_attr(not(feature = "paid-tests"), ignore)]
 #[test]
-async fn custom_domain() -> Result<(), Error> {
+async fn custom_domain() -> Result<(), BoxError> {
     let mut rng = thread_rng();
     let subdomain = (0..7)
         .map(|_| rng.sample(Alphanumeric) as char)
@@ -389,7 +417,7 @@ async fn custom_domain() -> Result<(), Error> {
 #[traced_test]
 #[cfg_attr(not(feature = "paid-tests"), ignore)]
 #[test]
-async fn policy() -> Result<(), Error> {
+async fn policy() -> Result<(), BoxError> {
     let tun = serve_http(
         defaults,
         |tun| tun.policy(create_policy()).unwrap(),
@@ -425,7 +453,7 @@ fn create_policy() -> Result<Policy, InvalidPolicy> {
 #[traced_test]
 #[cfg_attr(not(all(feature = "paid-tests", feature = "long-tests")), ignore)]
 #[test]
-async fn circuit_breaker() -> Result<(), Error> {
+async fn circuit_breaker() -> Result<(), BoxError> {
     let ctr = Arc::new(AtomicUsize::new(0));
     let tun = serve_http(
         defaults,
@@ -436,7 +464,7 @@ async fn circuit_breaker() -> Result<(), Error> {
                 let ctr = ctr.clone();
                 move || {
                     ctr.fetch_add(1, Ordering::SeqCst);
-                    async { StatusCode::INTERNAL_SERVER_ERROR }
+                    async { hyper::StatusCode::INTERNAL_SERVER_ERROR }
                 }
             }),
         ),
@@ -454,7 +482,7 @@ async fn circuit_breaker() -> Result<(), Error> {
                 let resp = reqwest::get(url).await?;
                 let status = resp.status();
                 tracing::debug!(?status);
-                Result::<_, Error>::Ok(resp.status())
+                Result::<_, BoxError>::Ok(resp.status())
             });
         }
         let mut done = false;
@@ -498,7 +526,7 @@ macro_rules! proxy_proto_test {
             #[cfg_attr(not(feature = "paid-tests"), ignore)]
             #[test]
             #[allow(non_snake_case)]
-            async fn [<proxy_proto_ $ept _ $vers>]() -> Result<(), Error> {
+            async fn [<proxy_proto_ $ept _ $vers>]() -> Result<(), BoxError> {
                 let sess = Session::builder().authtoken_from_env().connect().await?;
                 let mut $tun = sess
                     .[<$ept _endpoint>]()
@@ -551,7 +579,7 @@ proxy_proto_test!(
 #[traced_test]
 #[test]
 #[cfg_attr(not(feature = "paid-tests"), ignore)]
-async fn http_ip_restriction() -> Result<(), Error> {
+async fn http_ip_restriction() -> Result<(), BoxError> {
     let tun = serve_http(
         defaults,
         |tun| tun.allow_cidr("127.0.0.1/32").deny_cidr("0.0.0.0/0"),
@@ -569,7 +597,7 @@ async fn http_ip_restriction() -> Result<(), Error> {
 #[traced_test]
 #[test]
 #[cfg_attr(not(feature = "paid-tests"), ignore)]
-async fn tcp_ip_restriction() -> Result<(), Error> {
+async fn tcp_ip_restriction() -> Result<(), BoxError> {
     let tun = Session::builder()
         .authtoken_from_env()
         .connect()
@@ -592,7 +620,7 @@ async fn tcp_ip_restriction() -> Result<(), Error> {
 #[traced_test]
 #[test]
 #[cfg_attr(not(feature = "paid-tests"), ignore)]
-async fn websocket_conversion() -> Result<(), Error> {
+async fn websocket_conversion() -> Result<(), BoxError> {
     let mut tun = Session::builder()
         .authtoken_from_env()
         .connect()
@@ -608,7 +636,7 @@ async fn websocket_conversion() -> Result<(), Error> {
         while let Some(mut conn) = tun.try_next().await? {
             conn.write_all("Hello, websockets!".as_bytes()).await?;
         }
-        Result::<_, Error>::Ok(())
+        Result::<_, BoxError>::Ok(())
     });
 
     let mut wss = connect_async(url).await.expect("connect").0;
@@ -629,7 +657,7 @@ async fn websocket_conversion() -> Result<(), Error> {
                 wss.send(Message::Pong(b)).await?;
             }
             Message::Close(_) => {
-                anyhow::bail!("didn't get message before close");
+                return Err(BoxError::from("didn't get message before close"));
             }
             _ => {}
         }
@@ -641,7 +669,7 @@ async fn websocket_conversion() -> Result<(), Error> {
 #[traced_test]
 #[test]
 #[cfg_attr(not(feature = "authenticated-tests"), ignore)]
-async fn tcp() -> Result<(), Error> {
+async fn tcp() -> Result<(), BoxError> {
     let tun = Session::builder()
         .authtoken_from_env()
         .connect()
@@ -665,7 +693,7 @@ const KEY: &[u8] = include_bytes!("../examples/domain.key");
 #[traced_test]
 #[test]
 #[cfg_attr(not(feature = "authenticated-tests"), ignore)]
-async fn tls() -> Result<(), Error> {
+async fn tls() -> Result<(), BoxError> {
     let tun = Session::builder()
         .authtoken_from_env()
         .connect()
@@ -788,7 +816,7 @@ async fn session_root_cas() -> Result<(), Error> {
 
 #[cfg_attr(not(feature = "online-tests"), ignore)]
 #[test]
-async fn session_ca_cert() -> Result<(), Error> {
+async fn session_ca_cert() -> Result<(), BoxError> {
     // invalid cert
     let resp = Session::builder()
         .authtoken_from_env()
@@ -813,7 +841,7 @@ async fn session_ca_cert() -> Result<(), Error> {
 
 #[cfg_attr(not(feature = "online-tests"), ignore)]
 #[test]
-async fn session_tls_config() -> Result<(), Error> {
+async fn session_tls_config() -> Result<(), BoxError> {
     let default_tls_config = Session::builder().get_or_create_tls_config();
 
     // invalid cert, but valid tls_config overrides
@@ -846,7 +874,7 @@ fn tls_client_config() -> Result<Arc<ClientConfig>, &'static io::Error> {
 #[traced_test]
 #[cfg_attr(not(feature = "paid-tests"), ignore)]
 #[test]
-async fn forward_proxy_protocol_tls() -> Result<(), Error> {
+async fn forward_proxy_protocol_tls() -> Result<(), BoxError> {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr()?;
 
@@ -896,4 +924,11 @@ async fn forward_proxy_protocol_tls() -> Result<(), Error> {
     // TODO: actually accept the tls connection from the server side
 
     Ok(())
+}
+
+fn unwrap_infallible<T>(result: Result<T, Infallible>) -> T {
+    match result {
+        Ok(value) => value,
+        Err(err) => match err {},
+    }
 }

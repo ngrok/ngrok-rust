@@ -27,7 +27,7 @@ use futures_rustls::rustls::{
     pki_types,
     RootCertStore,
 };
-use hyper::{
+use hyper_0_14::{
     client::HttpConnector,
     service::Service,
 };
