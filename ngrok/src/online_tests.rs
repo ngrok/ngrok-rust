@@ -703,9 +703,7 @@ fn tls_client_config() -> Result<Arc<ClientConfig>, &'static io::Error> {
     static CONFIG: Lazy<Result<Arc<ClientConfig>, io::Error>> = Lazy::new(|| {
         let der_certs = rustls_native_certs::load_native_certs()?
             .into_iter()
-            .map(|c| c.0)
             .collect::<Vec<_>>();
-        let der_certs = der_certs.as_slice();
         let mut root_store = RootCertStore::empty();
         root_store.add_parsable_certificates(der_certs);
         let config = ClientConfig::builder()

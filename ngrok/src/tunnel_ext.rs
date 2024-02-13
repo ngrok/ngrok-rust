@@ -217,9 +217,7 @@ fn tls_config(app_protocol: Option<String>) -> Result<Arc<ClientConfig>, &'stati
     static ROOT_STORE: Lazy<Result<RootCertStore, io::Error>> = Lazy::new(|| {
         let der_certs = rustls_native_certs::load_native_certs()?
             .into_iter()
-            .map(|c| c.0)
             .collect::<Vec<_>>();
-        let der_certs = der_certs.as_slice();
         let mut root_store = RootCertStore::empty();
         root_store.add_parsable_certificates(der_certs);
         Ok(root_store)
