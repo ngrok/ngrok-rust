@@ -38,11 +38,11 @@ use hyper::{
     body::Incoming,
     HeaderMap,
     Request,
+    Uri,
 };
 use hyper_0_14::{
     header,
     StatusCode,
-    Uri,
 };
 use hyper_util::{
     rt::TokioExecutor,
