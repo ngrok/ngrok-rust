@@ -18,9 +18,11 @@ use std::{
     time::Duration,
 };
 
-use async_trait::async_trait;
 use futures::{
-    future::select,
+    future::{
+        select,
+        BoxFuture,
+    },
     prelude::*,
 };
 use tokio::{
@@ -37,7 +39,10 @@ use tokio::{
 };
 
 use crate::{
-    errors::Error,
+    errors::{
+        BoxError,
+        Error,
+    },
     typed::{
         StreamType,
         TypedAccept,
@@ -71,7 +76,6 @@ pub struct HeartbeatCtl {
 }
 
 /// A handler called on every heartbeat with the latency for that beat.
-#[async_trait]
 pub trait HeartbeatHandler: Send + Sync + 'static {
     /// Handle the heartbeat
     ///
@@ -79,17 +83,16 @@ pub trait HeartbeatHandler: Send + Sync + 'static {
     /// heartbeat reply was received.
     ///
     /// If this returns an error, the heartbeat task will exit.
-    async fn handle_heartbeat(&self, latency: Option<Duration>) -> Result<(), Box<dyn StdError>>;
+    fn handle_heartbeat(&self, latency: Option<Duration>) -> BoxFuture<Result<(), BoxError>>;
 }
 
-#[async_trait]
 impl<T, F> HeartbeatHandler for T
 where
     T: Fn(Option<Duration>) -> F + Send + Sync + 'static,
-    F: Future<Output = Result<(), Box<dyn StdError>>> + Send,
+    F: Future<Output = Result<(), BoxError>> + Send + 'static,
 {
-    async fn handle_heartbeat(&self, latency: Option<Duration>) -> Result<(), Box<dyn StdError>> {
-        self(latency).await
+    fn handle_heartbeat(&self, latency: Option<Duration>) -> BoxFuture<Result<(), BoxError>> {
+        Box::pin(self(latency))
     }
 }
 
@@ -206,7 +209,9 @@ impl HeartbeatCtl {
                                 }
                             }
                             Ok(None) => {
-                                return Result::<(), Box<dyn StdError>>::Ok(());
+                                return Result::<(), Box<dyn StdError + Send + Sync + 'static>>::Ok(
+                                    (),
+                                );
                             }
                         };
 
@@ -329,42 +334,44 @@ fn start_responder(rt: &Handle, mut stream: TypedStream, drop_waiter: awaitdrop:
     ));
 }
 
-#[async_trait]
 impl<S> TypedAccept for Heartbeat<S>
 where
     S: TypedAccept + Send,
 {
-    async fn accept_typed(&mut self) -> Result<TypedStream, Error> {
-        loop {
-            let stream = self.inner.accept_typed().await?;
-            let typ = stream.typ();
+    fn accept_typed(&mut self) -> BoxFuture<Result<TypedStream, Error>> {
+        Box::pin(async move {
+            loop {
+                let stream = self.inner.accept_typed().await?;
+                let typ = stream.typ();
 
-            if typ == self.typ {
-                start_responder(&self.runtime, stream, self.drop_waiter.wait());
-                continue;
+                if typ == self.typ {
+                    start_responder(&self.runtime, stream, self.drop_waiter.wait());
+                    continue;
+                }
+
+                return Ok(stream);
             }
-
-            return Ok(stream);
-        }
+        })
     }
 }
 
-#[async_trait]
 impl<S> TypedOpenClose for Heartbeat<S>
 where
     S: TypedOpenClose + Send,
 {
-    async fn open_typed(&mut self, typ: StreamType) -> Result<TypedStream, Error> {
-        // Don't open a heartbeat stream manually
-        if typ == self.typ {
-            return Err(Error::StreamRefused);
-        }
+    fn open_typed(&mut self, typ: StreamType) -> BoxFuture<Result<TypedStream, Error>> {
+        Box::pin(async move {
+            // Don't open a heartbeat stream manually
+            if typ == self.typ {
+                return Err(Error::StreamRefused);
+            }
 
-        self.inner.open_typed(typ).await
+            self.inner.open_typed(typ).await
+        })
     }
 
-    async fn close(&mut self, error: Error, msg: String) -> Result<(), Error> {
-        self.inner.close(error, msg).await
+    fn close(&mut self, error: Error, msg: String) -> BoxFuture<Result<(), Error>> {
+        Box::pin(async move { self.inner.close(error, msg).await })
     }
 }
 

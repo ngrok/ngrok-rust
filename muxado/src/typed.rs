@@ -9,11 +9,11 @@ use std::{
     },
 };
 
-use async_trait::async_trait;
 use bytes::{
     Buf,
     BufMut,
 };
+use futures::future::BoxFuture;
 use tokio::io::{
     AsyncReadExt,
     AsyncWriteExt,
@@ -104,68 +104,68 @@ pub trait TypedSession: TypedAccept + TypedOpenClose {
 }
 
 /// Typed analogue to the [Accept] trait.
-#[async_trait]
 pub trait TypedAccept {
     /// Accept a typed stream.
     ///
     /// Because typed streams are indistinguishable from untyped streams, if the
     /// remote isn't sending a type, then the first 4 bytes of data will be
     /// misinterpreted as the stream type.
-    async fn accept_typed(&mut self) -> Result<TypedStream, Error>;
+    fn accept_typed(&mut self) -> BoxFuture<Result<TypedStream, Error>>;
 }
 
 /// Typed analogue to the [Open] trait.
-#[async_trait]
 pub trait TypedOpenClose {
     /// Open a typed stream with the given type.
-    async fn open_typed(&mut self, typ: StreamType) -> Result<TypedStream, Error>;
+    fn open_typed(&mut self, typ: StreamType) -> BoxFuture<Result<TypedStream, Error>>;
     /// Close the session by sending a GOAWAY
-    async fn close(&mut self, error: Error, msg: String) -> Result<(), Error>;
+    fn close(&mut self, error: Error, msg: String) -> BoxFuture<Result<(), Error>>;
 }
 
-#[async_trait]
 impl<S> TypedAccept for Typed<S>
 where
     S: Accept + Send,
 {
-    async fn accept_typed(&mut self) -> Result<TypedStream, Error> {
-        let mut stream = self.accept().await.ok_or(Error::SessionClosed)?;
+    fn accept_typed(&mut self) -> BoxFuture<Result<TypedStream, Error>> {
+        Box::pin(async move {
+            let mut stream = self.accept().await.ok_or(Error::SessionClosed)?;
 
-        let mut buf = [0u8; 4];
+            let mut buf = [0u8; 4];
 
-        stream
-            .read_exact(&mut buf[..])
-            .await
-            .map_err(|_| Error::StreamClosed)?;
+            stream
+                .read_exact(&mut buf[..])
+                .await
+                .map_err(|_| Error::StreamClosed)?;
 
-        let typ = StreamType::clamp((&buf[..]).get_u32());
+            let typ = StreamType::clamp((&buf[..]).get_u32());
 
-        debug!(?typ, "read stream type");
+            debug!(?typ, "read stream type");
 
-        Ok(TypedStream { typ, inner: stream })
+            Ok(TypedStream { typ, inner: stream })
+        })
     }
 }
-#[async_trait]
 impl<S> TypedOpenClose for Typed<S>
 where
     S: OpenClose + Send,
 {
-    async fn open_typed(&mut self, typ: StreamType) -> Result<TypedStream, Error> {
-        let mut stream = self.open().await?;
+    fn open_typed(&mut self, typ: StreamType) -> BoxFuture<Result<TypedStream, Error>> {
+        Box::pin(async move {
+            let mut stream = self.open().await?;
 
-        let mut bytes = [0u8; 4];
-        (&mut bytes[..]).put_u32(*typ);
+            let mut bytes = [0u8; 4];
+            (&mut bytes[..]).put_u32(*typ);
 
-        stream
-            .write(&bytes[..])
-            .await
-            .map_err(|_| Error::StreamReset)?;
+            stream
+                .write(&bytes[..])
+                .await
+                .map_err(|_| Error::StreamReset)?;
 
-        Ok(TypedStream { inner: stream, typ })
+            Ok(TypedStream { inner: stream, typ })
+        })
     }
 
-    async fn close(&mut self, error: Error, msg: String) -> Result<(), Error> {
-        self.inner.close(error, msg).await
+    fn close(&mut self, error: Error, msg: String) -> BoxFuture<Result<(), Error>> {
+        Box::pin(async move { self.inner.close(error, msg).await })
     }
 }
 

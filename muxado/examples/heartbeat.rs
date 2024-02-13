@@ -5,6 +5,10 @@ use std::{
     time::Duration,
 };
 
+use futures::future::{
+    self,
+    BoxFuture,
+};
 use muxado::{
     heartbeat::{
         Heartbeat,
@@ -36,7 +40,7 @@ async fn main() -> Result<(), anyhow::Error> {
             // handler: Some(Arc::new(HHandler)),
             handler: Some(Arc::new(|lat| async move {
                 tracing::info!(?lat, "got heartbeat");
-                Result::<(), Box<dyn Error>>::Ok(())
+                Result::<(), BoxError>::Ok(())
             })),
             ..Default::default()
         },
@@ -49,12 +53,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
 struct HHandler;
 
-#[async_trait::async_trait]
 impl HeartbeatHandler for HHandler {
-    async fn handle_heartbeat(&self, lat: Option<Duration>) -> Result<(), Box<dyn Error>> {
+    fn handle_heartbeat(&self, lat: Option<Duration>) -> BoxFuture<Result<(), BoxError>> {
         if let Some(lat) = lat {
             tracing::info!(?lat, "got heartbeat");
         }
-        Ok(())
+        Box::pin(future::ok(()))
     }
 }

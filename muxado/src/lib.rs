@@ -14,7 +14,10 @@ mod stream_output;
 pub mod typed;
 mod window;
 
-pub use errors::Error;
+pub use errors::{
+    BoxError,
+    Error,
+};
 pub use session::*;
 pub use stream::Stream;
 

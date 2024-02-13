@@ -8,6 +8,9 @@ use crate::frame::{
     StreamID,
 };
 
+/// A boxed error. Used in situations where the concrete error type is unknown.
+pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
+
 /// The muxado error type.
 #[repr(u32)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Error)]

@@ -9,7 +9,6 @@ use std::{
     },
 };
 
-use async_trait::async_trait;
 use futures::{
     channel::{
         mpsc,
@@ -374,19 +373,21 @@ pub trait Session: Accept + OpenClose {
 }
 
 /// Trait for accepting incoming streams in a muxado [Session].
-#[async_trait]
 pub trait Accept {
     /// Accept an incoming stream that was opened by the remote.
-    async fn accept(&mut self) -> Option<Stream>;
+    fn accept(&mut self) -> impl Future<Output = Option<Stream>> + Send;
 }
 
 /// Trait for opening new streams in a muxado [Session].
-#[async_trait]
 pub trait OpenClose {
     /// Open a new stream.
-    async fn open(&mut self) -> Result<Stream, Error>;
+    fn open(&mut self) -> impl Future<Output = Result<Stream, Error>> + Send;
     /// Close the session by sending a GOAWAY
-    async fn close(&mut self, error: Error, msg: String) -> Result<(), Error>;
+    fn close(
+        &mut self,
+        error: Error,
+        msg: String,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
 }
 
 /// The [Open] half of a muxado session.
@@ -401,14 +402,12 @@ pub struct MuxadoOpen {
 /// The [Accept] half of a muxado session.
 pub struct MuxadoAccept(#[allow(dead_code)] awaitdrop::Ref, mpsc::Receiver<Stream>);
 
-#[async_trait]
 impl Accept for MuxadoAccept {
     async fn accept(&mut self) -> Option<Stream> {
         self.1.next().await
     }
 }
 
-#[async_trait]
 impl OpenClose for MuxadoOpen {
     async fn open(&mut self) -> Result<Stream, Error> {
         if self.closed.load(Ordering::SeqCst) {
@@ -457,14 +456,12 @@ pub struct MuxadoSession {
     outgoing: MuxadoOpen,
 }
 
-#[async_trait]
 impl Accept for MuxadoSession {
     async fn accept(&mut self) -> Option<Stream> {
         self.incoming.accept().await
     }
 }
 
-#[async_trait]
 impl OpenClose for MuxadoSession {
     async fn open(&mut self) -> Result<Stream, Error> {
         self.outgoing.open().await
