@@ -57,7 +57,7 @@ async fn main() -> Result<(), anyhow::Error> {
     loop {
         let (conn, _addr) = l.accept().await?;
 
-        let res = (|| async move {
+        let res = async move {
             let mut sess = SessionBuilder::new(conn).start();
             let sess = &mut sess;
 
@@ -101,7 +101,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 );
             }
             Result::<(), anyhow::Error>::Ok(())
-        })()
+        }
         .await;
 
         if let Err(err) = res {

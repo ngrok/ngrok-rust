@@ -399,7 +399,7 @@ pub struct MuxadoOpen {
 }
 
 /// The [Accept] half of a muxado session.
-pub struct MuxadoAccept(awaitdrop::Ref, mpsc::Receiver<Stream>);
+pub struct MuxadoAccept(#[allow(dead_code)] awaitdrop::Ref, mpsc::Receiver<Stream>);
 
 #[async_trait]
 impl Accept for MuxadoAccept {

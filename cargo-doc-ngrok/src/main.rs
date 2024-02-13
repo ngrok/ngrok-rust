@@ -126,10 +126,7 @@ fn make_watcher(
     runtime.pathset([root_dir]);
     runtime.command(Command::Exec {
         prog: "cargo".into(),
-        args: [String::from("doc")]
-            .into_iter()
-            .chain(args.into_iter())
-            .collect(),
+        args: [String::from("doc")].into_iter().chain(args).collect(),
     });
     runtime.on_action({
         move |action: Action| {

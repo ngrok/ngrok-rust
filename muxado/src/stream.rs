@@ -325,6 +325,12 @@ impl AsyncWrite for Stream {
     }
 }
 
+#[pin_project::pinned_drop]
+impl PinnedDrop for Stream {
+    #[instrument(level = "trace", skip_all)]
+    fn drop(self: Pin<&mut Self>) {}
+}
+
 #[cfg(test)]
 pub mod test {
     use std::time::Duration;
@@ -393,10 +399,4 @@ pub mod test {
 
         assert!(rx.try_next().unwrap().unwrap().is_fin());
     }
-}
-
-#[pin_project::pinned_drop]
-impl PinnedDrop for Stream {
-    #[instrument(level = "trace", skip_all)]
-    fn drop(self: Pin<&mut Self>) {}
 }

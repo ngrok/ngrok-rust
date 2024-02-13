@@ -17,13 +17,6 @@ use anyhow::{
     anyhow,
     Error,
 };
-use async_rustls::{
-    rustls,
-    rustls::{
-        ClientConfig,
-        RootCertStore,
-    },
-};
 use axum::{
     extract::connect_info::Connected,
     routing::get,
@@ -35,6 +28,11 @@ use futures::{
     channel::oneshot,
     prelude::*,
     stream::FuturesUnordered,
+};
+use futures_rustls::rustls::{
+    pki_types,
+    ClientConfig,
+    RootCertStore,
 };
 use hyper::{
     header,
@@ -735,13 +733,10 @@ fn tls_client_config() -> Result<Arc<ClientConfig>, &'static io::Error> {
     static CONFIG: Lazy<Result<Arc<ClientConfig>, io::Error>> = Lazy::new(|| {
         let der_certs = rustls_native_certs::load_native_certs()?
             .into_iter()
-            .map(|c| c.0)
             .collect::<Vec<_>>();
-        let der_certs = der_certs.as_slice();
         let mut root_store = RootCertStore::empty();
         root_store.add_parsable_certificates(der_certs);
         let config = ClientConfig::builder()
-            .with_safe_defaults()
             .with_root_certificates(root_store)
             .with_no_client_auth();
         Ok(Arc::new(config))
@@ -776,10 +771,11 @@ async fn forward_proxy_protocol_tls() -> Result<(), Error> {
         ))
         .await?;
 
-        let domain = rustls::ServerName::try_from(tunnel_url.host_str().unwrap())
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+        let domain = pki_types::ServerName::try_from(tunnel_url.host_str().unwrap())
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?
+            .to_owned();
 
-        let mut tls_conn = async_rustls::TlsConnector::from(
+        let mut tls_conn = futures_rustls::TlsConnector::from(
             tls_client_config().map_err(|e| io::Error::from(e.kind()))?,
         )
         .connect(domain, tunnel_conn.compat())
@@ -792,12 +788,7 @@ async fn forward_proxy_protocol_tls() -> Result<(), Error> {
     let (conn, _) = listener.accept().await?;
 
     let mut proxy_conn = crate::proxy_proto::Stream::incoming(conn);
-    let proxy_header = proxy_conn
-        .proxy_header()
-        .await?
-        .unwrap()
-        .map(Clone::clone)
-        .unwrap();
+    let proxy_header = proxy_conn.proxy_header().await?.unwrap().cloned().unwrap();
 
     match proxy_header {
         ProxyHeader::Version2 { .. } => {}

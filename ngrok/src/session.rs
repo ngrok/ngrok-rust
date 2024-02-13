@@ -17,13 +17,16 @@ use std::{
 };
 
 use arc_swap::ArcSwap;
-use async_rustls::rustls::{self,};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{
     future,
     prelude::*,
     FutureExt,
+};
+use futures_rustls::rustls::{
+    self,
+    pki_types,
 };
 use hyper::{
     client::HttpConnector,
@@ -222,10 +225,10 @@ pub async fn default_connect(
         .map_err(ConnectError::Tcp)?
         .compat();
 
-    let domain = rustls::ServerName::try_from(host.as_str())
+    let domain = pki_types::ServerName::try_from(host)
         .expect("host should have been validated by SessionBuilder::server_addr");
 
-    let tls_conn = async_rustls::TlsConnector::from(tls_config)
+    let tls_conn = futures_rustls::TlsConnector::from(tls_config)
         .connect(domain, stream)
         .await
         .map_err(ConnectError::Tls)?;
@@ -271,9 +274,9 @@ fn connect_http_proxy(url: Url) -> impl Connector {
                 .map_err(|e| ConnectError::ProxyConnect(Box::new(e)))?
                 .compat();
 
-            let tls_conn = async_rustls::TlsConnector::from(tls_config)
+            let tls_conn = futures_rustls::TlsConnector::from(tls_config)
                 .connect(
-                    rustls::ServerName::try_from(host.as_str())
+                    pki_types::ServerName::try_from(host)
                         .expect("host should have been validated by SessionBuilder::server_addr"),
                     conn,
                 )
@@ -297,9 +300,9 @@ fn connect_socks_proxy(proxy_addr: String) -> impl Connector {
             .map_err(|e| ConnectError::ProxyConnect(Box::new(e)))?
             .compat();
 
-            let tls_conn = async_rustls::TlsConnector::from(tls_config)
+            let tls_conn = futures_rustls::TlsConnector::from(tls_config)
                 .connect(
-                    rustls::ServerName::try_from(server_host.as_str())
+                    pki_types::ServerName::try_from(server_host)
                         .expect("host should have been validated by SessionBuilder::server_addr"),
                     conn,
                 )
@@ -520,7 +523,7 @@ impl SessionBuilder {
             .map(String::from)
             .ok_or_else(|| InvalidServerAddr(addr.clone()))?;
 
-        rustls::ServerName::try_from(self.server_host.as_str())
+        pki_types::ServerName::try_from(self.server_host.as_str())
             .map_err(|_| InvalidServerAddr(addr.clone()))?;
 
         self.server_port = server_uri.port().unwrap_or(443);
@@ -689,20 +692,22 @@ impl SessionBuilder {
         // generate a default TLS config
         let mut root_store = rustls::RootCertStore::empty();
         let cert_pem = self.ca_cert.as_ref().map_or(CERT_BYTES, |it| it.as_ref());
-        root_store.add_parsable_certificates(
-            rustls_pemfile::read_all(&mut io::Cursor::new(cert_pem))
-                .expect("a valid ngrok root certificate")
-                .into_iter()
-                .filter_map(|it| match it {
-                    Item::X509Certificate(bs) => Some(bs),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-                .as_slice(),
-        );
+        let certs = rustls_pemfile::read_all(&mut io::Cursor::new(cert_pem))
+            .filter_map(|it| match it {
+                Ok(Item::X509Certificate(bs)) => Some(bs),
+                Err(e) => {
+                    warn!(error = ?e, "skipping certificate which failed to parse");
+                    None
+                }
+                Ok(_) => {
+                    warn!("skipping non-x509 certificate");
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        root_store.add_parsable_certificates(certs);
 
         rustls::ClientConfig::builder()
-            .with_safe_defaults()
             .with_root_certificates(root_store)
             .with_no_client_auth()
     }
