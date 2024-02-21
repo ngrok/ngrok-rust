@@ -10,7 +10,6 @@ use tracing::{
     Subscriber,
 };
 use tracing_subscriber::{
-    self,
     util::SubscriberInitExt,
     EnvFilter,
     Layer,

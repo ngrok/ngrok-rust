@@ -4,7 +4,6 @@ use std::{
         VecDeque,
     },
     env,
-    future::Future,
     io,
     sync::{
         atomic::{
@@ -20,7 +19,6 @@ use arc_swap::ArcSwap;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{
-    future,
     prelude::*,
     FutureExt,
 };

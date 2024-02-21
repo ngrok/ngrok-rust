@@ -335,7 +335,6 @@ impl PinnedDrop for Stream {
 pub mod test {
     use std::time::Duration;
 
-    use futures::channel::mpsc;
     use tokio::{
         io::{
             AsyncReadExt,

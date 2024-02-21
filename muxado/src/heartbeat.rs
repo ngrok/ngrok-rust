@@ -7,7 +7,6 @@
 
 use std::{
     error::Error as StdError,
-    future::Future,
     io,
     sync::{
         atomic::{

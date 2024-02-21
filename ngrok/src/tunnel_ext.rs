@@ -63,7 +63,6 @@ use url::Url;
 use windows_sys::Win32::Foundation::ERROR_PIPE_BUSY;
 
 use crate::{
-    config::ProxyProto,
     prelude::*,
     proxy_proto,
     session::IoStream,
