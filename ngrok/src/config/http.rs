@@ -142,6 +142,10 @@ impl TunnelConfig for HttpOptions {
         self.common_opts.forwards_proto.clone().unwrap_or_default()
     }
 
+    fn disable_app_cert_verification(&self) -> bool {
+        self.common_opts.disable_app_cert_verification
+    }
+
     fn extra(&self) -> BindExtra {
         BindExtra {
             token: Default::default(),
@@ -263,6 +267,12 @@ impl HttpTunnelBuilder {
     /// Sets the L7 protocol for this tunnel.
     pub fn app_protocol(&mut self, app_protocol: impl Into<String>) -> &mut Self {
         self.options.common_opts.forwards_proto = Some(app_protocol.into());
+        self
+    }
+
+    /// Disables backend TLS certificate verification for forwards from this tunnel.
+    pub fn disable_app_cert_verification(&mut self) -> &mut Self {
+        self.options.common_opts.disable_app_cert_verification = true;
         self
     }
 

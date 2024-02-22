@@ -57,6 +57,10 @@ impl TunnelConfig for TcpOptions {
         String::new()
     }
 
+    fn disable_app_cert_verification(&self) -> bool {
+        self.common_opts.disable_app_cert_verification
+    }
+
     fn opts(&self) -> Option<BindOpts> {
         // fill out all the options, translating to proto here
         let mut tcp_endpoint = proto::TcpEndpoint::default();
@@ -124,6 +128,13 @@ impl TcpTunnelBuilder {
         self.options.common_opts.forwards_to = Some(forwards_to.into());
         self
     }
+
+    /// Disables backend TLS certificate verification for forwards from this tunnel.
+    pub fn disable_app_cert_verification(&mut self) -> &mut Self {
+        self.options.common_opts.disable_app_cert_verification = true;
+        self
+    }
+
     /// Sets the TCP address to request for this edge.
     ///
     /// https://ngrok.com/docs/network-edge/domains-and-tcp-addresses/#tcp-addresses

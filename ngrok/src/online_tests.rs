@@ -34,6 +34,7 @@ use futures_rustls::rustls::{
     ClientConfig,
     RootCertStore,
 };
+// use native_tls;
 use hyper::{
     header,
     HeaderMap,
@@ -684,6 +685,48 @@ async fn tls() -> Result<(), Error> {
     let err_str = resp.err().unwrap().to_string();
     tracing::debug!(?err_str);
     assert!(err_str.contains("certificate"));
+
+    Ok(())
+}
+
+#[test]
+#[cfg_attr(not(feature = "authenticated-tests"), ignore)]
+async fn app_protocol() -> Result<(), Error> {
+    let tun = Session::builder()
+        .authtoken_from_env()
+        .connect()
+        .await?
+        .http_endpoint()
+        .app_protocol("http2")
+        .listen_and_forward("https://ngrok.com".parse()?)
+        .await?;
+
+    // smoke test
+    let client = reqwest::Client::new();
+    let resp = client.get(tun.url()).send().await;
+
+    assert!(resp.is_ok());
+
+    Ok(())
+}
+
+#[test]
+#[cfg_attr(not(feature = "authenticated-tests"), ignore)]
+async fn disable_app_cert_verification() -> Result<(), Error> {
+    let tun = Session::builder()
+        .authtoken_from_env()
+        .connect()
+        .await?
+        .http_endpoint()
+        .disable_app_cert_verification()
+        .listen_and_forward("https://ngrok.com".parse()?)
+        .await?;
+
+    // smoke test
+    let client = reqwest::Client::new();
+    let resp = client.get(tun.url()).send().await;
+
+    assert!(resp.is_ok());
 
     Ok(())
 }

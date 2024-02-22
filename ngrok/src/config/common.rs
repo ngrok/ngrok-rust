@@ -130,6 +130,8 @@ pub(crate) trait TunnelConfig {
     fn forwards_to(&self) -> String;
     /// The L7 protocol the upstream service expects
     fn forwards_proto(&self) -> String;
+    /// Whether to disable certificate verification for this tunnel.
+    fn disable_app_cert_verification(&self) -> bool;
     /// Internal-only, extra data sent when binding a tunnel.
     fn extra(&self) -> BindExtra;
     /// The protocol for this tunnel.
@@ -151,6 +153,9 @@ where
 
     fn forwards_proto(&self) -> String {
         (**self).forwards_proto()
+    }
+    fn disable_app_cert_verification(&self) -> bool {
+        (**self).disable_app_cert_verification()
     }
     fn extra(&self) -> BindExtra {
         (**self).extra()
@@ -199,6 +204,8 @@ pub(crate) struct CommonOpts {
     pub(crate) forwards_to: Option<String>,
     // Tunnel L7 app protocol
     pub(crate) forwards_proto: Option<String>,
+    // Whether to disable certificate verification for this tunnel.
+    pub(crate) disable_app_cert_verification: bool,
     // Policy that defines rules that should be applied to incoming or outgoing
     // connections to the edge.
     pub(crate) policy: Option<Policy>,

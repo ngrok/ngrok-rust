@@ -27,6 +27,7 @@ async fn main() -> anyhow::Result<()> {
         .tcp_endpoint()
         // .allow_cidr("0.0.0.0/0")
         // .deny_cidr("10.1.1.1/32")
+        // .disable_app_cert_verification()
         // .forwards_to("example rust"),
         // .proxy_proto(ProxyProto::None)
         // .remote_addr("<n>.tcp.ngrok.io:<p>")

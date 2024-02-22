@@ -52,6 +52,10 @@ impl TunnelConfig for TlsOptions {
         String::new()
     }
 
+    fn disable_app_cert_verification(&self) -> bool {
+        self.common_opts.disable_app_cert_verification
+    }
+
     fn extra(&self) -> BindExtra {
         BindExtra {
             token: Default::default(),
@@ -143,6 +147,13 @@ impl TlsTunnelBuilder {
         self.options.common_opts.forwards_to = Some(forwards_to.into());
         self
     }
+
+    /// Disables backend TLS certificate verification for forwards from this tunnel.
+    pub fn disable_app_cert_verification(&mut self) -> &mut Self {
+        self.options.common_opts.disable_app_cert_verification = true;
+        self
+    }
+
     /// Sets the domain to request for this edge.
     ///
     /// https://ngrok.com/docs/network-edge/domains-and-tcp-addresses/#domains
