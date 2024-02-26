@@ -1,9 +1,6 @@
 use std::collections::HashMap;
 
-use bytes::{
-    self,
-    Bytes,
-};
+use bytes::Bytes;
 use url::Url;
 
 use super::{

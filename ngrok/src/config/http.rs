@@ -4,10 +4,7 @@ use std::{
     str::FromStr,
 };
 
-use bytes::{
-    self,
-    Bytes,
-};
+use bytes::Bytes;
 use thiserror::Error;
 use url::Url;
 

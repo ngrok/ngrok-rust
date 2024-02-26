@@ -15,10 +15,7 @@ use muxado::{
     *,
 };
 use tokio::net::TcpStream;
-use tracing_subscriber::{
-    self,
-    fmt::format::FmtSpan,
-};
+use tracing_subscriber::fmt::format::FmtSpan;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {

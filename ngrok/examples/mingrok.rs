@@ -8,10 +8,7 @@ use futures::{
     prelude::*,
     select,
 };
-use ngrok::{
-    config::ForwarderBuilder,
-    prelude::*,
-};
+use ngrok::prelude::*;
 use tokio::sync::oneshot;
 use tracing::info;
 use url::Url;
