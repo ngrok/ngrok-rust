@@ -153,8 +153,11 @@
             shellHook = ''
               export BINDGEN_EXTRA_CLANG_ARGS="$BINDGEN_EXTRA_CLANG_ARGS $NIX_CFLAGS_COMPILE"
             '';
-            inputsFrom = with packages; [
-              nginx
+            inputsFrom = [
+              packages.ngrok-nginx
+              # Use the base nginx package for the devshell rather than our
+              # flavor that also pulls in the actual build of the rust library.
+              pkgs.nginx
             ];
             buildInputs = with pkgs; [
               toolchain
