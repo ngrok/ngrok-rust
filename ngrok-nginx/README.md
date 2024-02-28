@@ -33,3 +33,20 @@ which will be statically linked.
 ## Configuring
 
 See `ngrok-nginx/nginx.conf` for an example configuration.
+
+## Running
+
+You'll need to set up your authtoken first. Create a `.env` file in the repo
+root and add your authtoken to it:
+
+```
+NGROK_AUTHTOKEN=<your authtoken here>
+```
+
+Since a full path to the configuration and an extra argument to direct the error
+logs to a non-root-owned-location, a convenience `Makefile` is provided. In the
+`ngrok-nginx` directory:
+
+```bash
+make run
+```
