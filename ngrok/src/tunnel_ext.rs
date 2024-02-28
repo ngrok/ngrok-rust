@@ -14,6 +14,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use axum_core::response::Response;
 use futures::stream::TryStreamExt;
 use futures_rustls::rustls::{
     pki_types,
@@ -22,19 +23,12 @@ use futures_rustls::rustls::{
 };
 #[cfg(feature = "hyper")]
 use hyper::{
-    server::conn::Http,
+    server::conn::http1,
     service::service_fn,
-    Body,
-    Response,
     StatusCode,
 };
 use once_cell::sync::Lazy;
 use proxy_protocol::ProxyHeader;
-#[cfg(feature = "hyper")]
-use tokio::io::{
-    AsyncRead,
-    AsyncWrite,
-};
 #[cfg(target_os = "windows")]
 use tokio::net::windows::named_pipe::ClientOptions;
 #[cfg(not(target_os = "windows"))]
@@ -382,23 +376,20 @@ async fn connect_tcp(host: &str, port: u16) -> Result<TcpStream, io::Error> {
 #[cfg(feature = "hyper")]
 fn serve_gateway_error(
     err: impl fmt::Display + Send + 'static,
-    conn: impl AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    conn: impl hyper::rt::Read + hyper::rt::Write + Unpin + Send + 'static,
 ) -> JoinHandle<()> {
     tokio::spawn(
         async move {
-            let res = Http::new()
-                .http1_only(true)
-                .http1_keep_alive(false)
-                .serve_connection(
-                    conn,
-                    service_fn(move |_req| {
-                        debug!("serving bad gateway error");
-                        let mut resp =
-                            Response::new(Body::from(format!("failed to dial backend: {err}")));
-                        *resp.status_mut() = StatusCode::BAD_GATEWAY;
-                        futures::future::ok::<_, Infallible>(resp)
-                    }),
-                )
+            let service = service_fn(move |_req| {
+                debug!("serving bad gateway error");
+                let mut resp = Response::new(format!("failed to dial backend: {err}"));
+                *resp.status_mut() = StatusCode::BAD_GATEWAY;
+                futures::future::ok::<_, Infallible>(resp)
+            });
+
+            let res = http1::Builder::new()
+                .keep_alive(false)
+                .serve_connection(conn, service)
                 .await;
             debug!(?res, "connection closed");
         }

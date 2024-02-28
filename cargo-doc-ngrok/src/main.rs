@@ -1,17 +1,22 @@
 use std::{
-    error::Error,
     io,
     path::PathBuf,
     process::Stdio,
     sync::Arc,
 };
 
+use axum::BoxError;
 use clap::{
     Args,
     Parser,
     Subcommand,
 };
-use hyper::service::make_service_fn;
+use futures::TryStreamExt;
+use hyper::service::service_fn;
+use hyper_util::{
+    rt::TokioExecutor,
+    server,
+};
 use ngrok::prelude::*;
 use watchexec::{
     action::{
@@ -56,7 +61,7 @@ struct DocNgrok {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), BoxError> {
     let Cmd::DocNgrok(args) = Cargo::parse().cmd;
 
     std::process::Command::new("cargo")
@@ -82,31 +87,57 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .connect()
         .await?;
 
-    let mut tunnel_cfg = sess.http_endpoint();
+    let mut listen_cfg = sess.http_endpoint();
     if let Some(domain) = args.domain {
-        tunnel_cfg.domain(domain);
+        listen_cfg.domain(domain);
     }
 
-    let tunnel = tunnel_cfg.listen().await?;
+    let mut listener = listen_cfg.listen().await?;
+
+    let service = service_fn(move |req| {
+        let stat = hyper_staticfile::Static::new(&doc_dir);
+        stat.serve(req)
+    });
 
     println!(
         "serving docs on: {}/{}/",
-        tunnel.url(),
+        listener.url(),
         default_package.replace('-', "_")
     );
 
-    let srv = hyper::server::Server::builder(tunnel).serve(make_service_fn(move |_| {
-        let stat = hyper_staticfile::Static::new(&doc_dir);
-        async move { Result::<_, String>::Ok(stat) }
-    }));
+    let server = async move {
+        let (dropref, waiter) = awaitdrop::awaitdrop();
+
+        // Continuously accept new connections.
+        while let Some(conn) = listener.try_next().await? {
+            let service = service.clone();
+            let dropref = dropref.clone();
+            // Spawn a task to handle the connection. That way we can multiple connections
+            // concurrently.
+            tokio::spawn(async move {
+                if let Err(err) = server::conn::auto::Builder::new(TokioExecutor::new())
+                    .serve_connection(conn, service)
+                    .await
+                {
+                    eprintln!("failed to serve connection: {err:#}");
+                }
+                drop(dropref);
+            });
+        }
+
+        // Wait until all children have finished, not just the listener.
+        drop(dropref);
+        waiter.await;
+
+        Ok::<(), BoxError>(())
+    };
 
     if args.watch {
         let we = make_watcher(args.doc_args, root_dir, target_dir)?;
-        tokio::spawn(srv);
 
         we.main().await??;
     } else {
-        srv.await?;
+        server.await?;
     }
 
     Ok(())

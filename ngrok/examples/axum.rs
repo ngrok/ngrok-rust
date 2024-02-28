@@ -1,17 +1,31 @@
-use std::net::SocketAddr;
+use std::{
+    convert::Infallible,
+    net::SocketAddr,
+};
 
 use axum::{
     extract::ConnectInfo,
     routing::get,
     Router,
 };
-use ngrok::{
-    prelude::*,
-    tunnel::HttpTunnel,
+use axum_core::BoxError;
+use futures::stream::TryStreamExt;
+use hyper::{
+    body::Incoming,
+    Request,
+};
+use hyper_util::{
+    rt::TokioExecutor,
+    server,
+};
+use ngrok::prelude::*;
+use tower::{
+    Service,
+    ServiceExt,
 };
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), BoxError> {
     // build our application with a single route
     let app = Router::new().route(
         "/",
@@ -22,21 +36,7 @@ async fn main() -> anyhow::Result<()> {
         ),
     );
 
-    // run it with hyper on localhost:8000
-    // axum::Server::bind(&"0.0.0.0:8000".parse().unwrap())
-    // Or with an ngrok tunnel
-    axum::Server::builder(start_tunnel().await?)
-        .serve(app.into_make_service_with_connect_info::<SocketAddr>())
-        .await
-        .unwrap();
-
-    Ok(())
-}
-
-// const CA_CERT: &[u8] = include_bytes!("ca.crt");
-
-async fn start_tunnel() -> anyhow::Result<HttpTunnel> {
-    let tun = ngrok::Session::builder()
+    let mut listener = ngrok::Session::builder()
         .authtoken_from_env()
         .connect()
         .await?
@@ -74,9 +74,35 @@ async fn start_tunnel() -> anyhow::Result<HttpTunnel> {
         .listen()
         .await?;
 
-    println!("Tunnel started on URL: {:?}", tun.url());
+    println!("Listener started on URL: {:?}", listener.url());
 
-    Ok(tun)
+    let mut make_service = app.into_make_service_with_connect_info::<SocketAddr>();
+
+    let server = async move {
+        while let Some(conn) = listener.try_next().await? {
+            let remote_addr = conn.remote_addr();
+            let tower_service = unwrap_infallible(make_service.call(remote_addr).await);
+
+            tokio::spawn(async move {
+                let hyper_service =
+                    hyper::service::service_fn(move |request: Request<Incoming>| {
+                        tower_service.clone().oneshot(request)
+                    });
+
+                if let Err(err) = server::conn::auto::Builder::new(TokioExecutor::new())
+                    .serve_connection_with_upgrades(conn, hyper_service)
+                    .await
+                {
+                    eprintln!("failed to serve connection: {err:#}");
+                }
+            });
+        }
+        Ok::<(), BoxError>(())
+    };
+
+    server.await?;
+
+    Ok(())
 }
 
 #[allow(dead_code)]
@@ -102,4 +128,13 @@ fn create_policy() -> Result<Policy, InvalidPolicy> {
                 )?),
         )
         .to_owned())
+}
+
+// const CA_CERT: &[u8] = include_bytes!("ca.crt");
+
+fn unwrap_infallible<T>(result: Result<T, Infallible>) -> T {
+    match result {
+        Ok(value) => value,
+        Err(err) => match err {},
+    }
 }

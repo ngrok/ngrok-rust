@@ -10,6 +10,11 @@ use std::{
 // Support for axum's connection info trait.
 #[cfg(feature = "axum")]
 use axum::extract::connect_info::Connected;
+#[cfg(feature = "hyper")]
+use hyper::rt::{
+    Read as HyperRead,
+    Write as HyperWrite,
+};
 use muxado::typed::TypedStream;
 use tokio::io::{
     AsyncRead,
@@ -61,9 +66,24 @@ impl EndpointConnInfo for Info {
     }
 }
 
-/// An incoming connection over an ngrok tunnel.
-/// Effectively a trait alias for async read+write, plus connection info.
-pub trait Conn: ConnInfo + AsyncRead + AsyncWrite + Unpin + Send + 'static {}
+// This codgen indirect is required to make the hyper io trait bounds
+// dependent on the hyper feature. You can't put a #[cfg] on a single bound, so
+// we're putting the whole trait def in a macro. Gross, but gets the job done.
+macro_rules! conn_trait {
+    ($($hyper_bound:tt)*) => {
+		/// An incoming connection over an ngrok tunnel.
+		/// Effectively a trait alias for async read+write, plus connection info.
+		pub trait Conn: ConnInfo + AsyncRead + AsyncWrite $($hyper_bound)* + Unpin + Send + 'static {}
+	}
+}
+
+#[cfg(not(feature = "hyper"))]
+conn_trait!();
+
+#[cfg(feature = "hyper")]
+conn_trait! {
+    + hyper::rt::Read + hyper::rt::Write
+}
 
 /// Information common to all ngrok connections.
 pub trait ConnInfo {
@@ -126,6 +146,44 @@ macro_rules! make_conn_type {
 				buf: &mut tokio::io::ReadBuf<'_>,
 			) -> Poll<std::io::Result<()>> {
 				Pin::new(&mut *self.inner.stream).poll_read(cx, buf)
+			}
+		}
+
+		#[cfg(feature = "hyper")]
+		impl HyperRead for $wrapper {
+			fn poll_read(
+				mut self: Pin<&mut Self>,
+				cx: &mut Context<'_>,
+				mut buf: hyper::rt::ReadBufCursor<'_>,
+			) -> Poll<std::io::Result<()>> {
+				let mut tokio_buf = tokio::io::ReadBuf::uninit(unsafe{ buf.as_mut() });
+				let res = std::task::ready!(Pin::new(&mut *self.inner.stream).poll_read(cx, &mut tokio_buf));
+				let filled = tokio_buf.filled().len();
+				unsafe { buf.advance(filled) };
+				Poll::Ready(res)
+			}
+		}
+
+		#[cfg(feature = "hyper")]
+		impl HyperWrite for $wrapper {
+			fn poll_write(
+				mut self: Pin<&mut Self>,
+				cx: &mut Context<'_>,
+				buf: &[u8],
+			) -> Poll<Result<usize, std::io::Error>> {
+				Pin::new(&mut *self.inner.stream).poll_write(cx, buf)
+			}
+			fn poll_flush(
+				mut self: Pin<&mut Self>,
+				cx: &mut Context<'_>,
+			) -> Poll<Result<(), std::io::Error>> {
+				Pin::new(&mut *self.inner.stream).poll_flush(cx)
+			}
+			fn poll_shutdown(
+				mut self: Pin<&mut Self>,
+				cx: &mut Context<'_>,
+			) -> Poll<Result<(), std::io::Error>> {
+				Pin::new(&mut *self.inner.stream).poll_shutdown(cx)
 			}
 		}
 
