@@ -42,7 +42,7 @@ async fn start_tunnel() -> anyhow::Result<LabeledTunnel> {
     let tun = sess
         .labeled_tunnel()
         // .app_protocol("http2")
-        // .disable_app_cert_verification()
+        // .verify_app_cert(false)
         .label("edge", "edghts_<edge_id>")
         .metadata("example tunnel metadata from rust")
         .listen()

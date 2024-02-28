@@ -46,7 +46,7 @@ async fn start_tunnel() -> anyhow::Result<HttpTunnel> {
         // .circuit_breaker(0.5)
         // .compression()
         // .deny_cidr("10.1.1.1/32")
-        // .disable_app_cert_verification()
+        // .verify_app_cert(false)
         // .domain("<somedomain>.ngrok.io")
         // .forwards_to("example rust")
         // .mutual_tlsca(CA_CERT.into())

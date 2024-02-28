@@ -142,8 +142,8 @@ impl TunnelConfig for HttpOptions {
         self.common_opts.forwards_proto.clone().unwrap_or_default()
     }
 
-    fn disable_app_cert_verification(&self) -> bool {
-        self.common_opts.disable_app_cert_verification
+    fn verify_app_cert(&self) -> bool {
+        self.common_opts.verify_app_cert()
     }
 
     fn extra(&self) -> BindExtra {
@@ -271,8 +271,10 @@ impl HttpTunnelBuilder {
     }
 
     /// Disables backend TLS certificate verification for forwards from this tunnel.
-    pub fn disable_app_cert_verification(&mut self) -> &mut Self {
-        self.options.common_opts.disable_app_cert_verification = true;
+    pub fn verify_app_cert(&mut self, verify_app_cert: bool) -> &mut Self {
+        self.options
+            .common_opts
+            .set_verify_app_cert(verify_app_cert);
         self
     }
 

@@ -38,7 +38,7 @@ pub(crate) struct Info {
     pub(crate) remote_addr: SocketAddr,
     pub(crate) proxy_proto: ProxyProto,
     pub(crate) app_protocol: Option<String>,
-    pub(crate) disable_app_cert_verification: bool,
+    pub(crate) verify_app_cert: bool,
 }
 
 impl ConnInfo for Info {

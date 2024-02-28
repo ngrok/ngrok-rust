@@ -133,7 +133,7 @@ struct BoundTunnel {
     labels: HashMap<String, String>,
     forwards_to: String,
     forwards_proto: String,
-    disable_app_cert_verification: bool,
+    verify_app_cert: bool,
     tx: Sender<Result<ConnInner, AcceptError>>,
 }
 
@@ -888,7 +888,7 @@ impl Session {
         let labels = tunnel_cfg.labels();
         let forwards_to = tunnel_cfg.forwards_to();
         let forwards_proto = tunnel_cfg.forwards_proto();
-        let disable_app_cert_verification = tunnel_cfg.disable_app_cert_verification();
+        let verify_app_cert = tunnel_cfg.verify_app_cert();
 
         // non-labeled tunnel
         let (tunnel, bound) = if tunnel_cfg.proto() != "" {
@@ -926,7 +926,7 @@ impl Session {
                     labels,
                     forwards_to,
                     forwards_proto,
-                    disable_app_cert_verification,
+                    verify_app_cert,
                     tx,
                 },
             )
@@ -962,7 +962,7 @@ impl Session {
                     opts: Default::default(),
                     forwards_to,
                     forwards_proto,
-                    disable_app_cert_verification,
+                    verify_app_cert,
                     labels,
                     tx,
                 },
@@ -1038,7 +1038,7 @@ async fn accept_one(
     let res = if let Some(tun) = guard.get(&id) {
         let mut header = conn.header;
         let app_protocol = Some(tun.forwards_proto.to_string()).filter(|s| !s.is_empty());
-        let disable_app_cert_verification = tun.disable_app_cert_verification;
+        let verify_app_cert = tun.verify_app_cert;
         // Note: this is a bit of a hack. Normally, passthrough_tls is only
         // a thing on edge connections, but we're making sure it's set for
         // endpoint connections as well. In their case, we have to look at the
@@ -1060,7 +1060,7 @@ async fn accept_one(
             .send(Ok(ConnInner {
                 info: crate::conn::Info {
                     app_protocol,
-                    disable_app_cert_verification,
+                    verify_app_cert,
                     remote_addr,
                     header,
                     proxy_proto,

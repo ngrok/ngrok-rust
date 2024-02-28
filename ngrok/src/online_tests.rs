@@ -712,13 +712,13 @@ async fn app_protocol() -> Result<(), Error> {
 
 #[test]
 #[cfg_attr(not(feature = "authenticated-tests"), ignore)]
-async fn disable_app_cert_verification() -> Result<(), Error> {
+async fn verify_app_cert() -> Result<(), Error> {
     let tun = Session::builder()
         .authtoken_from_env()
         .connect()
         .await?
         .http_endpoint()
-        .disable_app_cert_verification()
+        .verify_app_cert(false)
         .listen_and_forward("https://ngrok.com".parse()?)
         .await?;
 
