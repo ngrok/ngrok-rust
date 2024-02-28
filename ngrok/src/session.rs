@@ -16,9 +16,9 @@ use std::{
 };
 
 use arc_swap::ArcSwap;
-use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{
+    future::BoxFuture,
     prelude::*,
     FutureExt,
 };
@@ -167,7 +167,6 @@ pub trait IoStream: AsyncRead + AsyncWrite + Unpin + Send + 'static {}
 impl<T> IoStream for T where T: AsyncRead + AsyncWrite + Unpin + Send + 'static {}
 
 /// Trait for establishing the connection to the ngrok server.
-#[async_trait]
 pub trait Connector: Sync + Send + 'static {
     /// The function used to establish the connection to the ngrok server.
     ///
@@ -179,29 +178,28 @@ pub trait Connector: Sync + Send + 'static {
     /// If it returns `Err(ConnectError::Canceled)`, reconnecting will be canceled
     /// and the session will be terminated. Note that this error will never be
     /// returned from the [default_connect] function.
-    async fn connect(
+    fn connect(
         &self,
         host: String,
         port: u16,
         tls_config: Arc<rustls::ClientConfig>,
         err: Option<AcceptError>,
-    ) -> Result<Box<dyn IoStream>, ConnectError>;
+    ) -> BoxFuture<Result<Box<dyn IoStream>, ConnectError>>;
 }
 
-#[async_trait]
 impl<F, U> Connector for F
 where
     F: Fn(String, u16, Arc<rustls::ClientConfig>, Option<AcceptError>) -> U + Send + Sync + 'static,
     U: Future<Output = Result<Box<dyn IoStream>, ConnectError>> + Send,
 {
-    async fn connect(
+    fn connect(
         &self,
         host: String,
         port: u16,
         tls_config: Arc<rustls::ClientConfig>,
         err: Option<AcceptError>,
-    ) -> Result<Box<dyn IoStream>, ConnectError> {
-        self(host, port, tls_config, err).await
+    ) -> BoxFuture<Result<Box<dyn IoStream>, ConnectError>> {
+        Box::pin(async move { self(host, port, tls_config, err).await })
     }
 }
 

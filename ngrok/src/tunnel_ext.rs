@@ -13,7 +13,6 @@ use std::{
     fmt,
 };
 
-use async_trait::async_trait;
 use futures::stream::TryStreamExt;
 use futures_rustls::rustls::{
     pki_types,
@@ -71,7 +70,6 @@ use crate::{
 };
 
 #[allow(deprecated)]
-#[async_trait]
 impl<T> TunnelExt for T
 where
     T: Tunnel + Send,
@@ -83,7 +81,6 @@ where
 }
 
 /// Extension methods auto-implemented for all tunnel types
-#[async_trait]
 #[deprecated = "superceded by the `listen_and_forward` builder method"]
 pub trait TunnelExt: Tunnel + Send {
     /// Forward incoming tunnel connections to the provided url based on its

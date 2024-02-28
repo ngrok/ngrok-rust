@@ -4,7 +4,6 @@ use std::{
     process,
 };
 
-use async_trait::async_trait;
 use once_cell::sync::OnceCell;
 use url::Url;
 
@@ -43,7 +42,6 @@ pub(crate) fn default_forwards_to() -> &'static str {
 }
 
 /// Trait representing things that can be built into an ngrok tunnel.
-#[async_trait]
 pub trait TunnelBuilder: From<Session> {
     /// The ngrok tunnel type that this builder produces.
     type Tunnel: Tunnel;
@@ -54,7 +52,6 @@ pub trait TunnelBuilder: From<Session> {
 
 /// Trait representing things that can be built into an ngrok tunnel and then
 /// forwarded to a provided URL.
-#[async_trait]
 pub trait ForwarderBuilder: TunnelBuilder {
     /// Start listening for new connections on this tunnel and forward all
     /// connections to the provided URL.
@@ -78,7 +75,6 @@ macro_rules! impl_builder {
             use $crate::config::common::ForwarderBuilder;
             use $crate::config::common::TunnelBuilder;
             use $crate::session::RpcError;
-            use async_trait::async_trait;
             use url::Url;
 
             use super::*;
@@ -92,7 +88,6 @@ macro_rules! impl_builder {
                 }
             }
 
-            #[async_trait]
             impl TunnelBuilder for $name {
                 type Tunnel = $tun;
 
@@ -108,7 +103,6 @@ macro_rules! impl_builder {
                 }
             }
 
-            #[async_trait]
             impl ForwarderBuilder for $name {
                 async fn listen_and_forward(&self, to_url: Url) -> Result<Forwarder<$tun>, RpcError> {
                     let mut cfg = self.clone();

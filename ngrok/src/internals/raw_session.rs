@@ -10,7 +10,7 @@ use std::{
     sync::Arc,
 };
 
-use async_trait::async_trait;
+use futures::future::BoxFuture;
 use muxado::{
     heartbeat::{
         HeartbeatConfig,
@@ -174,21 +174,19 @@ impl DerefMut for RawSession {
 }
 
 /// Trait for a type that can handle a command from the ngrok dashboard.
-#[async_trait]
 pub trait CommandHandler<T>: Send + Sync + 'static {
     /// Handle the remote command.
-    async fn handle_command(&self, req: T) -> Result<(), String>;
+    fn handle_command(&self, req: T) -> BoxFuture<Result<(), String>>;
 }
 
-#[async_trait]
 impl<R, T, F> CommandHandler<R> for T
 where
     R: Send + 'static,
     T: Fn(R) -> F + Send + Sync + 'static,
     F: Future<Output = Result<(), String>> + Send,
 {
-    async fn handle_command(&self, req: R) -> Result<(), String> {
-        self(req).await
+    fn handle_command(&self, req: R) -> BoxFuture<Result<(), String>> {
+        Box::pin(async move { self(req).await })
     }
 }
 

@@ -1,6 +1,5 @@
 use std::{
     env,
-    error::Error,
     sync::Arc,
     time::Duration,
 };

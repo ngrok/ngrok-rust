@@ -8,7 +8,6 @@ use std::{
     },
 };
 
-use async_trait::async_trait;
 use futures::Stream;
 #[cfg(feature = "hyper")]
 use hyper::server::accept::Accept;
@@ -123,7 +122,6 @@ macro_rules! tunnel_trait {
         }
 
         /// An ngrok tunnel closer.
-        #[async_trait]
         pub trait TunnelCloser {
             /// Close the tunnel.
             ///
@@ -277,7 +275,6 @@ macro_rules! make_tunnel_type {
             }
         }
 
-        #[async_trait]
         impl TunnelCloser for $wrapper {
             async fn close(&mut self) -> Result<(), RpcError> {
                 self.inner.close().await

@@ -3,7 +3,6 @@ use std::{
     io,
 };
 
-use async_trait::async_trait;
 use tokio::task::JoinHandle;
 use url::Url;
 
@@ -33,7 +32,6 @@ impl<T> Forwarder<T> {
     }
 }
 
-#[async_trait]
 impl<T> TunnelCloser for Forwarder<T>
 where
     T: TunnelCloser + Send,

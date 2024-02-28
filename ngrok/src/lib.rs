@@ -1,5 +1,6 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
+#![allow(async_fn_in_trait)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 mod internals {
