@@ -105,37 +105,74 @@
             libclang.lib
           ];
         };
+        rustPlatform = pkgs.makeRustPlatform {
+          cargo = toolchain;
+          rustc = toolchain;
+        };
       in
-      {
-        devShell = with pkgs; mkShell {
-          CHALK_OVERFLOW_DEPTH = 3000;
-          CHALK_SOLVER_MAX_SIZE = 1500;
-          OPENSSL_LIB_DIR = "${openssl.out}/lib";
-          OPENSSL_INCLUDE_DIR = "${openssl.dev}/include";
-          LIBCLANG_PATH="${libclang-path}/lib";
-          # BINDGEN_EXTRA_CLANG_ARGS = "-isystem ${clang}/resource-root/include -isystem ${glibc.dev}/include $NIX_CFLAGS_COMPILE -isystem ${libxcrypt}/include -isystem ${pcre.dev}/include";
-          BINDGEN_EXTRA_CLANG_ARGS = "-isystem ${clang}/resource-root/include -isystem ${glibc.dev}/include";
-          RUSTC_WRAPPER="${sccache}/bin/sccache";
-          shellHook = ''
-            export BINDGEN_EXTRA_CLANG_ARGS="$BINDGEN_EXTRA_CLANG_ARGS $NIX_CFLAGS_COMPILE"
+      rec {
+        packages.ngrok-nginx = rustPlatform.buildRustPackage {
+          pname = "ngrok-nginx";
+          version = "0.1.0";
+          src = ./ngrok-nginx/libngrok-nginx;
+          cargoLock = {
+            lockFile = ./Cargo.lock;
+          };
+          postPatch = ''
+            cp ${./Cargo.lock} Cargo.lock
+            chmod +w ./Cargo.lock
           '';
-          buildInputs = with pkgs; [
-            toolchain
-            fix-n-fmt
-            setup-hooks
-            cargo-udeps
-            semver-checks
-            extract-version
-            pcre
-            openssl
-            zlib
-            libxcrypt
-          ] ++ lib.optionals stdenv.isDarwin [
-            # nix darwin stdenv has broken libiconv: https://github.com/NixOS/nixpkgs/issues/158331
-            libiconv
-            darwin.apple_sdk.frameworks.CoreServices
-            darwin.apple_sdk.frameworks.Security
+          preBuild = ''
+            cargo generate-lockfile --offline
+          '';
+          rust = toolchain;
+        };
+        packages.nginx-ngrok-module = {
+          name = "ngrok";
+          src = ./ngrok-nginx/nginx-module;
+          inputs = [ packages.ngrok-nginx ];
+          meta = {
+            license = with lib.licenses; [ mit asl20 ];
+          };
+        };
+        packages.nginx = pkgs.nginx.override {
+          modules = [
+            packages.nginx-ngrok-module
           ];
         };
+        devShell = with pkgs;
+          mkShell {
+            CHALK_OVERFLOW_DEPTH = 3000;
+            CHALK_SOLVER_MAX_SIZE = 1500;
+            OPENSSL_LIB_DIR = "${openssl.out}/lib";
+            OPENSSL_INCLUDE_DIR = "${openssl.dev}/include";
+            LIBCLANG_PATH = "${libclang-path}/lib";
+            # BINDGEN_EXTRA_CLANG_ARGS = "-isystem ${clang}/resource-root/include -isystem ${glibc.dev}/include $NIX_CFLAGS_COMPILE -isystem ${libxcrypt}/include -isystem ${pcre.dev}/include";
+            BINDGEN_EXTRA_CLANG_ARGS = "-isystem ${clang}/resource-root/include -isystem ${glibc.dev}/include";
+            RUSTC_WRAPPER = "${sccache}/bin/sccache";
+            shellHook = ''
+              export BINDGEN_EXTRA_CLANG_ARGS="$BINDGEN_EXTRA_CLANG_ARGS $NIX_CFLAGS_COMPILE"
+            '';
+            inputsFrom = with packages; [
+              nginx
+            ];
+            buildInputs = with pkgs; [
+              toolchain
+              fix-n-fmt
+              setup-hooks
+              cargo-udeps
+              semver-checks
+              extract-version
+              pcre
+              openssl
+              zlib
+              libxcrypt
+            ] ++ lib.optionals stdenv.isDarwin [
+              # nix darwin stdenv has broken libiconv: https://github.com/NixOS/nixpkgs/issues/158331
+              libiconv
+              darwin.apple_sdk.frameworks.CoreServices
+              darwin.apple_sdk.frameworks.Security
+            ];
+          };
       });
 }

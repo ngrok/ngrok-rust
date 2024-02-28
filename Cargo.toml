@@ -1,11 +1,6 @@
 [workspace]
 resolver = "2"
-members = [
-	"muxado",
-	"ngrok",
-	"cargo-doc-ngrok",
-	"ngrok-nginx",
-]
+members = ["muxado", "ngrok", "cargo-doc-ngrok", "ngrok-nginx/libngrok-nginx"]
 
 [profile.release]
 debug = 1
