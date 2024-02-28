@@ -1,0 +1,10 @@
+{
+	"rust-analyzer.check.features": "all",
+	"C_Cpp.default.includePath": [
+		"${workspaceFolder}/ngrok-nginx/nginx-headers/core",
+		"${workspaceFolder}/ngrok-nginx/nginx-headers/os/unix",
+		"${workspaceFolder}/ngrok-nginx/nginx-headers/http",
+		"${workspaceFolder}/ngrok-nginx/nginx-headers/event",
+		"${workspaceFolder}/ngrok-nginx/nginx-headers/http/modules"
+	]
+}
