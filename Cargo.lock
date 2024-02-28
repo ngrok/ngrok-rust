@@ -1588,37 +1588,6 @@ dependencies = [
 
 [[package]]
 name = "ngrok"
-version = "0.11.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "463eb318839cc5bae65e95b93bb9201eb442418bf2383e8359fc88f4196db826"
-dependencies = [
- "arc-swap",
- "async-rustls",
- "async-trait",
- "awaitdrop",
- "axum",
- "base64 0.13.1",
- "bytes",
- "futures",
- "hostname",
- "hyper",
- "muxado 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "once_cell",
- "parking_lot",
- "regex",
- "rustls-pemfile 1.0.4",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tokio-retry",
- "tokio-util",
- "tracing",
- "windows-sys 0.45.0",
-]
-
-[[package]]
-name = "ngrok"
 version = "0.14.0-pre.11"
 dependencies = [
  "anyhow",
@@ -1661,14 +1630,52 @@ dependencies = [
 ]
 
 [[package]]
+name = "ngrok"
+version = "0.14.0-pre.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6b2529c7db6d423f6f97d9e4a1415150a0f5cc2d28f8d27dfee52285d256bd26"
+dependencies = [
+ "arc-swap",
+ "async-rustls",
+ "async-trait",
+ "awaitdrop",
+ "axum",
+ "base64 0.13.1",
+ "bytes",
+ "futures",
+ "hostname",
+ "hyper",
+ "hyper-proxy",
+ "muxado 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "once_cell",
+ "parking_lot",
+ "pin-project",
+ "proxy-protocol",
+ "regex",
+ "rustls-native-certs 0.6.3",
+ "rustls-pemfile 1.0.4",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tokio-retry",
+ "tokio-socks",
+ "tokio-util",
+ "tracing",
+ "url",
+ "windows-sys 0.45.0",
+]
+
+[[package]]
 name = "ngrok-nginx"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "ngrok 0.11.3",
+ "ngrok 0.14.0-pre.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "once_cell",
  "tokio",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
@@ -2236,6 +2243,18 @@ checksum = "5a07b7c1885bd8ed3831c289b7870b13ef46fe0e856d288c30d9cc17d75a2092"
 dependencies = [
  "openssl-probe",
  "rustls 0.19.1",
+ "schannel",
+ "security-framework",
+]
+
+[[package]]
+name = "rustls-native-certs"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a9aace74cb666635c918e9c12bc0d348266037aa8eb599b5cba565709a8dff00"
+dependencies = [
+ "openssl-probe",
+ "rustls-pemfile 1.0.4",
  "schannel",
  "security-framework",
 ]

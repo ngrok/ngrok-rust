@@ -16,6 +16,7 @@ typedef struct
 {
 	ngx_str_t domain;
 	ngx_str_t forwards_to;
+	ngx_str_t policy_file;
 	Join *task;
 } ngx_http_ngrok_srv_conf_t;
 
@@ -34,6 +35,13 @@ static ngx_command_t ngx_ngrok_commands[] = {
 	 ngx_conf_set_str_slot,
 	 NGX_HTTP_SRV_CONF_OFFSET,
 	 offsetof(ngx_http_ngrok_srv_conf_t, domain),
+	 &ngx_ngrok_enable_post},
+
+	{ngx_string("ngrok_policy_file"),
+	 NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
+	 ngx_conf_set_str_slot,
+	 NGX_HTTP_SRV_CONF_OFFSET,
+	 offsetof(ngx_http_ngrok_srv_conf_t, policy_file),
 	 &ngx_ngrok_enable_post},
 
 	ngx_null_command};
@@ -79,6 +87,7 @@ ngx_http_ngrok_create_srv_conf(ngx_conf_t *cf)
 
 	ngx_str_t ns = ngx_null_string;
 	conf->domain = ns;
+	conf->policy_file = ns;
 
 	return conf;
 }
@@ -94,6 +103,9 @@ ngx_http_ngrok_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
 
 	ngx_conf_merge_str_value(conf->domain, prev->domain, "");
 	ngx_conf_merge_str_value(conf->domain, prev->domain, "");
+
+	ngx_conf_merge_str_value(conf->policy_file, prev->policy_file, "");
+	ngx_conf_merge_str_value(conf->policy_file, prev->policy_file, "");
 
 	ngx_log_error(NGX_LOG_NOTICE, cf->log, 0, "listen: %d", srv->listen);
 
@@ -127,6 +139,20 @@ ngx_http_ngrok_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
 		needs_drop = true;
 	}
 
+	if (conf->policy_file.len != prev->policy_file.len)
+	{
+		needs_drop = true;
+	}
+
+	// set -> something else
+	if (
+		conf->policy_file.len != 0 &&
+		prev->policy_file.len != 0 &&
+		ngx_strcmp(conf->policy_file.data, prev->policy_file.data) != 0)
+	{
+		needs_drop = true;
+	}
+
 	needs_drop = needs_drop && conf->task != NULL;
 
 	if (needs_drop)
@@ -135,7 +161,7 @@ ngx_http_ngrok_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
 		conf->task = NULL;
 	}
 
-	conf->task = start_ngrok((char *)conf->domain.data, "localhost:12345");
+	conf->task = start_ngrok((char *)conf->domain.data, "http://localhost:12345", (char *)conf->policy_file.data);
 
 	return NULL;
 }
