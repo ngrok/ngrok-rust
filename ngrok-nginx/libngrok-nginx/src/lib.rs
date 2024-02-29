@@ -16,6 +16,7 @@ use tokio::{
     },
     task::JoinHandle,
 };
+use tracing::*;
 use url::Url;
 
 static RT: OnceCell<Runtime> = OnceCell::new();
@@ -50,7 +51,7 @@ pub extern "C" fn start_ngrok(
     if forward_to.is_null() {
         return ptr::null_mut();
     }
-    println!("starting ngrok");
+    info!("starting ngrok");
     let domain = c_to_rs_string(domain);
     let r_addr = c_to_rs_string(forward_to).unwrap();
     let policy_file = c_to_rs_string(policy_file);
@@ -63,7 +64,7 @@ pub extern "C" fn start_ngrok(
                     .connect()
                     .await?;
 
-                println!("connected ngrok session");
+                info!("connected ngrok session");
                 let mut endpoint = sess.http_endpoint();
                 let mut tun = endpoint.proxy_proto(ProxyProto::V2);
                 if let Some(domain) = domain {
@@ -77,9 +78,9 @@ pub extern "C" fn start_ngrok(
 
                 let to_url = Url::parse(&r_addr).unwrap();
                 let mut tun = tun.listen_and_forward(to_url).await?;
-                println!(
                     "bound listener {} with proxy protocol, forwarding to {r_addr}",
                     tun.url()
+                info!(
                 );
 
                 tun.join().await?;
@@ -87,7 +88,7 @@ pub extern "C" fn start_ngrok(
                 Ok::<(), anyhow::Error>(())
             }
             .await;
-            println!("ngrok finished: {:?}", res);
+            info!("ngrok finished: {:?}", res);
         }),
     })) as _
 }

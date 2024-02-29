@@ -4780,6 +4780,10 @@ rec {
             features = [ "rt-multi-thread" ];
           }
           {
+            name = "tracing";
+            packageId = "tracing";
+          }
+          {
             name = "tracing-subscriber";
             packageId = "tracing-subscriber";
             features = [ "env-filter" ];
