@@ -40,7 +40,7 @@ pub struct Join {
 #[no_mangle]
 pub extern "C" fn start_ngrok(
     domain: *const c_char,
-    forward_to: *const c_char,
+    fwd_port: u16,
     policy_file: *const c_char,
 ) -> *mut Join {
     tracing_subscriber::fmt()
@@ -48,14 +48,11 @@ pub extern "C" fn start_ngrok(
         .with_env_filter(std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()))
         .init();
 
-    if forward_to.is_null() {
-        return ptr::null_mut();
-    }
     info!("starting ngrok");
     let domain = c_to_rs_string(domain);
-    let r_addr = c_to_rs_string(forward_to).unwrap();
     let policy_file = c_to_rs_string(policy_file);
 
+    info!(domain, policy_file, fwd_port, "returning ngrok task");
     Box::leak(Box::new(Join {
         inner: rt().spawn(async move {
             let res = async move {
@@ -66,24 +63,25 @@ pub extern "C" fn start_ngrok(
 
                 info!("connected ngrok session");
                 let mut endpoint = sess.http_endpoint();
-                let mut tun = endpoint.proxy_proto(ProxyProto::V2);
+                endpoint.proxy_proto(ProxyProto::V2).app_protocol("http2");
                 if let Some(domain) = domain {
-                    tun = tun.domain(domain);
+                    endpoint.domain(domain);
                 }
 
                 if let Some(policy_file) = policy_file {
                     let policy = Policy::from_file(policy_file);
-                    tun = tun.policy(policy).unwrap();
+                    endpoint.policy(policy).unwrap();
                 }
 
-                let to_url = Url::parse(&r_addr).unwrap();
-                let mut tun = tun.listen_and_forward(to_url).await?;
-                    "bound listener {} with proxy protocol, forwarding to {r_addr}",
-                    tun.url()
+                let fwd_addr = format!("http://localhost:{fwd_port}");
+                let to_url = Url::parse(&fwd_addr).unwrap();
+                let mut forwarder = endpoint.listen_and_forward(to_url).await?;
                 info!(
+                    "bound listener {} with proxy protocol and HTTP/2, forwarding to {fwd_addr}",
+                    forwarder.url()
                 );
 
-                tun.join().await?;
+                forwarder.join().await??;
 
                 Ok::<(), anyhow::Error>(())
             }

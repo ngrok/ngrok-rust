@@ -15,10 +15,11 @@
 typedef struct
 {
 	ngx_str_t domain;
-	ngx_str_t forwards_to;
 	ngx_str_t policy_file;
 	Join *task;
 } ngx_http_ngrok_srv_conf_t;
+
+char *add_listener(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf, uint16_t port);
 
 static char *ngx_ngrok_enable(ngx_conf_t *cf, void *post, void *data);
 static ngx_conf_post_t ngx_ngrok_enable_post = {ngx_ngrok_enable};
@@ -96,34 +97,26 @@ static char *
 ngx_http_ngrok_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
 {
 	ngx_log_error(NGX_LOG_NOTICE, cf->log, 0, "cf: %d", cf);
+	ngx_http_core_srv_conf_t *core_srv = ngx_http_conf_get_module_srv_conf(cf, ngx_http_core_module);
 	ngx_http_core_srv_conf_t *srv = ngx_http_conf_get_module_srv_conf(cf, ngx_ngrok_module);
 	ngx_log_error(NGX_LOG_NOTICE, cf->log, 0, "srv: %d", srv);
 	ngx_http_ngrok_srv_conf_t *prev = parent;
 	ngx_http_ngrok_srv_conf_t *conf = child;
 
-	ngx_conf_merge_str_value(conf->domain, prev->domain, "");
+	// Generate a port in the ephemeral TCP range.
+	uint16_t fwd_port = 1024 + rand() % (65535 - 1024);
+	if (add_listener(cf, core_srv, fwd_port) != NGX_OK)
+	{
+		ngx_log_error(NGX_LOG_ERR, cf->log, 0, "failed to bind listener for ngrok");
+		return NGX_CONF_ERROR;
+	}
+	ngx_log_error(NGX_LOG_NOTICE, cf->log, 0, "added listener");
+
 	ngx_conf_merge_str_value(conf->domain, prev->domain, "");
 
 	ngx_conf_merge_str_value(conf->policy_file, prev->policy_file, "");
-	ngx_conf_merge_str_value(conf->policy_file, prev->policy_file, "");
-
-	ngx_log_error(NGX_LOG_NOTICE, cf->log, 0, "listen: %d", srv->listen);
 
 	bool needs_drop = false;
-
-	if (conf->forwards_to.len != prev->forwards_to.len)
-	{
-		needs_drop = true;
-	}
-
-	// set -> something else
-	if (
-		conf->forwards_to.len != 0 &&
-		prev->forwards_to.len != 0 &&
-		ngx_strcmp(conf->forwards_to.data, prev->forwards_to.data) != 0)
-	{
-		needs_drop = true;
-	}
 
 	if (conf->domain.len != prev->domain.len)
 	{
@@ -161,7 +154,7 @@ ngx_http_ngrok_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
 		conf->task = NULL;
 	}
 
-	conf->task = start_ngrok((char *)conf->domain.data, "http://localhost:12345", (char *)conf->policy_file.data);
+	conf->task = start_ngrok((char *)conf->domain.data, fwd_port, (char *)conf->policy_file.data);
 
 	return NULL;
 }
@@ -177,4 +170,63 @@ ngx_ngrok_enable(ngx_conf_t *cf, void *post, void *data)
 	}
 
 	return NGX_CONF_OK;
+}
+
+char *add_listener(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf, uint16_t port)
+{
+	u_char *p;
+	struct sockaddr_in *sin;
+	ngx_http_listen_opt_t lsopt;
+	size_t len;
+
+	ngx_memzero(&lsopt, sizeof(ngx_http_listen_opt_t));
+
+	p = ngx_pcalloc(cf->pool, sizeof(struct sockaddr_in));
+	if (p == NULL)
+	{
+		return NGX_CONF_ERROR;
+	}
+
+	lsopt.sockaddr = (struct sockaddr *)p;
+
+	sin = (struct sockaddr_in *)p;
+
+	sin->sin_family = AF_INET;
+	sin->sin_port = htons(port);
+	sin->sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+	lsopt.socklen = sizeof(struct sockaddr_in);
+
+	lsopt.backlog = NGX_LISTEN_BACKLOG;
+	lsopt.rcvbuf = -1;
+	lsopt.sndbuf = -1;
+#if (NGX_HAVE_SETFIB)
+	lsopt.setfib = -1;
+#endif
+#if (NGX_HAVE_TCP_FASTOPEN)
+	lsopt.fastopen = -1;
+#endif
+	lsopt.wildcard = 1;
+
+	lsopt.proxy_protocol = 1;
+	lsopt.http2 = 1;
+
+	len = NGX_INET_ADDRSTRLEN + sizeof(":65535") - 1;
+
+	p = ngx_pnalloc(cf->pool, len);
+	if (p == NULL)
+	{
+		return NGX_CONF_ERROR;
+	}
+
+	lsopt.addr_text.data = p;
+	lsopt.addr_text.len = ngx_sock_ntop(lsopt.sockaddr, lsopt.socklen, p,
+										len, 1);
+
+	if (ngx_http_add_listen(cf, cscf, &lsopt) != NGX_OK)
+	{
+		return NGX_CONF_ERROR;
+	}
+
+	return NULL;
 }
