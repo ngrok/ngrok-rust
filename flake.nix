@@ -126,11 +126,12 @@
       in
       {
         packages.ngrok-nginx = cargoWorkspace.workspaceMembers.ngrok-nginx.build.lib;
-        packages.nginx = pkgs.nginx.override {
+        packages.nginx = pkgs.enableDebugging (pkgs.nginx.override {
+          dontStrip = true;
           modules = [
             nginx-ngrok-module
           ];
-        };
+        });
         devShell = with pkgs;
           mkShell {
             CHALK_OVERFLOW_DEPTH = 3000;
@@ -162,6 +163,7 @@
               openssl
               zlib
               libxcrypt
+              gdb
             ] ++ lib.optionals stdenv.isDarwin [
               # nix darwin stdenv has broken libiconv: https://github.com/NixOS/nixpkgs/issues/158331
               libiconv
