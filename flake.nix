@@ -109,35 +109,26 @@
           cargo = toolchain;
           rustc = toolchain;
         };
-      in
-      rec {
-        packages.ngrok-nginx = rustPlatform.buildRustPackage {
-          pname = "ngrok-nginx";
-          version = "0.1.0";
-          src = ./ngrok-nginx/libngrok-nginx;
-          cargoLock = {
-            lockFile = ./Cargo.lock;
+        cargoWorkspace = pkgs.callPackage ./Cargo.nix {
+          buildRustCrateForPkgs = pkgs: pkgs.buildRustCrate.override {
+            rustc = toolchain;
           };
-          postPatch = ''
-            cp ${./Cargo.lock} Cargo.lock
-            chmod +w ./Cargo.lock
-          '';
-          preBuild = ''
-            cargo generate-lockfile --offline
-          '';
-          rust = toolchain;
         };
-        packages.nginx-ngrok-module = {
+        ngrok-nginx = cargoWorkspace.workspaceMembers.ngrok-nginx.build.lib;
+        nginx-ngrok-module = {
           name = "ngrok";
           src = ./ngrok-nginx/nginx-module;
-          inputs = [ packages.ngrok-nginx ];
+          inputs = [ ngrok-nginx ];
           meta = {
             license = with lib.licenses; [ mit asl20 ];
           };
         };
+      in
+      {
+        packages.ngrok-nginx = cargoWorkspace.workspaceMembers.ngrok-nginx.build.lib;
         packages.nginx = pkgs.nginx.override {
           modules = [
-            packages.nginx-ngrok-module
+            nginx-ngrok-module
           ];
         };
         devShell = with pkgs;
@@ -154,7 +145,7 @@
               export BINDGEN_EXTRA_CLANG_ARGS="$BINDGEN_EXTRA_CLANG_ARGS $NIX_CFLAGS_COMPILE"
             '';
             inputsFrom = [
-              packages.ngrok-nginx
+              ngrok-nginx
               # Use the base nginx package for the devshell rather than our
               # flavor that also pulls in the actual build of the rust library.
               pkgs.nginx

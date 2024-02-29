@@ -78,7 +78,7 @@ pub extern "C" fn start_ngrok(
                 let to_url = Url::parse(&r_addr).unwrap();
                 let mut tun = tun.listen_and_forward(to_url).await?;
                 println!(
-                    "bound tunnel {} with proxy protocol, forwarding to {r_addr}",
+                    "bound listener {} with proxy protocol, forwarding to {r_addr}",
                     tun.url()
                 );
 

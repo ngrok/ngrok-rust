@@ -1,4 +1,5 @@
 result
+result-lib
 /.env
 /target
 .direnv
