@@ -46,9 +46,9 @@ rec {
       debug = internal.debugCrate { inherit packageId; };
     };
     "muxado" = rec {
-      packageId = "path+file:///home/josh/src/github.com/ngrok/ngrok-rust/muxado#0.4.0";
+      packageId = "muxado";
       build = internal.buildRustCrateWithFeatures {
-        packageId = "path+file:///home/josh/src/github.com/ngrok/ngrok-rust/muxado#0.4.0";
+        packageId = "muxado";
       };
 
       # Debug support which might change between releases.
@@ -56,9 +56,9 @@ rec {
       debug = internal.debugCrate { inherit packageId; };
     };
     "ngrok" = rec {
-      packageId = "path+file:///home/josh/src/github.com/ngrok/ngrok-rust/ngrok#0.14.0-pre.11";
+      packageId = "ngrok";
       build = internal.buildRustCrateWithFeatures {
-        packageId = "path+file:///home/josh/src/github.com/ngrok/ngrok-rust/ngrok#0.14.0-pre.11";
+        packageId = "ngrok";
       };
 
       # Debug support which might change between releases.
@@ -344,41 +344,6 @@ rec {
           }
         ];
 
-      };
-      "async-rustls" = rec {
-        crateName = "async-rustls";
-        version = "0.3.0";
-        edition = "2018";
-        sha256 = "06m06wyg7ard0hcn2dzb1mbk79b3hwi8v7qg26h045y2nw1imclk";
-        authors = [
-          "Alex Crichton <alex@alexcrichton.com>"
-          "quininer kel <quininer@live.com>"
-          "Stjepan Glavina <stjepang@gmail.com>"
-          "John Nunley <jtnunley01@gmail.com>"
-        ];
-        dependencies = [
-          {
-            name = "futures-io";
-            packageId = "futures-io";
-          }
-          {
-            name = "rustls";
-            packageId = "rustls 0.20.9";
-            usesDefaultFeatures = false;
-          }
-          {
-            name = "webpki";
-            packageId = "webpki 0.22.4";
-          }
-        ];
-        features = {
-          "dangerous_configuration" = [ "rustls/dangerous_configuration" ];
-          "default" = [ "logging" "tls12" ];
-          "logging" = [ "rustls/logging" ];
-          "quic" = [ "rustls/quic" ];
-          "tls12" = [ "rustls/tls12" ];
-        };
-        resolvedDefaultFeatures = [ "default" "logging" "tls12" ];
       };
       "async-trait" = rec {
         crateName = "async-trait";
@@ -991,7 +956,7 @@ rec {
           }
           {
             name = "ngrok";
-            packageId = "path+file:///home/josh/src/github.com/ngrok/ngrok-rust/ngrok#0.14.0-pre.11";
+            packageId = "ngrok";
             features = [ "hyper" ];
           }
           {
@@ -4444,6 +4409,90 @@ rec {
         };
         resolvedDefaultFeatures = [ "default" "log" "net" "os-ext" "os-poll" ];
       };
+      "muxado" = rec {
+        crateName = "muxado";
+        version = "0.4.0";
+        edition = "2021";
+        # We can't filter paths with references in Nix 2.4
+        # See https://github.com/NixOS/nix/issues/5410
+        src = if ((lib.versionOlder builtins.nixVersion "2.4pre20211007") || (lib.versionOlder "2.5" builtins.nixVersion ))
+          then lib.cleanSourceWith { filter = sourceFilter;  src = ./muxado; }
+          else ./muxado;
+        dependencies = [
+          {
+            name = "async-trait";
+            packageId = "async-trait";
+          }
+          {
+            name = "awaitdrop";
+            packageId = "awaitdrop";
+          }
+          {
+            name = "bitflags";
+            packageId = "bitflags 1.3.2";
+          }
+          {
+            name = "bytes";
+            packageId = "bytes";
+          }
+          {
+            name = "futures";
+            packageId = "futures";
+            features = [ "bilock" "unstable" ];
+          }
+          {
+            name = "pin-project";
+            packageId = "pin-project";
+          }
+          {
+            name = "rand";
+            packageId = "rand";
+          }
+          {
+            name = "thiserror";
+            packageId = "thiserror";
+          }
+          {
+            name = "tokio";
+            packageId = "tokio";
+            features = [ "io-util" "macros" "rt" ];
+          }
+          {
+            name = "tokio-util";
+            packageId = "tokio-util";
+            features = [ "codec" ];
+          }
+          {
+            name = "tracing";
+            packageId = "tracing";
+          }
+        ];
+        devDependencies = [
+          {
+            name = "anyhow";
+            packageId = "anyhow";
+          }
+          {
+            name = "tokio";
+            packageId = "tokio";
+            features = [ "full" ];
+          }
+          {
+            name = "tracing-core";
+            packageId = "tracing-core";
+          }
+          {
+            name = "tracing-subscriber";
+            packageId = "tracing-subscriber";
+            features = [ "env-filter" ];
+          }
+          {
+            name = "tracing-test";
+            packageId = "tracing-test";
+          }
+        ];
+
+      };
       "native-tls" = rec {
         crateName = "native-tls";
         version = "0.2.11";
@@ -4515,6 +4564,193 @@ rec {
           "vendored" = [ "openssl/vendored" ];
         };
       };
+      "ngrok" = rec {
+        crateName = "ngrok";
+        version = "0.14.0-pre.11";
+        edition = "2021";
+        # We can't filter paths with references in Nix 2.4
+        # See https://github.com/NixOS/nix/issues/5410
+        src = if ((lib.versionOlder builtins.nixVersion "2.4pre20211007") || (lib.versionOlder "2.5" builtins.nixVersion ))
+          then lib.cleanSourceWith { filter = sourceFilter;  src = ./ngrok; }
+          else ./ngrok;
+        dependencies = [
+          {
+            name = "arc-swap";
+            packageId = "arc-swap";
+          }
+          {
+            name = "async-trait";
+            packageId = "async-trait";
+          }
+          {
+            name = "awaitdrop";
+            packageId = "awaitdrop";
+          }
+          {
+            name = "axum";
+            packageId = "axum";
+            optional = true;
+            features = [ "tokio" ];
+          }
+          {
+            name = "base64";
+            packageId = "base64 0.21.7";
+          }
+          {
+            name = "bytes";
+            packageId = "bytes";
+          }
+          {
+            name = "futures";
+            packageId = "futures";
+          }
+          {
+            name = "futures-rustls";
+            packageId = "futures-rustls";
+          }
+          {
+            name = "hostname";
+            packageId = "hostname";
+          }
+          {
+            name = "hyper";
+            packageId = "hyper";
+          }
+          {
+            name = "hyper-proxy";
+            packageId = "hyper-proxy";
+            usesDefaultFeatures = false;
+            features = [ "rustls" ];
+          }
+          {
+            name = "muxado";
+            packageId = "muxado";
+          }
+          {
+            name = "once_cell";
+            packageId = "once_cell";
+          }
+          {
+            name = "parking_lot";
+            packageId = "parking_lot";
+          }
+          {
+            name = "pin-project";
+            packageId = "pin-project";
+          }
+          {
+            name = "proxy-protocol";
+            packageId = "proxy-protocol";
+          }
+          {
+            name = "regex";
+            packageId = "regex";
+          }
+          {
+            name = "rustls-native-certs";
+            packageId = "rustls-native-certs 0.7.0";
+          }
+          {
+            name = "rustls-pemfile";
+            packageId = "rustls-pemfile 2.1.0";
+          }
+          {
+            name = "serde";
+            packageId = "serde";
+            features = [ "derive" ];
+          }
+          {
+            name = "serde_json";
+            packageId = "serde_json";
+          }
+          {
+            name = "thiserror";
+            packageId = "thiserror";
+          }
+          {
+            name = "tokio";
+            packageId = "tokio";
+            features = [ "io-util" "net" "sync" "time" "rt" ];
+          }
+          {
+            name = "tokio-retry";
+            packageId = "tokio-retry";
+          }
+          {
+            name = "tokio-socks";
+            packageId = "tokio-socks";
+          }
+          {
+            name = "tokio-util";
+            packageId = "tokio-util";
+            features = [ "compat" ];
+          }
+          {
+            name = "tracing";
+            packageId = "tracing";
+          }
+          {
+            name = "url";
+            packageId = "url";
+          }
+          {
+            name = "windows-sys";
+            packageId = "windows-sys 0.45.0";
+            target = { target, features }: (target."windows" or false);
+            features = [ "Win32_Foundation" ];
+          }
+        ];
+        devDependencies = [
+          {
+            name = "anyhow";
+            packageId = "anyhow";
+          }
+          {
+            name = "flate2";
+            packageId = "flate2";
+          }
+          {
+            name = "paste";
+            packageId = "paste";
+          }
+          {
+            name = "rand";
+            packageId = "rand";
+          }
+          {
+            name = "reqwest";
+            packageId = "reqwest";
+          }
+          {
+            name = "tokio";
+            packageId = "tokio";
+            features = [ "full" ];
+          }
+          {
+            name = "tokio-tungstenite";
+            packageId = "tokio-tungstenite";
+            features = [ "rustls" "rustls-tls-webpki-roots" ];
+          }
+          {
+            name = "tracing-subscriber";
+            packageId = "tracing-subscriber";
+            features = [ "env-filter" ];
+          }
+          {
+            name = "tracing-test";
+            packageId = "tracing-test";
+          }
+        ];
+        features = {
+          "authenticated-tests" = [ "online-tests" ];
+          "axum" = [ "dep:axum" "hyper" ];
+          "hyper" = [ "hyper/server" "hyper/http1" ];
+          "long-tests" = [ "online-tests" ];
+          "online-tests" = [ "axum" "hyper" ];
+          "paid-tests" = [ "authenticated-tests" ];
+        };
+        resolvedDefaultFeatures = [ "authenticated-tests" "axum" "default" "hyper" "long-tests" "online-tests" "paid-tests" ];
+      };
       "ngrok-nginx" = rec {
         crateName = "ngrok-nginx";
         version = "0.1.0";
@@ -4530,13 +4766,13 @@ rec {
             packageId = "anyhow";
           }
           {
-            name = "once_cell";
-            packageId = "once_cell";
+            name = "ngrok";
+            packageId = "ngrok";
+            features = [ "axum" "hyper" ];
           }
           {
-            name = "ngrok";
-            packageId = "registry+https://github.com/rust-lang/crates.io-index#ngrok@0.14.0-pre.11";
-            features = [ "axum" "hyper" ];
+            name = "once_cell";
+            packageId = "once_cell";
           }
           {
             name = "tokio";
@@ -5105,277 +5341,6 @@ rec {
           "David Tolnay <dtolnay@gmail.com>"
         ];
 
-      };
-      "path+file:///home/josh/src/github.com/ngrok/ngrok-rust/muxado#0.4.0" = rec {
-        crateName = "muxado";
-        version = "0.4.0";
-        edition = "2021";
-        # We can't filter paths with references in Nix 2.4
-        # See https://github.com/NixOS/nix/issues/5410
-        src = if ((lib.versionOlder builtins.nixVersion "2.4pre20211007") || (lib.versionOlder "2.5" builtins.nixVersion ))
-          then lib.cleanSourceWith { filter = sourceFilter;  src = ./muxado; }
-          else ./muxado;
-        dependencies = [
-          {
-            name = "async-trait";
-            packageId = "async-trait";
-          }
-          {
-            name = "awaitdrop";
-            packageId = "awaitdrop";
-          }
-          {
-            name = "bitflags";
-            packageId = "bitflags 1.3.2";
-          }
-          {
-            name = "bytes";
-            packageId = "bytes";
-          }
-          {
-            name = "futures";
-            packageId = "futures";
-            features = [ "bilock" "unstable" ];
-          }
-          {
-            name = "pin-project";
-            packageId = "pin-project";
-          }
-          {
-            name = "rand";
-            packageId = "rand";
-          }
-          {
-            name = "thiserror";
-            packageId = "thiserror";
-          }
-          {
-            name = "tokio";
-            packageId = "tokio";
-            features = [ "io-util" "macros" "rt" ];
-          }
-          {
-            name = "tokio-util";
-            packageId = "tokio-util";
-            features = [ "codec" ];
-          }
-          {
-            name = "tracing";
-            packageId = "tracing";
-          }
-        ];
-        devDependencies = [
-          {
-            name = "anyhow";
-            packageId = "anyhow";
-          }
-          {
-            name = "tokio";
-            packageId = "tokio";
-            features = [ "full" ];
-          }
-          {
-            name = "tracing-core";
-            packageId = "tracing-core";
-          }
-          {
-            name = "tracing-subscriber";
-            packageId = "tracing-subscriber";
-            features = [ "env-filter" ];
-          }
-          {
-            name = "tracing-test";
-            packageId = "tracing-test";
-          }
-        ];
-
-      };
-      "path+file:///home/josh/src/github.com/ngrok/ngrok-rust/ngrok#0.14.0-pre.11" = rec {
-        crateName = "ngrok";
-        version = "0.14.0-pre.11";
-        edition = "2021";
-        # We can't filter paths with references in Nix 2.4
-        # See https://github.com/NixOS/nix/issues/5410
-        src = if ((lib.versionOlder builtins.nixVersion "2.4pre20211007") || (lib.versionOlder "2.5" builtins.nixVersion ))
-          then lib.cleanSourceWith { filter = sourceFilter;  src = ./ngrok; }
-          else ./ngrok;
-        dependencies = [
-          {
-            name = "arc-swap";
-            packageId = "arc-swap";
-          }
-          {
-            name = "async-trait";
-            packageId = "async-trait";
-          }
-          {
-            name = "awaitdrop";
-            packageId = "awaitdrop";
-          }
-          {
-            name = "axum";
-            packageId = "axum";
-            optional = true;
-            features = [ "tokio" ];
-          }
-          {
-            name = "base64";
-            packageId = "base64 0.21.7";
-          }
-          {
-            name = "bytes";
-            packageId = "bytes";
-          }
-          {
-            name = "futures";
-            packageId = "futures";
-          }
-          {
-            name = "futures-rustls";
-            packageId = "futures-rustls";
-          }
-          {
-            name = "hostname";
-            packageId = "hostname";
-          }
-          {
-            name = "hyper";
-            packageId = "hyper";
-          }
-          {
-            name = "hyper-proxy";
-            packageId = "hyper-proxy";
-            usesDefaultFeatures = false;
-            features = [ "rustls" ];
-          }
-          {
-            name = "once_cell";
-            packageId = "once_cell";
-          }
-          {
-            name = "parking_lot";
-            packageId = "parking_lot";
-          }
-          {
-            name = "muxado";
-            packageId = "path+file:///home/josh/src/github.com/ngrok/ngrok-rust/muxado#0.4.0";
-          }
-          {
-            name = "pin-project";
-            packageId = "pin-project";
-          }
-          {
-            name = "proxy-protocol";
-            packageId = "proxy-protocol";
-          }
-          {
-            name = "regex";
-            packageId = "regex";
-          }
-          {
-            name = "rustls-native-certs";
-            packageId = "rustls-native-certs 0.7.0";
-          }
-          {
-            name = "rustls-pemfile";
-            packageId = "rustls-pemfile 2.1.0";
-          }
-          {
-            name = "serde";
-            packageId = "serde";
-            features = [ "derive" ];
-          }
-          {
-            name = "serde_json";
-            packageId = "serde_json";
-          }
-          {
-            name = "thiserror";
-            packageId = "thiserror";
-          }
-          {
-            name = "tokio";
-            packageId = "tokio";
-            features = [ "io-util" "net" "sync" "time" "rt" ];
-          }
-          {
-            name = "tokio-retry";
-            packageId = "tokio-retry";
-          }
-          {
-            name = "tokio-socks";
-            packageId = "tokio-socks";
-          }
-          {
-            name = "tokio-util";
-            packageId = "tokio-util";
-            features = [ "compat" ];
-          }
-          {
-            name = "tracing";
-            packageId = "tracing";
-          }
-          {
-            name = "url";
-            packageId = "url";
-          }
-          {
-            name = "windows-sys";
-            packageId = "windows-sys 0.45.0";
-            target = { target, features }: (target."windows" or false);
-            features = [ "Win32_Foundation" ];
-          }
-        ];
-        devDependencies = [
-          {
-            name = "anyhow";
-            packageId = "anyhow";
-          }
-          {
-            name = "flate2";
-            packageId = "flate2";
-          }
-          {
-            name = "paste";
-            packageId = "paste";
-          }
-          {
-            name = "rand";
-            packageId = "rand";
-          }
-          {
-            name = "reqwest";
-            packageId = "reqwest";
-          }
-          {
-            name = "tokio";
-            packageId = "tokio";
-            features = [ "full" ];
-          }
-          {
-            name = "tokio-tungstenite";
-            packageId = "tokio-tungstenite";
-            features = [ "rustls" "rustls-tls-webpki-roots" ];
-          }
-          {
-            name = "tracing-subscriber";
-            packageId = "tracing-subscriber";
-            features = [ "env-filter" ];
-          }
-          {
-            name = "tracing-test";
-            packageId = "tracing-test";
-          }
-        ];
-        features = {
-          "authenticated-tests" = [ "online-tests" ];
-          "axum" = [ "dep:axum" "hyper" ];
-          "hyper" = [ "hyper/server" "hyper/http1" ];
-          "long-tests" = [ "online-tests" ];
-          "online-tests" = [ "axum" "hyper" ];
-          "paid-tests" = [ "authenticated-tests" ];
-        };
-        resolvedDefaultFeatures = [ "authenticated-tests" "axum" "default" "hyper" "long-tests" "online-tests" "paid-tests" ];
       };
       "percent-encoding" = rec {
         crateName = "percent-encoding";
@@ -6007,218 +5972,6 @@ rec {
           "unicode" = [ "unicode-age" "unicode-bool" "unicode-case" "unicode-gencat" "unicode-perl" "unicode-script" "unicode-segment" ];
         };
         resolvedDefaultFeatures = [ "default" "std" "unicode" "unicode-age" "unicode-bool" "unicode-case" "unicode-gencat" "unicode-perl" "unicode-script" "unicode-segment" ];
-      };
-      "registry+https://github.com/rust-lang/crates.io-index#muxado@0.4.0" = rec {
-        crateName = "muxado";
-        version = "0.4.0";
-        edition = "2021";
-        sha256 = "0ik4srg8vxbpncrz3ygw0s6ld6dfb9p5iagmwvyiw99766n8jaz9";
-        dependencies = [
-          {
-            name = "async-trait";
-            packageId = "async-trait";
-          }
-          {
-            name = "awaitdrop";
-            packageId = "awaitdrop";
-          }
-          {
-            name = "bitflags";
-            packageId = "bitflags 1.3.2";
-          }
-          {
-            name = "bytes";
-            packageId = "bytes";
-          }
-          {
-            name = "futures";
-            packageId = "futures";
-            features = [ "bilock" "unstable" ];
-          }
-          {
-            name = "pin-project";
-            packageId = "pin-project";
-          }
-          {
-            name = "rand";
-            packageId = "rand";
-          }
-          {
-            name = "thiserror";
-            packageId = "thiserror";
-          }
-          {
-            name = "tokio";
-            packageId = "tokio";
-            features = [ "io-util" "macros" "rt" ];
-          }
-          {
-            name = "tokio-util";
-            packageId = "tokio-util";
-            features = [ "codec" ];
-          }
-          {
-            name = "tracing";
-            packageId = "tracing";
-          }
-        ];
-        devDependencies = [
-          {
-            name = "tokio";
-            packageId = "tokio";
-            features = [ "full" ];
-          }
-        ];
-
-      };
-      "registry+https://github.com/rust-lang/crates.io-index#ngrok@0.14.0-pre.11" = rec {
-        crateName = "ngrok";
-        version = "0.14.0-pre.11";
-        edition = "2021";
-        sha256 = "09mxav98a8p5zryx5y185p6gb82ha50s3r6rjxpkyhkdvg3jj9bb";
-        dependencies = [
-          {
-            name = "arc-swap";
-            packageId = "arc-swap";
-          }
-          {
-            name = "async-rustls";
-            packageId = "async-rustls";
-          }
-          {
-            name = "async-trait";
-            packageId = "async-trait";
-          }
-          {
-            name = "awaitdrop";
-            packageId = "awaitdrop";
-          }
-          {
-            name = "axum";
-            packageId = "axum";
-            optional = true;
-            features = [ "tokio" ];
-          }
-          {
-            name = "base64";
-            packageId = "base64 0.13.1";
-          }
-          {
-            name = "bytes";
-            packageId = "bytes";
-          }
-          {
-            name = "futures";
-            packageId = "futures";
-          }
-          {
-            name = "hostname";
-            packageId = "hostname";
-          }
-          {
-            name = "hyper";
-            packageId = "hyper";
-          }
-          {
-            name = "hyper-proxy";
-            packageId = "hyper-proxy";
-            usesDefaultFeatures = false;
-            features = [ "rustls" ];
-          }
-          {
-            name = "once_cell";
-            packageId = "once_cell";
-          }
-          {
-            name = "parking_lot";
-            packageId = "parking_lot";
-          }
-          {
-            name = "pin-project";
-            packageId = "pin-project";
-          }
-          {
-            name = "proxy-protocol";
-            packageId = "proxy-protocol";
-          }
-          {
-            name = "regex";
-            packageId = "regex";
-          }
-          {
-            name = "muxado";
-            packageId = "registry+https://github.com/rust-lang/crates.io-index#muxado@0.4.0";
-          }
-          {
-            name = "rustls-native-certs";
-            packageId = "rustls-native-certs 0.6.3";
-          }
-          {
-            name = "rustls-pemfile";
-            packageId = "rustls-pemfile 1.0.4";
-          }
-          {
-            name = "serde";
-            packageId = "serde";
-            features = [ "derive" ];
-          }
-          {
-            name = "serde_json";
-            packageId = "serde_json";
-          }
-          {
-            name = "thiserror";
-            packageId = "thiserror";
-          }
-          {
-            name = "tokio";
-            packageId = "tokio";
-            features = [ "io-util" "net" "sync" "time" "rt" ];
-          }
-          {
-            name = "tokio-retry";
-            packageId = "tokio-retry";
-          }
-          {
-            name = "tokio-socks";
-            packageId = "tokio-socks";
-          }
-          {
-            name = "tokio-util";
-            packageId = "tokio-util";
-            features = [ "compat" ];
-          }
-          {
-            name = "tracing";
-            packageId = "tracing";
-          }
-          {
-            name = "url";
-            packageId = "url";
-          }
-          {
-            name = "windows-sys";
-            packageId = "windows-sys 0.45.0";
-            target = { target, features }: (target."windows" or false);
-            features = [ "Win32_Foundation" ];
-          }
-        ];
-        devDependencies = [
-          {
-            name = "tokio";
-            packageId = "tokio";
-            features = [ "full" ];
-          }
-        ];
-        features = {
-          "authenticated-tests" = [ "online-tests" ];
-          "axum" = [ "dep:axum" "hyper" ];
-          "hyper" = [ "hyper/server" "hyper/http1" ];
-          "long-tests" = [ "online-tests" ];
-          "online-tests" = [ "axum" "hyper" ];
-          "paid-tests" = [ "authenticated-tests" ];
-        };
-        resolvedDefaultFeatures = [ "axum" "default" "hyper" ];
       };
       "reqwest" = rec {
         crateName = "reqwest";
@@ -6905,34 +6658,6 @@ rec {
           "rustls" = [ "dep:rustls" ];
         };
         resolvedDefaultFeatures = [ "default" "rustls" ];
-      };
-      "rustls-native-certs 0.6.3" = rec {
-        crateName = "rustls-native-certs";
-        version = "0.6.3";
-        edition = "2021";
-        sha256 = "007zind70rd5rfsrkdcfm8vn09j8sg02phg9334kark6rdscxam9";
-        dependencies = [
-          {
-            name = "openssl-probe";
-            packageId = "openssl-probe";
-            target = { target, features }: ((target."unix" or false) && (!("macos" == target."os" or null)));
-          }
-          {
-            name = "rustls-pemfile";
-            packageId = "rustls-pemfile 1.0.4";
-          }
-          {
-            name = "schannel";
-            packageId = "schannel";
-            target = { target, features }: (target."windows" or false);
-          }
-          {
-            name = "security-framework";
-            packageId = "security-framework";
-            target = { target, features }: ("macos" == target."os" or null);
-          }
-        ];
-
       };
       "rustls-native-certs 0.7.0" = rec {
         crateName = "rustls-native-certs";
