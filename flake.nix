@@ -160,6 +160,7 @@
               pkgs.nginx
             ];
             buildInputs = with pkgs; [
+              crate2nix
               toolchain
               fix-n-fmt
               setup-hooks
