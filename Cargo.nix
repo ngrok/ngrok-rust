@@ -4759,7 +4759,7 @@ rec {
         # See https://github.com/NixOS/nix/issues/5410
         src = if ((lib.versionOlder builtins.nixVersion "2.4pre20211007") || (lib.versionOlder "2.5" builtins.nixVersion ))
           then lib.cleanSourceWith { filter = sourceFilter;  src = ./ngrok-nginx/libngrok-nginx; }
-          else ./ngrok-nginx/libngrok-nginx;type = [ "staticlib" "cdylib" ];
+          else ./ngrok-nginx/libngrok-nginx;type = [ "staticlib" ];
         dependencies = [
           {
             name = "anyhow";

@@ -112,6 +112,14 @@
         cargoWorkspace = pkgs.callPackage ./Cargo.nix {
           buildRustCrateForPkgs = pkgs: pkgs.buildRustCrate.override {
             rustc = toolchain;
+            defaultCrateOverrides = pkgs.defaultCrateOverrides // {
+              ngrok-nginx = attrs: {
+                postInstall = ''
+                  ${if builtins.hasAttr "postInstall" attrs then attrs.postInstall else ""}
+                  ln -s $lib/lib/libngrok_nginx-*.a $lib/lib/libngrok_nginx.a
+                '';
+              };
+            };
           };
         };
         ngrok-nginx = cargoWorkspace.workspaceMembers.ngrok-nginx.build.lib;
