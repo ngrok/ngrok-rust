@@ -154,7 +154,10 @@ ngx_http_ngrok_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
 		conf->task = NULL;
 	}
 
-	conf->task = start_ngrok((char *)conf->domain.data, fwd_port, (char *)conf->policy_file.data);
+	if (conf->domain.len != 0 || conf->policy_file.len != 0)
+	{
+		conf->task = start_ngrok((char *)conf->domain.data, fwd_port, (char *)conf->policy_file.data);
+	}
 
 	return NULL;
 }
