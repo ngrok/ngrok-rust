@@ -276,6 +276,9 @@ char *add_listener(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf, uint16_t port
 static char *
 ngx_ngrok(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
+	ngx_uint_t orig_type = cf->cmd_type;
 	cf->cmd_type = NGX_NGROK_CONF;
-	return NGX_CONF_OK;
+	char *ret = ngx_conf_parse(cf, NULL);
+	cf->cmd_type = orig_type;
+	return ret;
 }
