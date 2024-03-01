@@ -27,10 +27,12 @@ fn rt() -> &'static Handle {
 }
 
 fn c_to_rs_string(c_str: *const c_char) -> Option<String> {
-    (!c_str.is_null()).then(|| {
-        let cstr = unsafe { CStr::from_ptr(c_str) };
-        cstr.to_string_lossy().to_string()
-    })
+    (!c_str.is_null())
+        .then(|| {
+            let cstr = unsafe { CStr::from_ptr(c_str) };
+            cstr.to_string_lossy().to_string()
+        })
+        .filter(|s| !s.is_empty())
 }
 
 pub struct Join {
@@ -45,10 +47,10 @@ pub extern "C" fn start_ngrok(
     oauth: *const c_char,
     oauth_allow_domain: *const c_char,
 ) -> *mut Join {
-    tracing_subscriber::fmt()
+    let _ = tracing_subscriber::fmt()
         .pretty()
         .with_env_filter(std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()))
-        .init();
+        .try_init();
 
     info!("starting ngrok");
     let domain = c_to_rs_string(domain);
@@ -74,7 +76,7 @@ pub extern "C" fn start_ngrok(
 
                 if let Some(policy_file) = policy_file {
                     let policy = Policy::from_file(policy_file);
-                    endpoint.policy(policy).unwrap();
+                    endpoint.policy(policy)?;
                 }
 
                 if let Some(oauth) = oauth {
