@@ -31,31 +31,38 @@ ngx_http_ngrok_create_srv_conf(ngx_conf_t *cf);
 static char *
 ngx_http_ngrok_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child);
 
-static ngx_command_t ngx_ngrok_commands[] = {
+static ngx_command_t ngx_ngrok_commands[6] = {
 
 	{ngx_string("ngrok"),
-	 NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
+	 NGX_HTTP_SRV_CONF | NGX_CONF_BLOCK | NGX_CONF_NOARGS,
+	 ngx_ngrok,
+	 0,
+	 0,
+	 &ngx_ngrok_enable_post},
+
+	{ngx_string("domain"),
+	 NGX_NGROK_CONF | NGX_CONF_TAKE1,
 	 ngx_conf_set_str_slot,
 	 NGX_HTTP_SRV_CONF_OFFSET,
 	 offsetof(ngx_http_ngrok_srv_conf_t, domain),
 	 &ngx_ngrok_enable_post},
 
-	{ngx_string("ngrok_policy_file"),
-	 NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
+	{ngx_string("policy_file"),
+	 NGX_NGROK_CONF | NGX_CONF_TAKE1,
 	 ngx_conf_set_str_slot,
 	 NGX_HTTP_SRV_CONF_OFFSET,
 	 offsetof(ngx_http_ngrok_srv_conf_t, policy_file),
 	 &ngx_ngrok_enable_post},
 
-	{ngx_string("ngrok_oauth"),
-	 NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
+	{ngx_string("oauth"),
+	 NGX_NGROK_CONF | NGX_CONF_TAKE1,
 	 ngx_conf_set_str_slot,
 	 NGX_HTTP_SRV_CONF_OFFSET,
 	 offsetof(ngx_http_ngrok_srv_conf_t, oauth),
 	 &ngx_ngrok_enable_post},
 
-	{ngx_string("ngrok_oauth_allow_domain"),
-	 NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
+	{ngx_string("oauth_allow_domain"),
+	 NGX_NGROK_CONF | NGX_CONF_TAKE1,
 	 ngx_conf_set_str_slot,
 	 NGX_HTTP_SRV_CONF_OFFSET,
 	 offsetof(ngx_http_ngrok_srv_conf_t, oauth_allow_domain),
@@ -264,4 +271,11 @@ char *add_listener(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf, uint16_t port
 	}
 
 	return NULL;
+}
+
+static char *
+ngx_ngrok(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+	cf->cmd_type = NGX_NGROK_CONF;
+	return NGX_CONF_OK;
 }
