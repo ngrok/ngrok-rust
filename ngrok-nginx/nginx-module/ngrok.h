@@ -5,7 +5,7 @@
 
 typedef struct Join Join;
 
-struct Join *start_ngrok(const char *domain, uint16_t port, const char *policy_file);
+struct Join *start_ngrok(const char *domain, uint16_t port, const char *policy_file, const char *oauth, const char *oauth_allow_domain);
 
 void block(struct Join *join);
 

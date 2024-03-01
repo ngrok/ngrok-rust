@@ -42,6 +42,8 @@ pub extern "C" fn start_ngrok(
     domain: *const c_char,
     fwd_port: u16,
     policy_file: *const c_char,
+    oauth: *const c_char,
+    oauth_allow_domain: *const c_char,
 ) -> *mut Join {
     tracing_subscriber::fmt()
         .pretty()
@@ -51,6 +53,8 @@ pub extern "C" fn start_ngrok(
     info!("starting ngrok");
     let domain = c_to_rs_string(domain);
     let policy_file = c_to_rs_string(policy_file);
+    let oauth = c_to_rs_string(oauth);
+    let oauth_allow_domain = c_to_rs_string(oauth_allow_domain);
 
     info!(domain, policy_file, fwd_port, "returning ngrok task");
     Box::leak(Box::new(Join {
@@ -71,6 +75,15 @@ pub extern "C" fn start_ngrok(
                 if let Some(policy_file) = policy_file {
                     let policy = Policy::from_file(policy_file);
                     endpoint.policy(policy).unwrap();
+                }
+
+                if let Some(oauth) = oauth {
+                    let mut options = OauthOptions::new(oauth);
+                    if let Some(allow_domain) = oauth_allow_domain {
+                        options.allow_domain(allow_domain);
+                    }
+
+                    endpoint.oauth(options);
                 }
 
                 let fwd_addr = format!("http://localhost:{fwd_port}");

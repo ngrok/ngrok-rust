@@ -16,6 +16,8 @@ typedef struct
 {
 	ngx_str_t domain;
 	ngx_str_t policy_file;
+	ngx_str_t oauth;
+	ngx_str_t oauth_allow_domain;
 	Join *task;
 } ngx_http_ngrok_srv_conf_t;
 
@@ -43,6 +45,20 @@ static ngx_command_t ngx_ngrok_commands[] = {
 	 ngx_conf_set_str_slot,
 	 NGX_HTTP_SRV_CONF_OFFSET,
 	 offsetof(ngx_http_ngrok_srv_conf_t, policy_file),
+	 &ngx_ngrok_enable_post},
+
+	{ngx_string("ngrok_oauth"),
+	 NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
+	 ngx_conf_set_str_slot,
+	 NGX_HTTP_SRV_CONF_OFFSET,
+	 offsetof(ngx_http_ngrok_srv_conf_t, oauth),
+	 &ngx_ngrok_enable_post},
+
+	{ngx_string("ngrok_oauth_allow_domain"),
+	 NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
+	 ngx_conf_set_str_slot,
+	 NGX_HTTP_SRV_CONF_OFFSET,
+	 offsetof(ngx_http_ngrok_srv_conf_t, oauth_allow_domain),
 	 &ngx_ngrok_enable_post},
 
 	ngx_null_command};
@@ -93,6 +109,25 @@ ngx_http_ngrok_create_srv_conf(ngx_conf_t *cf)
 	return conf;
 }
 
+static int
+needs_drop_str(ngx_str_t current, ngx_str_t previous)
+{
+	if (current.len != previous.len)
+	{
+		return true;
+	}
+
+	if (
+		current.len != 0 &&
+		previous.len != 0 &&
+		ngx_strcmp(current.data, previous.data) != 0)
+	{
+		return true;
+	}
+
+	return false;
+}
+
 static char *
 ngx_http_ngrok_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
 {
@@ -118,30 +153,22 @@ ngx_http_ngrok_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
 
 	bool needs_drop = false;
 
-	if (conf->domain.len != prev->domain.len)
+	if (needs_drop_str(conf->domain, prev->domain))
 	{
 		needs_drop = true;
 	}
 
-	// set -> something else
-	if (
-		conf->domain.len != 0 &&
-		prev->domain.len != 0 &&
-		ngx_strcmp(conf->domain.data, prev->domain.data) != 0)
+	if (needs_drop_str(conf->policy_file, prev->policy_file))
 	{
 		needs_drop = true;
 	}
 
-	if (conf->policy_file.len != prev->policy_file.len)
+	if (needs_drop_str(conf->oauth, prev->oauth))
 	{
 		needs_drop = true;
 	}
 
-	// set -> something else
-	if (
-		conf->policy_file.len != 0 &&
-		prev->policy_file.len != 0 &&
-		ngx_strcmp(conf->policy_file.data, prev->policy_file.data) != 0)
+	if (needs_drop_str(conf->oauth_allow_domain, prev->oauth_allow_domain))
 	{
 		needs_drop = true;
 	}
@@ -154,9 +181,14 @@ ngx_http_ngrok_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
 		conf->task = NULL;
 	}
 
-	if (conf->domain.len != 0 || conf->policy_file.len != 0)
+	if (conf->domain.len != 0 || conf->policy_file.len != 0 || conf->oauth.len != 0 || conf->oauth_allow_domain.len != 0)
 	{
-		conf->task = start_ngrok((char *)conf->domain.data, fwd_port, (char *)conf->policy_file.data);
+		conf->task = start_ngrok(
+			(char *)conf->domain.data,
+			fwd_port,
+			(char *)conf->policy_file.data,
+			(char *)conf->oauth.data,
+			(char *)conf->oauth_allow_domain.data);
 	}
 
 	return NULL;
