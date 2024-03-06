@@ -52,8 +52,8 @@ impl TunnelConfig for TlsOptions {
         String::new()
     }
 
-    fn verify_app_cert(&self) -> bool {
-        self.common_opts.verify_app_cert()
+    fn verify_upstream_tls(&self) -> bool {
+        self.common_opts.verify_upstream_tls()
     }
 
     fn extra(&self) -> BindExtra {
@@ -149,10 +149,10 @@ impl TlsTunnelBuilder {
     }
 
     /// Disables backend TLS certificate verification for forwards from this tunnel.
-    pub fn verify_app_cert(&mut self, verify_app_cert: bool) -> &mut Self {
+    pub fn verify_upstream_tls(&mut self, verify_upstream_tls: bool) -> &mut Self {
         self.options
             .common_opts
-            .set_verify_app_cert(verify_app_cert);
+            .set_verify_upstream_tls(verify_upstream_tls);
         self
     }
 

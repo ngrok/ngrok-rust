@@ -137,7 +137,7 @@ impl ConnExt for EdgeConn {
         tokio::spawn(async move {
             let mut upstream = match connect(
                 self.edge_type() == EdgeType::Tls && self.passthrough_tls(),
-                self.inner.info.verify_app_cert,
+                self.inner.info.verify_upstream_tls,
                 self.inner.info.app_protocol.clone(),
                 None, // Edges don't support proxyproto (afaik)
                 &url,
@@ -171,7 +171,7 @@ impl ConnExt for EndpointConn {
             let proto_http = matches!(self.proto(), "http" | "https");
             let passthrough_tls = self.inner.info.passthrough_tls();
             let app_protocol = self.inner.info.app_protocol.clone();
-            let verify_app_cert = self.inner.info.verify_app_cert;
+            let verify_upstream_tls = self.inner.info.verify_upstream_tls;
 
             let (mut stream, proxy_header) = match proxy_proto {
                 ProxyProto::None => (crate::proxy_proto::Stream::disabled(self), None),
@@ -193,7 +193,7 @@ impl ConnExt for EndpointConn {
 
             let mut upstream = match connect(
                 proto_tls && passthrough_tls,
-                verify_app_cert,
+                verify_upstream_tls,
                 app_protocol,
                 proxy_header,
                 &url,
@@ -219,7 +219,7 @@ impl ConnExt for EndpointConn {
 
 fn tls_config(
     app_protocol: Option<String>,
-    verify_app_cert: bool,
+    verify_upstream_tls: bool,
 ) -> Result<Arc<ClientConfig>, &'static io::Error> {
     // The root certificate store, lazily loaded once.
     static ROOT_STORE: Lazy<Result<RootCertStore, io::Error>> = Lazy::new(|| {
@@ -246,12 +246,12 @@ fn tls_config(
             }
             .map(|p| {
                 let http2 = (p & TlsFlags::FLAG_HTTP2.bits()) != 0;
-                let verify_app_cert = (p & TlsFlags::FLAG_verify_app_cert.bits()) != 0;
+                let verify_upstream_tls = (p & TlsFlags::FLAG_verify_upstream_tls.bits()) != 0;
 
                 let mut config = ClientConfig::builder()
                     .with_root_certificates(root_store.clone())
                     .with_no_client_auth();
-                if !verify_app_cert {
+                if !verify_upstream_tls {
                     config.dangerous().set_certificate_verifier(Arc::new(
                         danger::NoCertificateVerification::new(provider::default_provider()),
                     ));
@@ -272,8 +272,8 @@ fn tls_config(
     if Some("http2").eq(&app_protocol.as_deref()) {
         key |= TlsFlags::FLAG_HTTP2.bits();
     }
-    if verify_app_cert {
-        key |= TlsFlags::FLAG_verify_app_cert.bits();
+    if verify_upstream_tls {
+        key |= TlsFlags::FLAG_verify_upstream_tls.bits();
     }
 
     Ok(configs
@@ -286,9 +286,9 @@ fn tls_config(
 bitflags! {
     struct TlsFlags: u8 {
         const FLAG_HTTP2       = 0b01;
-        const FLAG_verify_app_cert       = 0b10;
+        const FLAG_verify_upstream_tls       = 0b10;
         const FLAG_MAX     = Self::FLAG_HTTP2.bits()
-                           | Self::FLAG_verify_app_cert.bits();
+                           | Self::FLAG_verify_upstream_tls.bits();
     }
 }
 
@@ -298,7 +298,7 @@ bitflags! {
 // Note: this additional wrapping logic currently unimplemented.
 async fn connect(
     tunnel_tls: bool,
-    verify_app_cert: bool,
+    verify_upstream_tls: bool,
     app_protocol: Option<String>,
     proxy_proto_header: Option<ProxyHeader>,
     url: &Url,
@@ -397,7 +397,7 @@ async fn connect(
             .to_owned();
         conn = Box::new(
             futures_rustls::TlsConnector::from(
-                tls_config(app_protocol, verify_app_cert).map_err(|e| e.kind())?,
+                tls_config(app_protocol, verify_upstream_tls).map_err(|e| e.kind())?,
             )
             .connect(domain, conn.compat())
             .await?
