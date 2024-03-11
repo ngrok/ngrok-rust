@@ -47,6 +47,7 @@ async fn start_tunnel() -> anyhow::Result<TlsTunnel> {
         .tls_endpoint()
         // .allow_cidr("0.0.0.0/0")
         // .deny_cidr("10.1.1.1/32")
+        // .verify_upstream_tls(false)
         // .domain("<somedomain>.ngrok.io")
         // .forwards_to("example rust"),
         // .mutual_tlsca(CA_CERT.into())

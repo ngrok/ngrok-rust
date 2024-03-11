@@ -41,6 +41,10 @@ impl TunnelConfig for LabeledOptions {
         self.common_opts.forwards_proto.clone().unwrap_or_default()
     }
 
+    fn verify_upstream_tls(&self) -> bool {
+        self.common_opts.verify_upstream_tls()
+    }
+
     fn extra(&self) -> BindExtra {
         BindExtra {
             token: Default::default(),
@@ -98,6 +102,14 @@ impl LabeledTunnelBuilder {
     /// Sets the L7 protocol string for this tunnel.
     pub fn app_protocol(&mut self, app_protocol: impl Into<String>) -> &mut Self {
         self.options.common_opts.forwards_proto = Some(app_protocol.into());
+        self
+    }
+
+    /// Disables backend TLS certificate verification for forwards from this tunnel.
+    pub fn verify_upstream_tls(&mut self, verify_upstream_tls: bool) -> &mut Self {
+        self.options
+            .common_opts
+            .set_verify_upstream_tls(verify_upstream_tls);
         self
     }
 

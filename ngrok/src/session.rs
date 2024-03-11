@@ -133,6 +133,7 @@ struct BoundTunnel {
     labels: HashMap<String, String>,
     forwards_to: String,
     forwards_proto: String,
+    verify_upstream_tls: bool,
     tx: Sender<Result<ConnInner, AcceptError>>,
 }
 
@@ -887,6 +888,7 @@ impl Session {
         let labels = tunnel_cfg.labels();
         let forwards_to = tunnel_cfg.forwards_to();
         let forwards_proto = tunnel_cfg.forwards_proto();
+        let verify_upstream_tls = tunnel_cfg.verify_upstream_tls();
 
         // non-labeled tunnel
         let (tunnel, bound) = if tunnel_cfg.proto() != "" {
@@ -924,6 +926,7 @@ impl Session {
                     labels,
                     forwards_to,
                     forwards_proto,
+                    verify_upstream_tls,
                     tx,
                 },
             )
@@ -959,6 +962,7 @@ impl Session {
                     opts: Default::default(),
                     forwards_to,
                     forwards_proto,
+                    verify_upstream_tls,
                     labels,
                     tx,
                 },
@@ -1034,6 +1038,7 @@ async fn accept_one(
     let res = if let Some(tun) = guard.get(&id) {
         let mut header = conn.header;
         let app_protocol = Some(tun.forwards_proto.to_string()).filter(|s| !s.is_empty());
+        let verify_upstream_tls = tun.verify_upstream_tls;
         // Note: this is a bit of a hack. Normally, passthrough_tls is only
         // a thing on edge connections, but we're making sure it's set for
         // endpoint connections as well. In their case, we have to look at the
@@ -1055,6 +1060,7 @@ async fn accept_one(
             .send(Ok(ConnInner {
                 info: crate::conn::Info {
                     app_protocol,
+                    verify_upstream_tls,
                     remote_addr,
                     header,
                     proxy_proto,

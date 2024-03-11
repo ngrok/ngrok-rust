@@ -14,8 +14,10 @@ use std::{
 };
 
 use async_trait::async_trait;
+use bitflags::bitflags;
 use futures::stream::TryStreamExt;
 use futures_rustls::rustls::{
+    self,
     pki_types,
     ClientConfig,
     RootCertStore,
@@ -30,6 +32,7 @@ use hyper::{
 };
 use once_cell::sync::Lazy;
 use proxy_protocol::ProxyHeader;
+use rustls::crypto::ring as provider;
 #[cfg(feature = "hyper")]
 use tokio::io::{
     AsyncRead,
@@ -134,6 +137,7 @@ impl ConnExt for EdgeConn {
         tokio::spawn(async move {
             let mut upstream = match connect(
                 self.edge_type() == EdgeType::Tls && self.passthrough_tls(),
+                self.inner.info.verify_upstream_tls,
                 self.inner.info.app_protocol.clone(),
                 None, // Edges don't support proxyproto (afaik)
                 &url,
@@ -167,6 +171,7 @@ impl ConnExt for EndpointConn {
             let proto_http = matches!(self.proto(), "http" | "https");
             let passthrough_tls = self.inner.info.passthrough_tls();
             let app_protocol = self.inner.info.app_protocol.clone();
+            let verify_upstream_tls = self.inner.info.verify_upstream_tls;
 
             let (mut stream, proxy_header) = match proxy_proto {
                 ProxyProto::None => (crate::proxy_proto::Stream::disabled(self), None),
@@ -188,6 +193,7 @@ impl ConnExt for EndpointConn {
 
             let mut upstream = match connect(
                 proto_tls && passthrough_tls,
+                verify_upstream_tls,
                 app_protocol,
                 proxy_header,
                 &url,
@@ -211,7 +217,10 @@ impl ConnExt for EndpointConn {
     }
 }
 
-fn tls_config(app_protocol: Option<String>) -> Result<Arc<ClientConfig>, &'static io::Error> {
+fn tls_config(
+    app_protocol: Option<String>,
+    verify_upstream_tls: bool,
+) -> Result<Arc<ClientConfig>, &'static io::Error> {
     // The root certificate store, lazily loaded once.
     static ROOT_STORE: Lazy<Result<RootCertStore, io::Error>> = Lazy::new(|| {
         let der_certs = rustls_native_certs::load_native_certs()?
@@ -228,32 +237,59 @@ fn tls_config(app_protocol: Option<String>) -> Result<Arc<ClientConfig>, &'stati
     // Disabling the lint because this is a local static that doesn't escape the
     // enclosing context. It fine.
     #[allow(clippy::type_complexity)]
-    static CONFIGS: Lazy<Result<HashMap<Option<String>, Arc<ClientConfig>>, &'static io::Error>> =
+    static CONFIGS: Lazy<Result<HashMap<u8, Arc<ClientConfig>>, &'static io::Error>> =
         Lazy::new(|| {
             let root_store = ROOT_STORE.as_ref()?;
-            Ok([None, Some("http2".to_string())]
-                .into_iter()
-                .map(|p| {
-                    let mut config = ClientConfig::builder()
-                        .with_root_certificates(root_store.clone())
-                        .with_no_client_auth();
-                    if let Some("http2") = p.as_deref() {
-                        config
-                            .alpn_protocols
-                            .extend(["h2", "http/1.1"].iter().map(|s| s.as_bytes().to_vec()));
-                    }
-                    (p, Arc::new(config))
-                })
-                .collect())
+            Ok(std::ops::Range {
+                start: 0,
+                end: TlsFlags::FLAG_MAX.bits() + 1,
+            }
+            .map(|p| {
+                let http2 = (p & TlsFlags::FLAG_HTTP2.bits()) != 0;
+                let verify_upstream_tls = (p & TlsFlags::FLAG_verify_upstream_tls.bits()) != 0;
+
+                let mut config = ClientConfig::builder()
+                    .with_root_certificates(root_store.clone())
+                    .with_no_client_auth();
+                if !verify_upstream_tls {
+                    config.dangerous().set_certificate_verifier(Arc::new(
+                        danger::NoCertificateVerification::new(provider::default_provider()),
+                    ));
+                }
+
+                if http2 {
+                    config
+                        .alpn_protocols
+                        .extend(["h2", "http/1.1"].iter().map(|s| s.as_bytes().to_vec()));
+                }
+                (p, Arc::new(config))
+            })
+            .collect())
         });
 
-    let configs: &HashMap<Option<String>, Arc<ClientConfig>> = CONFIGS.as_ref().map_err(|e| *e)?;
+    let configs: &HashMap<u8, Arc<ClientConfig>> = CONFIGS.as_ref().map_err(|e| *e)?;
+    let mut key = 0;
+    if Some("http2").eq(&app_protocol.as_deref()) {
+        key |= TlsFlags::FLAG_HTTP2.bits();
+    }
+    if verify_upstream_tls {
+        key |= TlsFlags::FLAG_verify_upstream_tls.bits();
+    }
 
     Ok(configs
-        .get(&app_protocol)
-        .or_else(|| configs.get(&None))
+        .get(&key)
+        .or_else(|| configs.get(&0))
         .unwrap()
         .clone())
+}
+
+bitflags! {
+    struct TlsFlags: u8 {
+        const FLAG_HTTP2       = 0b01;
+        const FLAG_verify_upstream_tls       = 0b10;
+        const FLAG_MAX     = Self::FLAG_HTTP2.bits()
+                           | Self::FLAG_verify_upstream_tls.bits();
+    }
 }
 
 // Establish the connection to forward the tunnel stream to.
@@ -262,6 +298,7 @@ fn tls_config(app_protocol: Option<String>) -> Result<Arc<ClientConfig>, &'stati
 // Note: this additional wrapping logic currently unimplemented.
 async fn connect(
     tunnel_tls: bool,
+    verify_upstream_tls: bool,
     app_protocol: Option<String>,
     proxy_proto_header: Option<ProxyHeader>,
     url: &Url,
@@ -359,10 +396,12 @@ async fn connect(
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?
             .to_owned();
         conn = Box::new(
-            futures_rustls::TlsConnector::from(tls_config(app_protocol).map_err(|e| e.kind())?)
-                .connect(domain, conn.compat())
-                .await?
-                .compat(),
+            futures_rustls::TlsConnector::from(
+                tls_config(app_protocol, verify_upstream_tls).map_err(|e| e.kind())?,
+            )
+            .connect(domain, conn.compat())
+            .await?
+            .compat(),
         )
     }
 
@@ -404,4 +443,78 @@ fn serve_gateway_error(
         }
         .in_current_span(),
     )
+}
+
+// https://github.com/rustls/rustls/blob/main/examples/src/bin/tlsclient-mio.rs#L334
+mod danger {
+    use futures_rustls::rustls;
+    use rustls::{
+        client::danger::HandshakeSignatureValid,
+        crypto::{
+            verify_tls12_signature,
+            verify_tls13_signature,
+            CryptoProvider,
+        },
+        DigitallySignedStruct,
+    };
+
+    use super::pki_types::{
+        CertificateDer,
+        ServerName,
+        UnixTime,
+    };
+
+    #[derive(Debug)]
+    pub struct NoCertificateVerification(CryptoProvider);
+
+    impl NoCertificateVerification {
+        pub fn new(provider: CryptoProvider) -> Self {
+            Self(provider)
+        }
+    }
+
+    impl rustls::client::danger::ServerCertVerifier for NoCertificateVerification {
+        fn verify_server_cert(
+            &self,
+            _end_entity: &CertificateDer<'_>,
+            _intermediates: &[CertificateDer<'_>],
+            _server_name: &ServerName<'_>,
+            _ocsp: &[u8],
+            _now: UnixTime,
+        ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+            Ok(rustls::client::danger::ServerCertVerified::assertion())
+        }
+
+        fn verify_tls12_signature(
+            &self,
+            message: &[u8],
+            cert: &CertificateDer<'_>,
+            dss: &DigitallySignedStruct,
+        ) -> Result<HandshakeSignatureValid, rustls::Error> {
+            verify_tls12_signature(
+                message,
+                cert,
+                dss,
+                &self.0.signature_verification_algorithms,
+            )
+        }
+
+        fn verify_tls13_signature(
+            &self,
+            message: &[u8],
+            cert: &CertificateDer<'_>,
+            dss: &DigitallySignedStruct,
+        ) -> Result<HandshakeSignatureValid, rustls::Error> {
+            verify_tls13_signature(
+                message,
+                cert,
+                dss,
+                &self.0.signature_verification_algorithms,
+            )
+        }
+
+        fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+            self.0.signature_verification_algorithms.supported_schemes()
+        }
+    }
 }
