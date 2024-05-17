@@ -25,6 +25,7 @@ use futures::{
 use futures_rustls::rustls::{
     self,
     pki_types,
+    RootCertStore,
 };
 use hyper::{
     client::HttpConnector,
@@ -37,7 +38,10 @@ use hyper_proxy::{
 };
 use muxado::heartbeat::HeartbeatConfig;
 pub use muxado::heartbeat::HeartbeatHandler;
-use once_cell::sync::OnceCell;
+use once_cell::sync::{
+    Lazy,
+    OnceCell,
+};
 use regex::Regex;
 use rustls_pemfile::Item;
 use thiserror::Error;
@@ -530,6 +534,25 @@ impl SessionBuilder {
         Ok(self)
     }
 
+    /// Sets the file path to a default certificate in PEM format to validate ngrok Session TLS connections.
+    /// Setting to "trusted" is the default, using the ngrok CA certificate.
+    /// Setting to "host" will verify using the certificates on the host operating system.
+    /// A client config set via tls_config after calling root_cas will override this value.
+    ///
+    /// Corresponds to the [root_cas parameter in the ngrok docs]
+    ///
+    /// [root_cas parameter in the ngrok docs]: https://ngrok.com/docs/ngrok-agent/config#root_cas
+    pub fn root_cas(&mut self, root_cas: impl Into<String>) -> Result<&mut Self, io::Error> {
+        match root_cas.into().clone().as_str() {
+            "trusted" => self.ca_cert = None,
+            "host" => self.tls_config = Some(host_certs_tls_config().map_err(|e| e.kind())?),
+            v => {
+                std::fs::read(v).map(|root_cas| self.ca_cert = Some(Bytes::from(root_cas)))?;
+            }
+        }
+        Ok(self)
+    }
+
     /// Sets the default certificate in PEM format to validate ngrok Session TLS connections.
     /// A client config set via tls_config will override this value.
     ///
@@ -1005,6 +1028,23 @@ impl Session {
         inner.closed.store(true, Ordering::SeqCst);
         res
     }
+}
+
+pub(crate) fn host_certs_tls_config() -> Result<rustls::ClientConfig, &'static io::Error> {
+    // The root certificate store, lazily loaded once.
+    static ROOT_STORE: Lazy<Result<RootCertStore, io::Error>> = Lazy::new(|| {
+        let der_certs = rustls_native_certs::load_native_certs()?
+            .into_iter()
+            .collect::<Vec<_>>();
+        let mut root_store = RootCertStore::empty();
+        root_store.add_parsable_certificates(der_certs);
+        Ok(root_store)
+    });
+
+    let root_store = ROOT_STORE.as_ref()?;
+    Ok(rustls::ClientConfig::builder()
+        .with_root_certificates(root_store.clone())
+        .with_no_client_auth())
 }
 
 async fn accept_one(

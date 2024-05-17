@@ -20,7 +20,6 @@ use futures_rustls::rustls::{
     self,
     pki_types,
     ClientConfig,
-    RootCertStore,
 };
 #[cfg(feature = "hyper")]
 use hyper::{
@@ -221,15 +220,6 @@ fn tls_config(
     app_protocol: Option<String>,
     verify_upstream_tls: bool,
 ) -> Result<Arc<ClientConfig>, &'static io::Error> {
-    // The root certificate store, lazily loaded once.
-    static ROOT_STORE: Lazy<Result<RootCertStore, io::Error>> = Lazy::new(|| {
-        let der_certs = rustls_native_certs::load_native_certs()?
-            .into_iter()
-            .collect::<Vec<_>>();
-        let mut root_store = RootCertStore::empty();
-        root_store.add_parsable_certificates(der_certs);
-        Ok(root_store)
-    });
     // A hashmap of tls client configs for different configurations.
     // There won't need to be a lot of variation among these, and we'll want to
     // reuse them as much as we can, which is why we initialize them all once
@@ -239,18 +229,14 @@ fn tls_config(
     #[allow(clippy::type_complexity)]
     static CONFIGS: Lazy<Result<HashMap<u8, Arc<ClientConfig>>, &'static io::Error>> =
         Lazy::new(|| {
-            let root_store = ROOT_STORE.as_ref()?;
-            Ok(std::ops::Range {
+            std::ops::Range {
                 start: 0,
                 end: TlsFlags::FLAG_MAX.bits() + 1,
             }
             .map(|p| {
                 let http2 = (p & TlsFlags::FLAG_HTTP2.bits()) != 0;
                 let verify_upstream_tls = (p & TlsFlags::FLAG_verify_upstream_tls.bits()) != 0;
-
-                let mut config = ClientConfig::builder()
-                    .with_root_certificates(root_store.clone())
-                    .with_no_client_auth();
+                let mut config = crate::session::host_certs_tls_config()?;
                 if !verify_upstream_tls {
                     config.dangerous().set_certificate_verifier(Arc::new(
                         danger::NoCertificateVerification::new(provider::default_provider()),
@@ -262,9 +248,9 @@ fn tls_config(
                         .alpn_protocols
                         .extend(["h2", "http/1.1"].iter().map(|s| s.as_bytes().to_vec()));
                 }
-                (p, Arc::new(config))
+                Ok((p, Arc::new(config)))
             })
-            .collect())
+            .collect()
         });
 
     let configs: &HashMap<u8, Arc<ClientConfig>> = CONFIGS.as_ref().map_err(|e| *e)?;
