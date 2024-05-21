@@ -20,6 +20,7 @@ async fn main() -> anyhow::Result<()> {
     let sess = ngrok::Session::builder()
         .authtoken_from_env()
         .metadata("Online in One Line")
+        // .root_cas("trusted")?
         .connect()
         .await?;
 

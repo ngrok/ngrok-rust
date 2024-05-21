@@ -733,6 +733,60 @@ async fn verify_upstream_tls() -> Result<(), Error> {
 
 #[cfg_attr(not(feature = "online-tests"), ignore)]
 #[test]
+async fn session_root_cas() -> Result<(), Error> {
+    // host cannot validate cert
+    let resp = Session::builder()
+        .authtoken_from_env()
+        .root_cas("host")?
+        .connect()
+        .await;
+    assert!(resp.is_err());
+    let err_str = resp.err().unwrap().to_string();
+    tracing::debug!(?err_str);
+    assert!(err_str.contains("tls")); // tls issue
+
+    // default of 'trusted' cannot validate the marketing site
+    let resp = Session::builder()
+        .authtoken_from_env()
+        .server_addr("ngrok.com:443")?
+        .connect()
+        .await;
+    assert!(resp.is_err());
+    let err_str = resp.err().unwrap().to_string();
+    tracing::debug!(?err_str);
+    assert!(err_str.contains("tls")); // tls issue
+
+    // "host" certs can validate the marketing site's let's encrypt cert
+    let resp = Session::builder()
+        .authtoken_from_env()
+        .root_cas("host")?
+        .server_addr("ngrok.com:443")?
+        .connect()
+        .await;
+    assert!(resp.is_err());
+    let err_str = resp.err().unwrap().to_string();
+    tracing::debug!(?err_str);
+    assert!(!err_str.contains("tls")); // not a tls problem
+
+    // use the trusted cert, this should connect
+    Session::builder()
+        .authtoken_from_env()
+        .root_cas("trusted")?
+        .connect()
+        .await?;
+
+    // use the default cert, this should connect
+    Session::builder()
+        .authtoken_from_env()
+        .root_cas("assets/ngrok.ca.crt")?
+        .connect()
+        .await?;
+
+    Ok(())
+}
+
+#[cfg_attr(not(feature = "online-tests"), ignore)]
+#[test]
 async fn session_ca_cert() -> Result<(), Error> {
     // invalid cert
     let resp = Session::builder()
