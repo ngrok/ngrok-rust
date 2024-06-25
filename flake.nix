@@ -32,6 +32,7 @@
           "rust-src"
           "rustc"
           "rustfmt"
+          "rust-analyzer"
         ];
         fix-n-fmt = pkgs.writeShellScriptBin "fix-n-fmt" ''
           set -euf -o pipefail
