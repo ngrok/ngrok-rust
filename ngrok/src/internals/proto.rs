@@ -322,6 +322,7 @@ pub struct BindExtra {
     #[serde(rename = "IPPolicyRef")]
     pub ip_policy_ref: String,
     pub metadata: String,
+    pub bindings: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

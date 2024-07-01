@@ -50,6 +50,7 @@ impl TunnelConfig for LabeledOptions {
             token: Default::default(),
             ip_policy_ref: Default::default(),
             metadata: self.common_opts.metadata.clone().unwrap_or_default(),
+            bindings: Vec::new(),
         }
     }
     fn proto(&self) -> String {

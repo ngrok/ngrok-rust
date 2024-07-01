@@ -98,6 +98,7 @@ async fn tunnel() -> Result<(), Error> {
     let tun = setup_session()
         .await?
         .http_endpoint()
+        .binding("public")
         .metadata("Hello, world!")
         .forwards_to("some application")
         .listen()
