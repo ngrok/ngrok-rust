@@ -37,6 +37,7 @@ struct TlsOptions {
     pub(crate) mutual_tlsca: Vec<bytes::Bytes>,
     pub(crate) key_pem: Option<bytes::Bytes>,
     pub(crate) cert_pem: Option<bytes::Bytes>,
+    pub(crate) bindings: Vec<String>,
 }
 
 impl TunnelConfig for TlsOptions {
@@ -61,6 +62,7 @@ impl TunnelConfig for TlsOptions {
             token: Default::default(),
             ip_policy_ref: Default::default(),
             metadata: self.common_opts.metadata.clone().unwrap_or_default(),
+            bindings: self.bindings.clone(),
         }
     }
     fn proto(&self) -> String {
@@ -135,6 +137,11 @@ impl TlsTunnelBuilder {
         self.options.common_opts.metadata = Some(metadata.into());
         self
     }
+    /// Sets the ingress configuration for this endpoint
+    pub fn binding(&mut self, binding: impl Into<String>) -> &mut Self {
+        self.options.bindings.push(binding.into());
+        self
+    }
     /// Sets the ForwardsTo string for this tunnel. This can be viewed via the
     /// API or dashboard.
     ///
@@ -205,6 +212,7 @@ mod test {
     use super::*;
     use crate::config::policies::test::POLICY_JSON;
 
+    const BINDING: &str = "public";
     const METADATA: &str = "testmeta";
     const TEST_FORWARD: &str = "testforward";
     const ALLOW_CIDR: &str = "0.0.0.0/0";
@@ -228,6 +236,7 @@ mod test {
             .deny_cidr(DENY_CIDR)
             .proxy_proto(ProxyProto::V2)
             .metadata(METADATA)
+            .binding(BINDING)
             .domain(DOMAIN)
             .mutual_tlsca(CA_CERT.into())
             .mutual_tlsca(CA_CERT2.into())
@@ -248,6 +257,7 @@ mod test {
         let extra = tunnel_cfg.extra();
         assert_eq!(String::default(), *extra.token);
         assert_eq!(METADATA, extra.metadata);
+        assert_eq!(Vec::from([BINDING]), extra.bindings);
         assert_eq!(String::default(), extra.ip_policy_ref);
 
         assert_eq!("tls", tunnel_cfg.proto());
