@@ -92,7 +92,13 @@ impl TunnelConfig for TlsOptions {
         tls_endpoint.mutual_tls_at_edge =
             (!self.mutual_tlsca.is_empty()).then_some(self.mutual_tlsca.as_slice().into());
         tls_endpoint.tls_termination = tls_termination;
-        tls_endpoint.policy = self.common_opts.policy.clone().map(From::from);
+        tls_endpoint.traffic_policy = if self.common_opts.traffic_policy.is_some() {
+            self.common_opts.traffic_policy.clone().map(From::from)
+        } else if self.common_opts.policy.is_some() {
+            self.common_opts.policy.clone().map(From::from)
+        } else {
+            None
+        };
 
         Some(BindOpts::Tls(tls_endpoint))
     }
@@ -185,13 +191,19 @@ impl TlsTunnelBuilder {
         self
     }
 
-    /// Set the policy for this edge.
+    /// DEPRECATED: use traffic_policy instead.
     pub fn policy<S>(&mut self, s: S) -> Result<&mut Self, S::Error>
     where
         S: TryInto<Policy>,
     {
         self.options.common_opts.policy = Some(s.try_into()?);
         Ok(self)
+    }
+
+    /// Set policy for this edge.
+    pub fn traffic_policy(&mut self, policy_str: impl Into<String>) -> &mut Self {
+        self.options.common_opts.traffic_policy = Some(policy_str.into());
+        self
     }
 
     pub(crate) async fn for_forwarding_to(&mut self, to_url: &Url) -> &mut Self {

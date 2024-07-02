@@ -163,6 +163,12 @@ impl Action {
     }
 }
 
+impl From<Policy> for proto::PolicyWrapper {
+    fn from(value: Policy) -> Self {
+        proto::PolicyWrapper::Policy(value.into())
+    }
+}
+
 // transform into the wire protocol format
 impl From<Policy> for proto::Policy {
     fn from(o: Policy) -> Self {

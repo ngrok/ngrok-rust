@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    convert::From,
+};
 
 use url::Url;
 
@@ -72,7 +75,13 @@ impl TunnelConfig for TcpOptions {
 
         tcp_endpoint.ip_restriction = self.common_opts.ip_restriction();
 
-        tcp_endpoint.policy = self.common_opts.policy.clone().map(From::from);
+        tcp_endpoint.traffic_policy = if self.common_opts.traffic_policy.is_some() {
+            self.common_opts.traffic_policy.clone().map(From::from)
+        } else if self.common_opts.policy.is_some() {
+            self.common_opts.policy.clone().map(From::from)
+        } else {
+            None
+        };
 
         Some(BindOpts::Tcp(tcp_endpoint))
     }
@@ -145,13 +154,19 @@ impl TcpTunnelBuilder {
         self
     }
 
-    /// Set the policy for this edge.
+    /// DEPRECATED: use traffic_policy instead.
     pub fn policy<S>(&mut self, s: S) -> Result<&mut Self, S::Error>
     where
         S: TryInto<Policy>,
     {
         self.options.common_opts.policy = Some(s.try_into()?);
         Ok(self)
+    }
+
+    /// Set policy for this edge.
+    pub fn traffic_policy(&mut self, policy_str: impl Into<String>) -> &mut Self {
+        self.options.common_opts.traffic_policy = Some(policy_str.into());
+        self
     }
 
     pub(crate) async fn for_forwarding_to(&mut self, to_url: &Url) -> &mut Self {
