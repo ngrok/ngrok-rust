@@ -47,6 +47,7 @@ async fn main() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+#[allow(dead_code)]
 struct HHandler;
 
 #[async_trait::async_trait]

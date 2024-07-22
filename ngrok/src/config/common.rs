@@ -206,9 +206,11 @@ pub(crate) struct CommonOpts {
     pub(crate) forwards_proto: Option<String>,
     // Whether to disable certificate verification for this tunnel.
     verify_upstream_tls: Option<bool>,
+    // DEPRECATED: use traffic_policy instead.
+    pub(crate) policy: Option<Policy>,
     // Policy that defines rules that should be applied to incoming or outgoing
     // connections to the edge.
-    pub(crate) policy: Option<Policy>,
+    pub(crate) traffic_policy: Option<String>,
 }
 
 impl CommonOpts {

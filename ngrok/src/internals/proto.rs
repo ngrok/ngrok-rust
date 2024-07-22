@@ -20,6 +20,7 @@ use serde::{
     },
     Deserialize,
     Serialize,
+    Serializer,
 };
 use thiserror::Error;
 use tokio::io::{
@@ -652,6 +653,20 @@ impl<'de> Deserialize<'de> for ProxyProto {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(untagged)]
+pub enum PolicyWrapper {
+    #[serde(serialize_with = "serialize_policy")]
+    Policy(Policy),
+    String(String),
+}
+
+impl From<String> for PolicyWrapper {
+    fn from(value: String) -> Self {
+        PolicyWrapper::String(value)
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct HttpEndpoint {
@@ -682,7 +697,8 @@ pub struct HttpEndpoint {
     pub websocket_tcp_converter: Option<WebsocketTcpConverter>,
     #[serde(rename = "UserAgentFilter")]
     pub user_agent_filter: Option<UserAgentFilter>,
-    pub policy: Option<Policy>,
+    #[serde(rename = "TrafficPolicy")]
+    pub traffic_policy: Option<PolicyWrapper>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -808,7 +824,8 @@ pub struct TcpEndpoint {
     pub proxy_proto: ProxyProto,
     #[serde(rename = "IPRestriction")]
     pub ip_restriction: Option<IpRestriction>,
-    pub policy: Option<Policy>,
+    #[serde(rename = "TrafficPolicy")]
+    pub traffic_policy: Option<PolicyWrapper>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -826,7 +843,8 @@ pub struct TlsEndpoint {
     pub tls_termination: Option<TlsTermination>,
     #[serde(rename = "IPRestriction")]
     pub ip_restriction: Option<IpRestriction>,
-    pub policy: Option<Policy>,
+    #[serde(rename = "TrafficPolicy")]
+    pub traffic_policy: Option<PolicyWrapper>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -865,8 +883,48 @@ pub struct Rule {
 pub struct Action {
     #[serde(rename = "Type")]
     pub type_: String,
-    #[serde(default, with = "base64bytes", skip_serializing_if = "is_default")]
+    #[serde(default, with = "vec_to_json", skip_serializing_if = "is_default")]
     pub config: Vec<u8>,
+}
+
+// This function converts a Policy into a valid JSON string. This is used so legacy configurations will still work
+// using the new string "TrafficPolicy" field.
+fn serialize_policy<S: Serializer>(v: &Policy, s: S) -> Result<S::Ok, S::Error> {
+    let abc = match serde_json::to_string(v) {
+        Ok(t) => t,
+        Err(_) => {
+            return Err(serde::ser::Error::custom(
+                "policy could not be converted to valid json",
+            ))
+        }
+    };
+    s.serialize_str(&abc)
+}
+
+// These are helpers to convert base64 strings to full, real json. The serialize helper also ensures that the resulting
+// representation isn't a string-escaped string.
+mod vec_to_json {
+    use serde::{
+        Deserialize,
+        Deserializer,
+        Serialize,
+        Serializer,
+    };
+
+    pub fn serialize<S: Serializer>(v: &[u8], s: S) -> Result<S::Ok, S::Error> {
+        let u: serde_json::Value = match serde_json::from_slice(v) {
+            Ok(k) => k,
+            Err(_) => return Err(serde::ser::Error::custom("Config is invalid JSON")),
+        };
+
+        u.serialize(s)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
+        let s = serde_json::Map::deserialize(d)?;
+        let v = serde_json::to_vec(&s).unwrap();
+        Ok(v)
+    }
 }
 
 // These are helpers to facilitate the Vec<u8> <-> base64-encoded bytes
@@ -906,5 +964,22 @@ mod test {
         assert!(matches!(p, ProxyProto::V2));
 
         assert_eq!(serde_json::to_string(&p).unwrap(), "2");
+    }
+
+    pub(crate) const POLICY_JSON: &str = r###"{"Inbound":[{"Name":"test_in","Expressions":["req.Method == 'PUT'"],"Actions":[{"Type":"deny"}]}],"Outbound":[{"Name":"test_out","Expressions":["res.StatusCode == '200'"],"Actions":[{"Type":"custom-response","Config":{"status_code":201}}]}]}"###;
+
+    #[test]
+    fn test_policy_proto_serde() {
+        let policy: Policy = serde_json::from_str(POLICY_JSON).unwrap();
+
+        // mainly just interested in checking outbound, as that has the
+        // special vec serialization
+        assert_eq!(1, policy.outbound.len());
+        let outbound = &policy.outbound[0];
+        assert_eq!(1, outbound.actions.len());
+        let action = &outbound.actions[0];
+        assert_eq!(r#"{"status_code":201}"#.as_bytes(), action.config);
+
+        assert_eq!(serde_json::to_string(&policy).unwrap(), POLICY_JSON);
     }
 }

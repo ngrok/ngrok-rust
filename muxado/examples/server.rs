@@ -18,6 +18,7 @@ use tracing::{
 };
 
 /// Subscriber that claims that it's always enabled, but does nothing.
+#[allow(dead_code)]
 struct AlwaysSubscriber;
 impl tracing::Subscriber for AlwaysSubscriber {
     #[inline]

@@ -62,7 +62,7 @@ async fn start_tunnel() -> anyhow::Result<HttpTunnel> {
         //         .allow_domain("<domain>")
         //         .scope("<scope>"),
         // )
-        // .policy(create_policy())?
+        // .traffic_policy(POLICY_JSON)
         // .proxy_proto(ProxyProto::None)
         // .remove_request_header("X-Req-Nope")
         // .remove_response_header("X-Res-Nope")
@@ -81,26 +81,48 @@ async fn start_tunnel() -> anyhow::Result<HttpTunnel> {
 }
 
 #[allow(dead_code)]
-fn create_policy() -> Result<Policy, InvalidPolicy> {
-    Ok(Policy::new()
-        .add_inbound(
-            Rule::new("deny_put")
-                .add_expression("req.Method == 'PUT'")
-                .add_action(Action::new("deny", None)?),
-        )
-        .add_outbound(
-            Rule::new("200_response")
-                .add_expression("res.StatusCode == '200'")
-                .add_action(Action::new(
-                    "custom-response",
-                    Some(
-                        r###"{
-                    "status_code": 200,
-                    "content_type": "text/html",
-                    "content": "Custom 200 response."
-                }"###,
-                    ),
-                )?),
-        )
-        .to_owned())
-}
+const POLICY_JSON: &str = r###"{
+    "inbound":[
+        {
+            "name":"deny_put",
+            "expressions":["req.Method == 'PUT'"],
+            "actions":[{"Type":"deny"}]
+        }],
+    "outbound":[
+        {
+            "name":"change success response",
+            "expressions":["res.StatusCode == '200'"],
+            "actions":[{
+                "type":"custom-response",
+                "config":{
+                    "status_code":201, 
+                    "content": "Custom 200 response.", 
+                    "headers": {
+                        "content_type": "text/html"
+                    }
+                }
+            }]
+        }]
+}"###;
+
+#[allow(dead_code)]
+const POLICY_YAML: &str = r###"
+---
+inbound:
+    - name: "deny_put"
+      expressions:
+      - "req.Method == 'PUT'"
+      actions:
+      - type: "deny"
+outbound:
+    - name: "change success response"
+      expressions:
+      - "res.StatusCode == '200'"
+      actions:
+      - type: "custom-response"
+        config:
+          status_code: 201
+          content: "Custom 200 response."
+          headers:
+            content_type: "text/html"
+"###;
