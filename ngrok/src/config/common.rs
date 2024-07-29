@@ -118,6 +118,16 @@ macro_rules! impl_builder {
                     $crate::forwarder::forward(tunnel, info, to_url)
                 }
             }
+
+            impl std::future::IntoFuture for $name {
+                type IntoFuture = std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output>>>;
+                type Output = Result<$tun, RpcError>;
+
+                fn into_future(self) -> Self::IntoFuture {
+                    use futures::FutureExt;
+                    async move { self.listen().await }.boxed()
+                }
+            }
         }
     };
 }
