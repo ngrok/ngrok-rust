@@ -71,7 +71,7 @@ tokio-tungstenite = { version = "0.21.0", features = [
 	"rustls",
 	"rustls-tls-webpki-roots",
 ] }
-tower = "0.4.13"
+tower = { version = "0.5", features = ["util"] }
 axum = { version = "0.7.4", features = ["tokio"] }
 
 [[example]]

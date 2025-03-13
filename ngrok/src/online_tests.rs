@@ -71,8 +71,8 @@ use tokio_tungstenite::{
 };
 use tokio_util::compat::*;
 use tower::{
+    util::ServiceExt,
     Service,
-    ServiceExt,
 };
 use tracing_test::traced_test;
 use url::Url;

@@ -21,8 +21,8 @@ use hyper_util::{
 };
 use ngrok::prelude::*;
 use tower::{
+    util::ServiceExt,
     Service,
-    ServiceExt,
 };
 
 #[tokio::main]
