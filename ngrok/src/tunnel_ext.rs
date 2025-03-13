@@ -15,6 +15,7 @@ use std::{
 
 use async_trait::async_trait;
 use bitflags::bitflags;
+#[cfg(feature = "axum")]
 use axum_core::response::Response;
 use futures::stream::TryStreamExt;
 use futures_rustls::rustls::{
@@ -32,10 +33,6 @@ use once_cell::sync::Lazy;
 use proxy_protocol::ProxyHeader;
 use rustls::crypto::ring as provider;
 #[cfg(feature = "hyper")]
-use tokio::io::{
-    AsyncRead,
-    AsyncWrite,
-};
 #[cfg(target_os = "windows")]
 use tokio::net::windows::named_pipe::ClientOptions;
 #[cfg(not(target_os = "windows"))]

@@ -17,7 +17,7 @@ http = "1.0.0"
 hyper = { version = "1.1.0", features = ["server"] }
 hyper-staticfile = "0.10.0"
 hyper-util = { version = "0.1.3", features = ["server", "tokio", "server-auto", "http1"] }
-ngrok = { path = "../ngrok", version = "0.14.0-pre.1", features = ["hyper"] }
+ngrok = { path = "../ngrok", version = "0.14.0-pre.1", features = ["hyper", "axum"] }
 tokio = { version = "1.23.0", features = ["full"] }
 watchexec = "2.3.0"
 # watchexec-signals 1.0.1 causes a compilation error.
