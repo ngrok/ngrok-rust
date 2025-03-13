@@ -279,7 +279,7 @@ mod test {
         if let BindOpts::Tls(endpoint) = opts {
             assert_eq!(DOMAIN, endpoint.hostname);
             assert_eq!(String::default(), endpoint.subdomain);
-            assert!(matches!(endpoint.proxy_proto, ProxyProto::V2 { .. }));
+            assert!(matches!(endpoint.proxy_proto, ProxyProto::V2));
             assert!(!endpoint.mutual_tls_at_agent);
 
             let ip_restriction = endpoint.ip_restriction.unwrap();

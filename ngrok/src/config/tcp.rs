@@ -233,7 +233,7 @@ mod test {
         assert!(matches!(opts, BindOpts::Tcp { .. }));
         if let BindOpts::Tcp(endpoint) = opts {
             assert_eq!(REMOTE_ADDR, endpoint.addr);
-            assert!(matches!(endpoint.proxy_proto, ProxyProto::V2 { .. }));
+            assert!(matches!(endpoint.proxy_proto, ProxyProto::V2));
 
             let ip_restriction = endpoint.ip_restriction.unwrap();
             assert_eq!(Vec::from([ALLOW_CIDR]), ip_restriction.allow_cidrs);

@@ -252,7 +252,7 @@ impl RpcClient {
             // This should never happen, since we control the request types and
             // know that they will always serialize correctly. Just in case
             // though, call them "Send" errors.
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+            .map_err(io::Error::other)
             .map_err(RpcError::Send)?;
 
         stream
