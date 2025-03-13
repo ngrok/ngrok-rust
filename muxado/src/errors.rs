@@ -98,7 +98,7 @@ pub enum InvalidHeader {
 
 impl From<InvalidHeader> for io::Error {
     fn from(other: InvalidHeader) -> io::Error {
-        io::Error::new(io::ErrorKind::Other, other)
+        io::Error::other(other)
     }
 }
 

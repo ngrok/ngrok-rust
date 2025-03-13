@@ -81,7 +81,7 @@ where
     }
 }
 
-impl<'a, E> Error for &'a E
+impl<E> Error for &E
 where
     E: Error,
 {

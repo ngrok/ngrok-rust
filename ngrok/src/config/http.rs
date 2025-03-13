@@ -557,7 +557,7 @@ mod test {
         if let BindOpts::Http(endpoint) = opts {
             assert_eq!(DOMAIN, endpoint.hostname);
             assert_eq!(String::default(), endpoint.subdomain);
-            assert!(matches!(endpoint.proxy_proto, ProxyProto::V2 { .. }));
+            assert!(matches!(endpoint.proxy_proto, ProxyProto::V2));
 
             let ip_restriction = endpoint.ip_restriction.unwrap();
             assert_eq!(Vec::from([ALLOW_CIDR]), ip_restriction.allow_cidrs);

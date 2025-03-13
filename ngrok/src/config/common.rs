@@ -143,7 +143,7 @@ pub(crate) trait TunnelConfig {
 }
 
 // delegate references
-impl<'a, T> TunnelConfig for &'a T
+impl<T> TunnelConfig for &T
 where
     T: TunnelConfig,
 {

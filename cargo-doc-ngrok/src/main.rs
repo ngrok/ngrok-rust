@@ -116,7 +116,7 @@ fn make_watcher(
     args: Vec<String>,
     root_dir: impl Into<PathBuf>,
     target_dir: impl Into<PathBuf>,
-) -> Result<Arc<Watchexec>, CriticalError> {
+) -> Result<Arc<Watchexec>, Box<CriticalError>> {
     let target_dir = target_dir.into();
     let root_dir = root_dir.into();
     let mut init = InitConfig::default();
@@ -154,5 +154,5 @@ fn make_watcher(
             }
         }
     });
-    Watchexec::new(init, runtime)
+    Watchexec::new(init, runtime).map_err(Box::new)
 }

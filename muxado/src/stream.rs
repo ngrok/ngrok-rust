@@ -386,7 +386,7 @@ pub mod test {
         assert_eq!(resp, Body::WndInc(WndInc::clamp(MSG.len() as u32)).into());
 
         // Finally, try writing again. If the previous read handled the wndinc, we'll have capacity for 5 more bytes
-        let n = time::timeout(Duration::from_secs(1), stream.write(MSG2[5..].as_bytes()))
+        let n = time::timeout(Duration::from_secs(1), stream.write(&MSG2.as_bytes()[5..]))
             .await
             .unwrap()
             .unwrap();
