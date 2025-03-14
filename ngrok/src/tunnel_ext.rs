@@ -14,9 +14,9 @@ use std::{
 };
 
 use async_trait::async_trait;
-use bitflags::bitflags;
 #[cfg(feature = "axum")]
 use axum_core::response::Response;
+use bitflags::bitflags;
 use futures::stream::TryStreamExt;
 use futures_rustls::rustls::{
     self,
