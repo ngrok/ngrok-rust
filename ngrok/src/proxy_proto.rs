@@ -322,6 +322,56 @@ where
     }
 }
 
+#[cfg(feature = "hyper")]
+mod hyper {
+    use ::hyper::rt::{
+        Read as HyperRead,
+        Write as HyperWrite,
+    };
+
+    use super::*;
+
+    impl<S> HyperWrite for Stream<S>
+    where
+        S: AsyncWrite,
+    {
+        #[instrument(level = "trace", skip(self), fields(write_state = ?self.write_state))]
+        fn poll_write(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<Result<usize, io::Error>> {
+            <Self as AsyncWrite>::poll_write(self, cx, buf)
+        }
+        fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+            <Self as AsyncWrite>::poll_flush(self, cx)
+        }
+        fn poll_shutdown(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+        ) -> Poll<Result<(), io::Error>> {
+            <Self as AsyncWrite>::poll_shutdown(self, cx)
+        }
+    }
+
+    impl<S> HyperRead for Stream<S>
+    where
+        S: AsyncRead,
+    {
+        fn poll_read(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            mut buf: ::hyper::rt::ReadBufCursor<'_>,
+        ) -> Poll<Result<(), std::io::Error>> {
+            let mut tokio_buf = tokio::io::ReadBuf::uninit(unsafe { buf.as_mut() });
+            let res = ready!(<Self as AsyncRead>::poll_read(self, cx, &mut tokio_buf));
+            let filled = tokio_buf.filled().len();
+            unsafe { buf.advance(filled) };
+            Poll::Ready(res)
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::{

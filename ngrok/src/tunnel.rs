@@ -10,8 +10,6 @@ use std::{
 
 use async_trait::async_trait;
 use futures::Stream;
-#[cfg(feature = "hyper")]
-use hyper::server::accept::Accept;
 use muxado::Error as MuxadoError;
 use thiserror::Error;
 use tokio::sync::mpsc::Receiver;
@@ -138,11 +136,7 @@ macro_rules! tunnel_trait {
     }
 }
 
-#[cfg(not(feature = "hyper"))]
 tunnel_trait!();
-
-#[cfg(feature = "hyper")]
-tunnel_trait!(+ Accept<Conn = <Self as Tunnel>::Conn, Error = AcceptError>);
 
 /// An ngrok tunnel backing a simple endpoint.
 /// Most agent-configured tunnels fall into this category, with the exception of
@@ -171,19 +165,6 @@ impl Stream for TunnelInner {
             .as_mut()
             .expect("tunnel inner lacks a receiver")
             .poll_recv(cx)
-    }
-}
-
-#[cfg(feature = "hyper")]
-impl Accept for TunnelInner {
-    type Conn = ConnInner;
-    type Error = AcceptError;
-
-    fn poll_accept(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<Self::Conn, Self::Error>>> {
-        self.poll_next(cx)
     }
 }
 
@@ -300,20 +281,6 @@ macro_rules! make_tunnel_type {
 
             fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
                 Pin::new(&mut self.inner).poll_next(cx).map(|o| o.map(|r| r.map(|c| $conn { inner: c })))
-            }
-        }
-
-        #[cfg(feature = "hyper")]
-        #[cfg_attr(all(feature = "hyper", docsrs), doc(cfg(feature = "hyper")))]
-        impl Accept for $wrapper {
-            type Conn = $conn;
-            type Error = AcceptError;
-
-            fn poll_accept(
-                mut self: Pin<&mut Self>,
-                cx: &mut Context<'_>,
-            ) -> Poll<Option<Result<Self::Conn, Self::Error>>> {
-                Pin::new(&mut self.inner).poll_accept(cx).map(|o| o.map(|r| r.map(|c| $conn { inner: c })))
             }
         }
     };

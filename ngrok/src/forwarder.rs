@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    io,
+    error::Error as StdError,
 };
 
 use async_trait::async_trait;
@@ -22,13 +22,13 @@ use crate::{
 ///
 /// Represents a tunnel that is being forwarded to a URL.
 pub struct Forwarder<T> {
-    pub(crate) join: JoinHandle<Result<(), io::Error>>,
+    pub(crate) join: JoinHandle<Result<(), Box<dyn StdError + Send + Sync>>>,
     pub(crate) inner: T,
 }
 
 impl<T> Forwarder<T> {
     /// Wait for the forwarding task to exit.
-    pub fn join(&mut self) -> &mut JoinHandle<Result<(), io::Error>> {
+    pub fn join(&mut self) -> &mut JoinHandle<Result<(), Box<dyn StdError + Send + Sync>>> {
         &mut self.join
     }
 }
@@ -88,7 +88,9 @@ where
     <T as Tunnel>::Conn: crate::tunnel_ext::ConnExt,
 {
     let handle =
-        tokio::spawn(async move { crate::tunnel_ext::forward_tunnel(&mut listener, to_url).await });
+        tokio::spawn(
+            async move { Ok(crate::tunnel_ext::forward_tunnel(&mut listener, to_url).await?) },
+        );
 
     Ok(Forwarder {
         join: handle,
