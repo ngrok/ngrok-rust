@@ -720,7 +720,7 @@ async fn tls() -> Result<(), BoxError> {
 
 #[test]
 #[cfg_attr(not(feature = "authenticated-tests"), ignore)]
-async fn app_protocol() -> Result<(), Error> {
+async fn app_protocol() -> Result<(), BoxError> {
     let tun = Session::builder()
         .authtoken_from_env()
         .connect()
@@ -741,7 +741,7 @@ async fn app_protocol() -> Result<(), Error> {
 
 #[test]
 #[cfg_attr(not(feature = "authenticated-tests"), ignore)]
-async fn verify_upstream_tls() -> Result<(), Error> {
+async fn verify_upstream_tls() -> Result<(), BoxError> {
     let tun = Session::builder()
         .authtoken_from_env()
         .connect()
@@ -762,7 +762,7 @@ async fn verify_upstream_tls() -> Result<(), Error> {
 
 #[cfg_attr(not(feature = "online-tests"), ignore)]
 #[test]
-async fn session_root_cas() -> Result<(), Error> {
+async fn session_root_cas() -> Result<(), BoxError> {
     // host cannot validate cert
     let resp = Session::builder()
         .authtoken_from_env()
