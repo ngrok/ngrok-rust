@@ -285,12 +285,6 @@ impl HttpTunnelBuilder {
         self
     }
 
-    /// Allows the endpoint to pool with other endpoints with the same host/port/binding
-    pub fn pooling_enabled(&mut self, pooling_enabled: impl Into<bool>) -> &mut Self {
-       self.options.common_opts.pooling_enabled = Some(pooling_enabled.into());
-        self
-    }
-
     /// Disables backend TLS certificate verification for forwards from this tunnel.
     pub fn verify_upstream_tls(&mut self, verify_upstream_tls: bool) -> &mut Self {
         self.options
@@ -476,6 +470,12 @@ impl HttpTunnelBuilder {
         }
         self
     }
+
+    /// Allows the endpoint to pool with other endpoints with the same host/port/binding
+    pub fn pooling_enabled(&mut self, pooling_enabled: impl Into<bool>) -> &mut Self {
+        self.options.common_opts.pooling_enabled = Some(pooling_enabled.into());
+        self
+     }
 }
 
 #[cfg(test)]
