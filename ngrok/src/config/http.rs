@@ -196,6 +196,7 @@ impl TunnelConfig for HttpOptions {
             } else {
                 None
             },
+            pooling_enabled: self.common_opts.pooling_enabled,
             ..Default::default()
         };
 
@@ -281,6 +282,12 @@ impl HttpTunnelBuilder {
     /// Sets the L7 protocol for this tunnel.
     pub fn app_protocol(&mut self, app_protocol: impl Into<String>) -> &mut Self {
         self.options.common_opts.forwards_proto = Some(app_protocol.into());
+        self
+    }
+
+    /// Allows the endpoint to pool with other endpoints with the same host/port/binding
+    pub fn pooling_enabled(&mut self, pooling_enabled: impl Into<bool>) -> &mut Self {
+       self.options.common_opts.pooling_enabled = Some(pooling_enabled.into());
         self
     }
 

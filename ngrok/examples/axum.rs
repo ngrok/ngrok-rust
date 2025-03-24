@@ -63,6 +63,7 @@ async fn main() -> Result<(), BoxError> {
         //         .scope("<scope>"),
         // )
         // .traffic_policy(POLICY_JSON)
+        // .with_pooling_enabled(false)
         // .proxy_proto(ProxyProto::None)
         // .remove_request_header("X-Req-Nope")
         // .remove_response_header("X-Res-Nope")

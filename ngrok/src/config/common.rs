@@ -211,6 +211,8 @@ pub(crate) struct CommonOpts {
     // Policy that defines rules that should be applied to incoming or outgoing
     // connections to the edge.
     pub(crate) traffic_policy: Option<String>,
+    // Allows the endpoint to pool with other endpoints with the same host/port/binding
+    pub(crate) pooling_enabled: Option<bool>,
 }
 
 impl CommonOpts {

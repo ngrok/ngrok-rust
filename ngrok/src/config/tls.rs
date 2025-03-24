@@ -101,7 +101,7 @@ impl TunnelConfig for TlsOptions {
         } else {
             None
         };
-
+        tls_endpoint.pooling_enabled = self.common_opts.pooling_enabled;
         Some(BindOpts::Tls(tls_endpoint))
     }
     fn labels(&self) -> HashMap<String, String> {
@@ -217,6 +217,12 @@ impl TlsTunnelBuilder {
         self.options.common_opts.for_forwarding_to(to_url);
         self
     }
+
+    /// Allows the endpoint to pool with other endpoints with the same host/port/binding
+    pub fn pooling_enabled(&mut self, pooling_enabled: impl Into<bool>) -> &mut Self {
+        self.options.common_opts.pooling_enabled = Some(pooling_enabled.into());
+         self
+     }
 }
 
 #[cfg(test)]
