@@ -1,46 +1,24 @@
-use std::{
-    borrow::Borrow,
-    collections::HashMap,
-    convert::From,
-    str::FromStr,
-};
+use std::{borrow::Borrow, collections::HashMap, convert::From, str::FromStr};
 
 use bytes::Bytes;
 use thiserror::Error;
 use url::Url;
 
-use super::{
-    common::ProxyProto,
-    Policy,
-};
+use super::{common::ProxyProto, Policy};
 // These are used for doc comment links.
 #[allow(unused_imports)]
-use crate::config::{
-    ForwarderBuilder,
-    TunnelBuilder,
-};
+use crate::config::{ForwarderBuilder, TunnelBuilder};
 use crate::{
     config::{
-        common::{
-            default_forwards_to,
-            CommonOpts,
-            TunnelConfig,
-        },
+        common::{default_forwards_to, CommonOpts, TunnelConfig},
         headers::Headers,
         oauth::OauthOptions,
         oidc::OidcOptions,
         webhook_verification::WebhookVerification,
     },
     internals::proto::{
-        BasicAuth,
-        BasicAuthCredential,
-        BindExtra,
-        BindOpts,
-        CircuitBreaker,
-        Compression,
-        HttpEndpoint,
-        UserAgentFilter,
-        WebsocketTcpConverter,
+        BasicAuth, BasicAuthCredential, BindExtra, BindOpts, CircuitBreaker, Compression,
+        HttpEndpoint, UserAgentFilter, WebsocketTcpConverter,
     },
     tunnel::HttpTunnel,
     Session,
@@ -475,7 +453,7 @@ impl HttpTunnelBuilder {
     pub fn pooling_enabled(&mut self, pooling_enabled: impl Into<bool>) -> &mut Self {
         self.options.common_opts.pooling_enabled = Some(pooling_enabled.into());
         self
-     }
+    }
 }
 
 #[cfg(test)]

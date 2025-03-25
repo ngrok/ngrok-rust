@@ -1,31 +1,14 @@
-use std::{
-    collections::HashMap,
-    convert::From,
-};
+use std::{collections::HashMap, convert::From};
 
 use url::Url;
 
-use super::{
-    common::ProxyProto,
-    Policy,
-};
+use super::{common::ProxyProto, Policy};
 // These are used for doc comment links.
 #[allow(unused_imports)]
-use crate::config::{
-    ForwarderBuilder,
-    TunnelBuilder,
-};
+use crate::config::{ForwarderBuilder, TunnelBuilder};
 use crate::{
-    config::common::{
-        default_forwards_to,
-        CommonOpts,
-        TunnelConfig,
-    },
-    internals::proto::{
-        self,
-        BindExtra,
-        BindOpts,
-    },
+    config::common::{default_forwards_to, CommonOpts, TunnelConfig},
+    internals::proto::{self, BindExtra, BindOpts},
     tunnel::TcpTunnel,
     Session,
 };
@@ -185,7 +168,7 @@ impl TcpTunnelBuilder {
     pub fn pooling_enabled(&mut self, pooling_enabled: impl Into<bool>) -> &mut Self {
         self.options.common_opts.pooling_enabled = Some(pooling_enabled.into());
         self
-     }
+    }
 }
 
 #[cfg(test)]
