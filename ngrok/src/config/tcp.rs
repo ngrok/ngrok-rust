@@ -51,6 +51,7 @@ impl TunnelConfig for TcpOptions {
             ip_policy_ref: Default::default(),
             metadata: self.common_opts.metadata.clone().unwrap_or_default(),
             bindings: self.bindings.clone(),
+            pooling_enabled: self.common_opts.pooling_enabled.unwrap_or(false),
         }
     }
     fn proto(&self) -> String {
@@ -84,7 +85,6 @@ impl TunnelConfig for TcpOptions {
         } else {
             None
         };
-        tcp_endpoint.pooling_enabled = self.common_opts.pooling_enabled;
         Some(BindOpts::Tcp(tcp_endpoint))
     }
     fn labels(&self) -> HashMap<String, String> {

@@ -324,6 +324,8 @@ pub struct BindExtra {
     pub ip_policy_ref: String,
     pub metadata: String,
     pub bindings: Vec<String>,
+    #[serde(rename = "PoolingEnabled")]
+    pub pooling_enabled: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -699,8 +701,6 @@ pub struct HttpEndpoint {
     pub user_agent_filter: Option<UserAgentFilter>,
     #[serde(rename = "TrafficPolicy")]
     pub traffic_policy: Option<PolicyWrapper>,
-    #[serde(rename = "PoolingEnabled")]
-    pub pooling_enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -828,8 +828,6 @@ pub struct TcpEndpoint {
     pub ip_restriction: Option<IpRestriction>,
     #[serde(rename = "TrafficPolicy")]
     pub traffic_policy: Option<PolicyWrapper>,
-    #[serde(rename = "PoolingEnabled")]
-    pub pooling_enabled: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -849,8 +847,6 @@ pub struct TlsEndpoint {
     pub ip_restriction: Option<IpRestriction>,
     #[serde(rename = "TrafficPolicy")]
     pub traffic_policy: Option<PolicyWrapper>,
-    #[serde(rename = "PoolingEnabled")]
-    pub pooling_enabled: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]

@@ -154,6 +154,7 @@ impl TunnelConfig for HttpOptions {
             ip_policy_ref: Default::default(),
             metadata: self.common_opts.metadata.clone().unwrap_or_default(),
             bindings: self.bindings.clone(),
+            pooling_enabled: self.common_opts.pooling_enabled.unwrap_or(false),
         }
     }
     fn proto(&self) -> String {
@@ -196,7 +197,6 @@ impl TunnelConfig for HttpOptions {
             } else {
                 None
             },
-            pooling_enabled: self.common_opts.pooling_enabled,
             ..Default::default()
         };
 
