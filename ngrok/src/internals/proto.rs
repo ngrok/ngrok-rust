@@ -324,6 +324,8 @@ pub struct BindExtra {
     pub ip_policy_ref: String,
     pub metadata: String,
     pub bindings: Vec<String>,
+    #[serde(rename = "PoolingEnabled")]
+    pub pooling_enabled: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

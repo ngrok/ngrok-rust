@@ -1,3 +1,6 @@
+## 0.14.0
+- - Adds `pooling_enabled` option, allowing the endpoint to pool with other endpoints with the same host/port/binding
+
 ## 0.13.1
 
 - Preserve the `ERR_NGROK` prefix for error codes.
