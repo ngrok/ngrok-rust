@@ -30,18 +30,11 @@ jobs:
           chmod -c -R +r target/doc | while read line; do
             echo "::warning title=Changed permissions on a file::$line"
           done
-          tar \
-            --dereference --hard-dereference \
-            --directory target/doc \
-            -cvf "$RUNNER_TEMP/artifact.tar" \
-            --exclude=.git \
-            --exclude=.github \
-            .
 
       - name: Upload static files as artifact
-        uses: actions/upload-pages-artifact@v3 # or specific "vX.X.X" version tag for this action
+        uses: actions/upload-pages-artifact@v3
         with:
-          path:${{ runner.temp }}/artifact.tar
+          path: target/doc
 
     # Deployment job
   deploy:
@@ -53,7 +46,7 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-      
+
     runs-on: ubuntu-latest
     needs: build
     steps:
