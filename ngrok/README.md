@@ -44,28 +44,9 @@ See [`/ngrok/examples/`][examples] for example usage, or the tests in
 For working with the [ngrok API](https://ngrok.com/docs/api/), check out the
 [ngrok Rust API Client Library](https://github.com/ngrok/ngrok-api-rs).
 
-If you're looking for the agent wrapper, it's over
-[here](https://github.com/nkconnor/ngrok). See [UPGRADING.md][upgrading]
-for tips on migrating.
-
-[upgrading]: https://github.com/ngrok/ngrok-rust/blob/main/ngrok/UPGRADING.md
-
-For additional information, be sure to also check out the [ngrok-rust launch announcement](https://webflow.ngrok.com/blog-post/ngrok-rs)!
-
 ## Installation
 
-Add `ngrok` to the `[dependencies]` section of your `Cargo.toml`:
-
-```toml
-...
-
-[dependencies]
-ngrok = "0.13"
-
-...
-```
-
-Alternatively, with `cargo add`:
+Add `ngrok` to the `[dependencies]` section of your `Cargo.toml` with `cargo add`:
 
 ```bash
 $ cargo add ngrok
@@ -79,64 +60,74 @@ Create a simple HTTP server using `ngrok` and `axum`:
 
 ```toml
 [package]
-name = "ngrok-axum-example"
+name = "ngrok-rust-demo"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ngrok = { version="0.13", features=["axum"] }
-tokio = { version = "1.26", features = ["full"] }
-axum = "0.6"
-anyhow = "1.0"
+ngrok = {version = "0.14.0"}
+tokio = { version = "1", features = [
+    "full"
+] }
+axum = { version = "0.7.4", features = ["tokio"] }
+async-trait = "0.1.59"
+hyper = {version = "1", features = ["full"]}
+hyper-util = { version = "0.1", features = [
+	"full"
+] }
+url = "2.5.4"
 ```
 
 `src/main.rs`:
 
 ```rust
+#![deny(warnings)]
+use axum::{routing::get, Router};
+use ngrok::config::ForwarderBuilder;
 use std::net::SocketAddr;
-
-use axum::{
-    extract::ConnectInfo,
-    routing::get,
-    Router,
-};
-use ngrok::prelude::*;
+use url::Url;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // build our application with a single route
-    let app = Router::new().route(
-        "/",
-        get(
-            |ConnectInfo(remote_addr): ConnectInfo<SocketAddr>| async move {
-                format!("Hello, {remote_addr:?}!\r\n")
-            },
-        ),
-    );
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Create Axum app
+    let app = Router::new().route("/", get(|| async { "Hello from Axum!" }));
 
-    let tun = ngrok::Session::builder()
-        // Read the token from the NGROK_AUTHTOKEN environment variable
+    // Spawn Axum server
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    tokio::spawn(async move {
+        axum::serve(tokio::net::TcpListener::bind(addr).await.unwrap(), app)
+            .await
+            .unwrap();
+    });
+
+    // Set up ngrok tunnel
+    let sess1 = ngrok::Session::builder()
         .authtoken_from_env()
-        // Connect the ngrok session
         .connect()
-        .await?
-        // Start a tunnel with an HTTP edge
-        .http_endpoint()
-        .listen()
+        .await?;
+    let sess2 = ngrok::Session::builder()
+        .authtoken_from_env()
+        .connect()
         .await?;
 
-    println!("Tunnel started on URL: {:?}", tun.url());
+    let _listener = sess1
+        .http_endpoint()
+        .domain("/* your domain*/")
+        .pooling_enabled(true)
+        .listen_and_forward(Url::parse("http://localhost:3000").unwrap())
+        .await?;
+    let _listener2 = sess2
+        .http_endpoint()
+        .domain("/* your domain */")
+        .pooling_enabled(true)
+        .listen_and_forward(Url::parse("http://localhost:8000").unwrap())
+        .await?;
 
-    // Instead of binding a local port like so:
-    // axum::Server::bind(&"0.0.0.0:8000".parse().unwrap())
-    // Run it with an ngrok tunnel instead!
-    axum::Server::builder(tun)
-        .serve(app.into_make_service_with_connect_info::<SocketAddr>())
-        .await
-        .unwrap();
-
+    // Wait indefinitely
+    tokio::signal::ctrl_c().await?;
     Ok(())
 }
+
 ```
 
 # Changelog
