@@ -1,3 +1,6 @@
+## 0.15.0
+- - Removes `hyper-proxy` and `ring` dependencies 
+
 ## 0.14.0
 - - Adds `pooling_enabled` option, allowing the endpoint to pool with other endpoints with the same host/port/binding
 

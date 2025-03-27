@@ -14,8 +14,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-#[cfg(feature = "axum")]
-use axum_core::response::Response;
 use bitflags::bitflags;
 use futures::stream::TryStreamExt;
 use futures_rustls::rustls::{
@@ -27,11 +25,11 @@ use futures_rustls::rustls::{
 use hyper::{
     server::conn::http1,
     service::service_fn,
+    Response,
     StatusCode,
 };
 use once_cell::sync::Lazy;
 use proxy_protocol::ProxyHeader;
-use rustls::crypto::ring as provider;
 #[cfg(feature = "hyper")]
 #[cfg(target_os = "windows")]
 use tokio::net::windows::named_pipe::ClientOptions;
@@ -212,6 +210,15 @@ impl ConnExt for EndpointConn {
     }
 }
 
+bitflags! {
+    struct TlsFlags: u8 {
+        const FLAG_HTTP2       = 0b01;
+        const FLAG_verify_upstream_tls       = 0b10;
+        const FLAG_MAX     = Self::FLAG_HTTP2.bits()
+                           | Self::FLAG_verify_upstream_tls.bits();
+    }
+}
+
 fn tls_config(
     app_protocol: Option<String>,
     verify_upstream_tls: bool,
@@ -235,7 +242,9 @@ fn tls_config(
                 let mut config = crate::session::host_certs_tls_config()?;
                 if !verify_upstream_tls {
                     config.dangerous().set_certificate_verifier(Arc::new(
-                        danger::NoCertificateVerification::new(provider::default_provider()),
+                        danger::NoCertificateVerification::new(
+                            rustls::crypto::aws_lc_rs::default_provider(),
+                        ),
                     ));
                 }
 
@@ -263,15 +272,6 @@ fn tls_config(
         .or_else(|| configs.get(&0))
         .unwrap()
         .clone())
-}
-
-bitflags! {
-    struct TlsFlags: u8 {
-        const FLAG_HTTP2       = 0b01;
-        const FLAG_verify_upstream_tls       = 0b10;
-        const FLAG_MAX     = Self::FLAG_HTTP2.bits()
-                           | Self::FLAG_verify_upstream_tls.bits();
-    }
 }
 
 // Establish the connection to forward the tunnel stream to.

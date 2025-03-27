@@ -27,15 +27,12 @@ use futures_rustls::rustls::{
     pki_types,
     RootCertStore,
 };
-use hyper_0_14::{
-    client::HttpConnector,
-    service::Service,
-};
-use hyper_proxy::{
+use hyper_http_proxy::{
     Intercept,
     Proxy,
     ProxyConnector,
 };
+use hyper_util::client::legacy::connect::HttpConnector;
 use muxado::heartbeat::HeartbeatConfig;
 pub use muxado::heartbeat::HeartbeatHandler;
 use once_cell::sync::{
@@ -43,6 +40,7 @@ use once_cell::sync::{
     OnceCell,
 };
 use regex::Regex;
+use rustls::crypto::CryptoProvider;
 use rustls_pemfile::Item;
 use thiserror::Error;
 use tokio::{
@@ -68,6 +66,7 @@ use tokio_util::compat::{
     FuturesAsyncReadCompatExt,
     TokioAsyncReadCompatExt,
 };
+use tower_service::Service;
 use tracing::{
     debug,
     warn,
@@ -262,7 +261,8 @@ fn connect_http_proxy(url: Url) -> impl Connector {
             url.as_str().try_into().expect("urls should be valid uris"),
         );
         proxy.force_connect();
-        let connector = HttpConnector::new();
+        let mut connector = HttpConnector::new();
+        connector.enforce_http(false);
         async move {
             let mut connector = ProxyConnector::from_proxy(connector, proxy)
                 .map_err(|e| ConnectError::ProxyConnect(Box::new(e)))?;
@@ -274,14 +274,13 @@ fn connect_http_proxy(url: Url) -> impl Connector {
             let conn = connector
                 .call(server_uri)
                 .await
-                .map_err(|e| ConnectError::ProxyConnect(Box::new(e)))?
-                .compat();
+                .map_err(|e| ConnectError::ProxyConnect(Box::new(e)))?;
 
             let tls_conn = futures_rustls::TlsConnector::from(tls_config)
                 .connect(
                     pki_types::ServerName::try_from(host)
                         .expect("host should have been validated by SessionBuilder::server_addr"),
-                    conn,
+                    hyper_util::rt::TokioIo::new(conn).compat(),
                 )
                 .await
                 .map_err(ConnectError::Tls)?;
@@ -412,6 +411,7 @@ pub struct InvalidServerAddr(String);
 
 impl Default for SessionBuilder {
     fn default() -> Self {
+        CryptoProvider::get_default();
         SessionBuilder {
             versions: [(CLIENT_TYPE.to_string(), VERSION.to_string(), None)]
                 .into_iter()
