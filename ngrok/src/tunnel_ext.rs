@@ -31,7 +31,6 @@ use hyper::{
 };
 use once_cell::sync::Lazy;
 use proxy_protocol::ProxyHeader;
-use rustls::crypto::ring as provider;
 #[cfg(feature = "hyper")]
 #[cfg(target_os = "windows")]
 use tokio::net::windows::named_pipe::ClientOptions;
@@ -235,7 +234,7 @@ fn tls_config(
                 let mut config = crate::session::host_certs_tls_config()?;
                 if !verify_upstream_tls {
                     config.dangerous().set_certificate_verifier(Arc::new(
-                        danger::NoCertificateVerification::new(provider::default_provider()),
+                        danger::NoCertificateVerification::new(rustls::crypto::aws_lc_rs::default_provider()),
                     ));
                 }
 
