@@ -565,7 +565,7 @@ macro_rules! proxy_proto_test {
 }
 
 proxy_proto_test!(
-    [(V1, &b"PROXY TCP4"[..]), (V2, &b"\x0D\x0A\x0D\x0A\x00\x0D\x0A\x51\x55\x49\x54\x0A"[..])]
+    [(V1, &b"PROXY TCP"[..]), (V2, &b"\x0D\x0A\x0D\x0A\x00\x0D\x0A\x51\x55\x49\x54\x0A"[..])]
     [
         (http, |tun| {
             reqwest::get(tun.url().to_string())
