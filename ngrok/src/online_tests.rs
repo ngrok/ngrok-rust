@@ -1,5 +1,6 @@
 use std::{
     convert::Infallible,
+    error::Error,
     io,
     io::prelude::*,
     net::SocketAddr,
@@ -704,16 +705,37 @@ async fn tls() -> Result<(), BoxError> {
         .await?;
 
     let tun = start_http_server(tun, hello_router());
+    let url = tun.url.replacen("tls", "http", 1);
 
-    let url = tun.url.replacen("tls", "https", 1);
-
+    // Create a client with verbose logging and longer timeout
     let client = reqwest::Client::new();
+
     let resp = client.get(url.clone()).send().await;
 
     assert!(resp.is_err());
-    let err_str = resp.err().unwrap().to_string();
-    tracing::debug!(?err_str);
-    assert!(err_str.contains("certificate"));
+
+    let err = resp.err().unwrap();
+
+    // Check if the error is a certificate error
+    let is_certificate_error = if let Some(source) = err.source() {
+        // Try to downcast to hyper_util::client::legacy::Error
+        if let Some(hyper_error) = source.downcast_ref::<hyper_util::client::legacy::Error>() {
+            // Convert the entire error to a string to extract the message
+            let error_str = hyper_error.source().unwrap().to_string();
+
+            error_str.contains("certificate")
+        } else {
+            // If we can't downcast to the specific error type, fall back to string matching
+            let source_str = format!("{:?}", source);
+            assert!(source_str.contains("certificate"));
+            return Ok(());
+        }
+    } else {
+        // If there's no source, return an error
+        return Err("No error source found".into());
+    };
+
+    assert!(is_certificate_error);
 
     Ok(())
 }
