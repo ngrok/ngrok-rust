@@ -705,7 +705,7 @@ async fn tls() -> Result<(), BoxError> {
 
     let tun = start_http_server(tun, hello_router());
 
-    let url = tun.url.replacen("tls", "http", 1);
+    let url = tun.url.replacen("tls", "https", 1);
 
     let client = reqwest::Client::new();
     let resp = client.get(url.clone()).send().await;
