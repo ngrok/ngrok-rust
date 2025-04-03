@@ -40,6 +40,10 @@ use hyper::{
     Request,
     Uri,
 };
+use reqwest::{
+    header,
+    StatusCode,
+};
 use hyper_util::{
     rt::TokioExecutor,
     server,
