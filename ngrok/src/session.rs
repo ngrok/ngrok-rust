@@ -40,7 +40,6 @@ use once_cell::sync::{
     OnceCell,
 };
 use regex::Regex;
-use rustls::crypto::CryptoProvider;
 use rustls_pemfile::Item;
 use thiserror::Error;
 use tokio::{
@@ -411,7 +410,6 @@ pub struct InvalidServerAddr(String);
 
 impl Default for SessionBuilder {
     fn default() -> Self {
-        CryptoProvider::get_default();
         SessionBuilder {
             versions: [(CLIENT_TYPE.to_string(), VERSION.to_string(), None)]
                 .into_iter()
