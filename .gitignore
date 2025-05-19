@@ -1,6 +1,5 @@
 .env
 /target
-/Cargo.lock
 .direnv
 /.vscode
 *.swp
