@@ -234,18 +234,6 @@ impl<S> Stream<S>
 where
     S: AsyncRead,
 {
-    #[instrument(level = "trace", skip(self), fields(read_state = ?self.read_state))]
-    pub fn poll_proxy_header(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<io::Result<Result<Option<&ProxyHeader>, &ParseError>>> {
-        let this = self.project();
-
-        ready!(this.read_state.poll_read_header_once(cx, this.inner))?;
-
-        Ok(this.read_state.header()).into()
-    }
-
     #[instrument(level = "debug", skip(self))]
     pub async fn proxy_header(&mut self) -> io::Result<Result<Option<&ProxyHeader>, &ParseError>>
     where
