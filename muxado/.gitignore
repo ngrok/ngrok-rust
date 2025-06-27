@@ -4,7 +4,6 @@
 
 # Rust-related things
 /target
-Cargo.lock
 
 # swap files
 **/*.swp
