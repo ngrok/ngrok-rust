@@ -1,7 +1,3 @@
-#[cfg(not(target_os = "windows"))]
-use std::borrow::Cow;
-#[cfg(target_os = "windows")]
-use std::time::Duration;
 use std::{
     collections::HashMap,
     io,
@@ -30,13 +26,6 @@ use hyper::{
 };
 use once_cell::sync::Lazy;
 use proxy_protocol::ProxyHeader;
-#[cfg(feature = "hyper")]
-#[cfg(target_os = "windows")]
-use tokio::net::windows::named_pipe::ClientOptions;
-#[cfg(not(target_os = "windows"))]
-use tokio::net::UnixStream;
-#[cfg(target_os = "windows")]
-use tokio::time;
 use tokio::{
     io::copy_bidirectional,
     net::TcpStream,
@@ -55,8 +44,6 @@ use tracing::{
     Span,
 };
 use url::Url;
-#[cfg(target_os = "windows")]
-use windows_sys::Win32::Foundation::ERROR_PIPE_BUSY;
 
 use crate::{
     prelude::*,
@@ -315,7 +302,10 @@ async fn connect(
 
         #[cfg(not(target_os = "windows"))]
         "unix" => {
-            //
+            use std::borrow::Cow;
+
+            use tokio::net::UnixStream;
+
             let mut addr = Cow::Borrowed(url.path());
             if let Some(host) = url.host_str() {
                 // note: if host exists, there should always be a leading / in
@@ -327,6 +317,11 @@ async fn connect(
 
         #[cfg(target_os = "windows")]
         "pipe" => {
+            use std::time::Duration;
+
+            use tokio::net::windows::named_pipe::ClientOptions;
+            use windows_sys::Win32::Foundation::ERROR_PIPE_BUSY;
+
             let mut pipe_name = url.path();
             if url.host_str().is_some() {
                 pipe_name = pipe_name.strip_prefix('/').unwrap_or(pipe_name);
@@ -353,7 +348,7 @@ async fn connect(
                     Err(error) => return Err(error),
                 }
 
-                time::sleep(Duration::from_millis(50)).await;
+                tokio::time::sleep(Duration::from_millis(50)).await;
             };
             Box::new(local_conn)
         }
