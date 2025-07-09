@@ -1,0 +1,155 @@
+on:
+  workflow_dispatch:
+    inputs:
+      crate:
+        description: 'Crate to release (leave empty to publish all in sequence)'
+        required: false
+        type: choice
+        options:
+          - ''
+          - 'muxado'
+          - 'ngrok'
+          - 'cargo-doc-ngrok'
+        default: ''
+
+name: Manual Publish
+
+jobs:
+  # Run all CI checks before publishing
+  udeps:
+    name: Udeps
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jrobsonchase/direnv-action@v0.7
+      - uses: ./.github/workflows/rust-cache
+      - uses: actions-rs/cargo@v1
+        with:
+          command: udeps
+          args: --workspace --all-targets --all-features
+
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jrobsonchase/direnv-action@v0.7
+      - uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jrobsonchase/direnv-action@v0.7
+      - uses: ./.github/workflows/rust-cache
+      - uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --all-targets --all-features --workspace -- -D warnings
+
+  test-nix:
+    name: Test Nix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jrobsonchase/direnv-action@v0.7
+      - uses: ./.github/workflows/rust-cache
+      - uses: actions-rs/cargo@v1
+        env:
+          NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
+        with:
+          command: test
+          args: --workspace --all-targets
+
+  test-stable:
+    name: Test Stable
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - uses: ./.github/workflows/rust-cache
+      - uses: actions-rs/cargo@v1
+        env:
+          NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
+        with:
+          command: test
+          args: --features=paid-tests,long-tests --workspace --all-targets
+
+  test-win:
+    name: Test Windows Stable
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - uses: ./.github/workflows/rust-cache
+      - uses: actions-rs/cargo@v1
+        env:
+          NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
+        with:
+          command: test
+          args: --workspace --all-targets
+
+  semver:
+    name: Semver Check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        crate: [muxado, ngrok]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jrobsonchase/direnv-action@v0.7
+      - uses: ./.github/workflows/rust-cache
+      - uses: actions-rs/cargo@v1
+        name: semver checks
+        with:
+          command: semver-checks
+          args: check-release -p ${{ matrix.crate }}
+
+  # Publishing jobs - these run sequentially as before
+  publish-muxado:
+    name: Publish muxado
+    uses: ./.github/workflows/release.yml
+    needs: [udeps, fmt, clippy, test-nix, test-stable, test-win, semver]
+    if: inputs.crate == '' || inputs.crate == 'muxado'
+    permissions:
+      contents: write
+    with:
+      crate: muxado
+    secrets:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  publish-ngrok:
+    name: Publish ngrok
+    uses: ./.github/workflows/release.yml
+    needs: [publish-muxado]
+    if: (inputs.crate == '' || inputs.crate == 'ngrok') && (needs.publish-muxado.result == 'success' || needs.publish-muxado.result == 'skipped')
+    permissions:
+      contents: write
+    with:
+      crate: ngrok
+    secrets:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  publish-cargo-doc-ngrok:
+    name: Publish cargo-doc-ngrok
+    uses: ./.github/workflows/release.yml
+    needs: [publish-ngrok]
+    if: (inputs.crate == '' || inputs.crate == 'cargo-doc-ngrok') && (needs.publish-ngrok.result == 'success' || needs.publish-ngrok.result == 'skipped')
+    permissions:
+      contents: write
+    with:
+      crate: cargo-doc-ngrok
+    secrets:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
