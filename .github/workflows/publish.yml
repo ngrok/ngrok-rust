@@ -6,11 +6,11 @@ on:
         required: false
         type: choice
         options:
-          - ''
+          - 'all'
           - 'muxado'
           - 'ngrok'
           - 'cargo-doc-ngrok'
-        default: ''
+        default: 'all'
 
 name: Manual Publish
 
@@ -122,7 +122,7 @@ jobs:
     name: Publish muxado
     uses: ./.github/workflows/release.yml
     needs: [udeps, fmt, clippy, test-nix, test-stable, test-win, semver]
-    if: inputs.crate == '' || inputs.crate == 'muxado'
+    if: inputs.crate == 'all' || inputs.crate == 'muxado'
     permissions:
       contents: write
     with:
@@ -134,7 +134,7 @@ jobs:
     name: Publish ngrok
     uses: ./.github/workflows/release.yml
     needs: [publish-muxado]
-    if: (inputs.crate == '' || inputs.crate == 'ngrok') && (needs.publish-muxado.result == 'success' || needs.publish-muxado.result == 'skipped')
+    if: (inputs.crate == 'all' || inputs.crate == 'ngrok') && (needs.publish-muxado.result == 'success' || needs.publish-muxado.result == 'skipped')
     permissions:
       contents: write
     with:
@@ -146,7 +146,7 @@ jobs:
     name: Publish cargo-doc-ngrok
     uses: ./.github/workflows/release.yml
     needs: [publish-ngrok]
-    if: (inputs.crate == '' || inputs.crate == 'cargo-doc-ngrok') && (needs.publish-ngrok.result == 'success' || needs.publish-ngrok.result == 'skipped')
+    if: (inputs.crate == 'all' || inputs.crate == 'cargo-doc-ngrok') && (needs.publish-ngrok.result == 'success' || needs.publish-ngrok.result == 'skipped')
     permissions:
       contents: write
     with:
