@@ -65,7 +65,7 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
-      # We don't actualy have sccache installed here (yet), but it still
+      # We don't actually have sccache installed here (yet), but it still
       # benefits from the cargo cache.
       - uses: ./.github/workflows/rust-cache
       - uses: actions-rs/cargo@v1
@@ -85,7 +85,7 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
-      # We don't actualy have sccache installed here (yet), but it still
+      # We don't actually have sccache installed here (yet), but it still
       # benefits from the cargo cache.
       - uses: ./.github/workflows/rust-cache
       - uses: actions-rs/cargo@v1
