@@ -1,0 +1,57 @@
+on:
+  workflow_dispatch:
+    inputs:
+      crate:
+        description: 'Crate to release (leave empty to publish all in sequence)'
+        required: false
+        type: choice
+        options:
+          - 'all'
+          - 'muxado'
+          - 'ngrok'
+          - 'cargo-doc-ngrok'
+        default: 'all'
+
+name: Manual Publish
+
+jobs:
+  ci:
+    name: Run CI
+    uses: ./.github/workflows/ci.yml
+
+  # Publishing jobs - these run sequentially as before
+  publish-muxado:
+    name: Publish muxado
+    uses: ./.github/workflows/release.yml
+    needs: [ci]
+    if: inputs.crate == 'all' || inputs.crate == 'muxado'
+    permissions:
+      contents: write
+    with:
+      crate: muxado
+    secrets:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  publish-ngrok:
+    name: Publish ngrok
+    uses: ./.github/workflows/release.yml
+    needs: [publish-muxado]
+    if: (inputs.crate == 'all' || inputs.crate == 'ngrok') && (needs.publish-muxado.result == 'success' || needs.publish-muxado.result == 'skipped')
+    permissions:
+      contents: write
+    with:
+      crate: ngrok
+    secrets:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  publish-cargo-doc-ngrok:
+    name: Publish cargo-doc-ngrok
+    uses: ./.github/workflows/release.yml
+    needs: [publish-ngrok]
+    if: (inputs.crate == 'all' || inputs.crate == 'cargo-doc-ngrok') && (needs.publish-ngrok.result == 'success' || needs.publish-ngrok.result == 'skipped')
+    permissions:
+      contents: write
+    with:
+      crate: cargo-doc-ngrok
+    secrets:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

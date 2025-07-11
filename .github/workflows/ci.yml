@@ -2,6 +2,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
 
 name: Continuous integration
 
@@ -65,7 +66,7 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
-      # We don't actualy have sccache installed here (yet), but it still
+      # We don't actually have sccache installed here (yet), but it still
       # benefits from the cargo cache.
       - uses: ./.github/workflows/rust-cache
       - uses: actions-rs/cargo@v1
@@ -85,7 +86,7 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
-      # We don't actualy have sccache installed here (yet), but it still
+      # We don't actually have sccache installed here (yet), but it still
       # benefits from the cargo cache.
       - uses: ./.github/workflows/rust-cache
       - uses: actions-rs/cargo@v1
@@ -111,38 +112,4 @@ jobs:
           command: semver-checks
           args: check-release -p ${{ matrix.crate }}
 
-  # These are sequenced because the muxado version referenced by ngrok has to
-  # exist on crates.io before ngrok can be published.
-  publish-muxado:
-    name: Publish muxado
-    uses: ./.github/workflows/release.yml
-    needs: [udeps, fmt, clippy, test-nix, test-stable, test-win, semver]
-    if: github.ref_name == 'main' && github.repository == 'ngrok/ngrok-rust'
-    permissions:
-      contents: write
-    with:
-      crate: muxado
-    secrets:
-      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-  publish-ngrok:
-    name: Publish ngrok
-    uses: ./.github/workflows/release.yml
-    needs: [publish-muxado]
-    permissions:
-      contents: write
-    with:
-      crate: ngrok
-    secrets:
-      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-  publish-cargo-doc-ngrok:
-    name: Publish cargo-doc-ngrok
-    uses: ./.github/workflows/release.yml
-    needs: [publish-ngrok]
-    permissions:
-      contents: write
-    with:
-      crate: cargo-doc-ngrok
-    secrets:
-      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
