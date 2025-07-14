@@ -18,6 +18,7 @@ jobs:
       crate: muxado
     secrets:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
 
   publish-ngrok:
     name: Publish ngrok
@@ -30,6 +31,7 @@ jobs:
       crate: ngrok
     secrets:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
 
   publish-cargo-doc-ngrok:
     name: Publish cargo-doc-ngrok
@@ -42,3 +44,4 @@ jobs:
       crate: cargo-doc-ngrok
     secrets:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
