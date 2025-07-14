@@ -1,13 +1,13 @@
 [package]
 name = "ngrok"
-version = "0.16.0"
+version = "0.16.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "The ngrok agent SDK"
 repository = "https://github.com/ngrok/ngrok-rust"
 
 [dependencies]
-arc-swap = "1.5.1"
+arc-swap = "1.5.2"
 async-trait = "0.1.59"
 awaitdrop = "0.1.1"
 axum = { version = "0.7.4", features = ["tokio"], optional = true }
