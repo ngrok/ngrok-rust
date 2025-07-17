@@ -38,6 +38,7 @@ jobs:
           git config user.name "GitHub Action"
           git config user.email noreply@ngrok.com
           tag="${{inputs.crate}}-v${version}"
+          echo "Version ${version}, tag ${tag}"
           if git rev-parse "refs/tags/$tag" >/dev/null 2>&1; then
             echo "Tag $tag already exists, skipping tag creation."
           else
