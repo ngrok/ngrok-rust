@@ -34,7 +34,7 @@ jobs:
           tag="${crate}-v${version}"
           echo "Version extracted: $version, crate: $crate, tag: $tag"
           echo "Checking if crate $crate version $version exists on crates.io"
-          result=$(cargo search $crate --limit 1 | grep "$crate v$version")
+          result=$(cargo search $crate --limit 1 | grep "$version")
           if [ -n "$result" ]; then
             echo "Crate $crate version $version already exists on crates.io, skipping publish."
             exit 0
