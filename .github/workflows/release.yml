@@ -28,7 +28,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: jrobsonchase/direnv-action@v0.7
       - name: cargo publish
-        uses: actions-rs/cargo@v1
         run: |
           version="$(extract-crate-version ${{inputs.crate}})"
           crate="${{inputs.crate}}"
