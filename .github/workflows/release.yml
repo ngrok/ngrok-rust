@@ -32,7 +32,6 @@ jobs:
           version="$(extract-crate-version ${{inputs.crate}})"
           crate="${{inputs.crate}}"
           tag="${crate}-v${version}"
-          echo "Version extracted: $version, crate: $crate, tag: $tag"
           echo "Checking if crate $crate version $version exists on crates.io"
           result=$(cargo search $crate --limit 1 | grep "$version")
           if [ -n "$result" ]; then
@@ -48,10 +47,8 @@ jobs:
           git config user.email noreply@ngrok.com
           tag="${{inputs.crate}}-v${version}"
           echo "Version ${version}, tag ${tag}"
-          echo "Current working directory: $(pwd)"
-          echo "Listing all tags in the repository:"
+          echo "Fetching all tags in the repository:"
           git fetch --tags
-          git tag -l
           if git rev-parse "refs/tags/$tag" >/dev/null 2>&1; then
             echo "Tag $tag already exists, skipping tag creation."
           else
