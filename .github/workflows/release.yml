@@ -47,7 +47,7 @@ jobs:
           git config user.email noreply@ngrok.com
           tag="${{inputs.crate}}-v${version}"
           echo "Version ${version}, tag ${tag}"
-          echo "Fetching all tags in the repository:"
+          echo "Fetching all tags in the repository"
           git fetch --tags
           if git rev-parse "refs/tags/$tag" >/dev/null 2>&1; then
             echo "Tag $tag already exists, skipping tag creation."
