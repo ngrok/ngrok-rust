@@ -49,11 +49,13 @@ jobs:
           tag="${{inputs.crate}}-v${version}"
           echo "Version ${version}, tag ${tag}"
           echo "Current working directory: $(pwd)"
-          echo "Listing all local tags in the repository:"
+          echo "Listing all tags in the repository:"
+          git fetch --tags
           git tag -l
-          rev_parse_output=$(git rev-parse "refs/tags/$tag" 2>&1)
-          if [ $? -eq 0 ]; then
+          if git rev-parse "refs/tags/$tag" >/dev/null 2>&1; then
             echo "Tag $tag already exists, skipping tag creation."
           else
-            echo "Error from git rev-parse: $rev_parse_output"
+            echo "Tag $tag does not exist, pushing tag."
+            git tag -a -m "Version ${version}" $tag
+            git push --tags
           fi
