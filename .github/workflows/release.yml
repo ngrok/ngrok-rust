@@ -29,9 +29,16 @@ jobs:
       - uses: jrobsonchase/direnv-action@v0.7
       - name: cargo publish
         uses: actions-rs/cargo@v1
-        with:
-          command: publish
-          args: -p ${{ inputs.crate }} --token ${{secrets.CARGO_REGISTRY_TOKEN}}
+        run: |
+          version="$(extract-crate-version ${{inputs.crate}})"
+          crate="${{inputs.crate}}"
+          tag="${crate}-v${version}"
+          result=$(cargo search $crate --limit 1 | grep "$crate v$version")
+          if [ -n "$result" ]; then
+            echo "Crate $crate version $version already exists on crates.io, skipping publish."
+            exit 0
+          fi
+          cargo publish -p $crate --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
       - name: tag release
         run: |
           version="$(extract-crate-version ${{inputs.crate}})"
