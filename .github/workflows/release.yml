@@ -49,6 +49,8 @@ jobs:
           tag="${{inputs.crate}}-v${version}"
           echo "Version ${version}, tag ${tag}"
           echo "Current working directory: $(pwd)"
+          echo "Listing all local tags in the repository:"
+          git tag -l
           rev_parse_output=$(git rev-parse "refs/tags/$tag" 2>&1)
           if [ $? -eq 0 ]; then
             echo "Tag $tag already exists, skipping tag creation."
