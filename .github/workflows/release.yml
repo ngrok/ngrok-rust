@@ -28,14 +28,31 @@ jobs:
       - uses: actions/checkout@v4
       - uses: jrobsonchase/direnv-action@v0.7
       - name: cargo publish
-        uses: actions-rs/cargo@v1
-        with:
-          command: publish
-          args: -p ${{ inputs.crate }} --token ${{secrets.CARGO_REGISTRY_TOKEN}}
+        run: |
+          version="$(extract-crate-version ${{inputs.crate}})"
+          crate="${{inputs.crate}}"
+          tag="${crate}-v${version}"
+          echo "Checking if crate $crate version $version exists on crates.io"
+          result=$(cargo search $crate --limit 1 | grep "$version")
+          if [ -n "$result" ]; then
+            echo "Crate $crate version $version already exists on crates.io, skipping publish."
+            exit 0
+          fi
+          echo "Crate version $version not found on crates.io, proceeding with publish."
+          cargo publish -p $crate --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
       - name: tag release
         run: |
           version="$(extract-crate-version ${{inputs.crate}})"
           git config user.name "GitHub Action"
           git config user.email noreply@ngrok.com
-          git tag -a -m "Version ${version}" ${{inputs.crate}}-v${version}
-          git push --tags
+          tag="${{inputs.crate}}-v${version}"
+          echo "Version ${version}, tag ${tag}"
+          echo "Fetching all tags in the repository"
+          git fetch --tags
+          if git rev-parse "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "Tag $tag already exists, skipping tag creation."
+          else
+            echo "Tag $tag does not exist, pushing tag."
+            git tag -a -m "Version ${version}" $tag
+            git push --tags
+          fi
