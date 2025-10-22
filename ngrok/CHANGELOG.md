@@ -1,3 +1,19 @@
+## Unreleased
+
+### Breaking Changes
+- **Binding is now optional**: Tests no longer hardcode `binding("public")`. The ngrok service will use its default binding configuration when not explicitly specified.
+- **Binding validation**: The `binding()` method now validates input values and panics on invalid values or multiple calls.
+
+### Added
+- Added `Binding` enum with three variants: `Public`, `Internal`, and `Kubernetes`
+- Added validation for binding values - only "public", "internal", and "kubernetes" are accepted (case-insensitive)
+- Added `binding()` method documentation with examples for both string and typed enum usage
+- Added panic behavior when `binding()` is called more than once (only one binding allowed)
+
+### Changed
+- `binding()` method now accepts both strings and the `Binding` enum via `Into<String>`
+- Removed hardcoded "public" binding from all tests - bindings are now truly optional
+
 ## 0.15.0
 - - Removes `hyper-proxy` and `ring` dependencies 
 

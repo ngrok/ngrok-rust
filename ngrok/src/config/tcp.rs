@@ -18,6 +18,7 @@ use crate::config::{
 use crate::{
     config::common::{
         default_forwards_to,
+        Binding,
         CommonOpts,
         TunnelConfig,
     },
@@ -127,9 +128,45 @@ impl TcpTunnelBuilder {
         self.options.common_opts.metadata = Some(metadata.into());
         self
     }
-    /// Sets the ingress configuration for this endpoint
+
+    /// Sets the ingress configuration for this endpoint.
+    ///
+    /// Valid binding values are:
+    /// - `"public"` - Publicly accessible endpoint
+    /// - `"internal"` - Internal-only endpoint
+    /// - `"kubernetes"` - Kubernetes cluster binding
+    ///
+    /// If not specified, the ngrok service will use its default binding configuration.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called more than once or if an invalid binding value is provided.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use ngrok::Session;
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let session = Session::builder().authtoken_from_env().connect().await?;
+    ///
+    /// // Using string
+    /// let tunnel = session.tcp_endpoint().binding("internal").listen().await?;
+    ///
+    /// // Using typed enum
+    /// use ngrok::config::Binding;
+    /// let tunnel = session.tcp_endpoint().binding(Binding::Public).listen().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn binding(&mut self, binding: impl Into<String>) -> &mut Self {
-        self.options.bindings.push(binding.into());
+        if !self.options.bindings.is_empty() {
+            panic!("binding() can only be called once");
+        }
+        let binding_str = binding.into();
+        if let Err(e) = Binding::validate(&binding_str) {
+            panic!("{}", e);
+        }
+        self.options.bindings.push(binding_str);
         self
     }
     /// Sets the ForwardsTo string for this tunnel. This can be viewed via the
@@ -192,7 +229,6 @@ impl TcpTunnelBuilder {
 mod test {
     use super::*;
     use crate::config::policies::test::POLICY_JSON;
-    const BINDING: &str = "public";
     const METADATA: &str = "testmeta";
     const TEST_FORWARD: &str = "testforward";
     const REMOTE_ADDR: &str = "4.tcp.ngrok.io:1337";
@@ -212,7 +248,6 @@ mod test {
             .deny_cidr(DENY_CIDR)
             .proxy_proto(ProxyProto::V2)
             .metadata(METADATA)
-            .binding(BINDING)
             .remote_addr(REMOTE_ADDR)
             .forwards_to(TEST_FORWARD)
             .policy(POLICY_JSON)
@@ -230,7 +265,7 @@ mod test {
         let extra = tunnel_cfg.extra();
         assert_eq!(String::default(), *extra.token);
         assert_eq!(METADATA, extra.metadata);
-        assert_eq!(Vec::from([BINDING]), extra.bindings);
+        assert_eq!(Vec::<String>::new(), extra.bindings);
         assert_eq!(String::default(), extra.ip_policy_ref);
 
         assert_eq!("tcp", tunnel_cfg.proto());
@@ -247,5 +282,62 @@ mod test {
         }
 
         assert_eq!(HashMap::new(), tunnel_cfg.labels());
+    }
+
+    #[test]
+    fn test_binding_valid_values() {
+        let mut builder = TcpTunnelBuilder {
+            session: None,
+            options: Default::default(),
+        };
+
+        // Test "public"
+        builder.binding("public");
+        assert_eq!(vec!["public"], builder.options.bindings);
+
+        // Test "internal"
+        let mut builder = TcpTunnelBuilder {
+            session: None,
+            options: Default::default(),
+        };
+        builder.binding("internal");
+        assert_eq!(vec!["internal"], builder.options.bindings);
+
+        // Test "kubernetes"
+        let mut builder = TcpTunnelBuilder {
+            session: None,
+            options: Default::default(),
+        };
+        builder.binding("kubernetes");
+        assert_eq!(vec!["kubernetes"], builder.options.bindings);
+
+        // Test with Binding enum
+        let mut builder = TcpTunnelBuilder {
+            session: None,
+            options: Default::default(),
+        };
+        builder.binding(Binding::Public);
+        assert_eq!(vec!["public"], builder.options.bindings);
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid binding value")]
+    fn test_binding_invalid_value() {
+        let mut builder = TcpTunnelBuilder {
+            session: None,
+            options: Default::default(),
+        };
+        builder.binding("invalid");
+    }
+
+    #[test]
+    #[should_panic(expected = "binding() can only be called once")]
+    fn test_binding_called_twice() {
+        let mut builder = TcpTunnelBuilder {
+            session: None,
+            options: Default::default(),
+        };
+        builder.binding("public");
+        builder.binding("internal");
     }
 }
