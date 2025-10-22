@@ -23,6 +23,69 @@ use crate::{
     Tunnel,
 };
 
+/// Represents the ingress configuration for an ngrok endpoint.
+///
+/// Bindings determine where and how your endpoint is exposed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Binding {
+    /// Publicly accessible endpoint (default for most configurations).
+    Public,
+    /// Internal-only endpoint, not accessible from the public internet.
+    Internal,
+    /// Kubernetes cluster binding for service mesh integration.
+    Kubernetes,
+}
+
+impl Binding {
+    /// Returns the string representation of this binding.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Binding::Public => "public",
+            Binding::Internal => "internal",
+            Binding::Kubernetes => "kubernetes",
+        }
+    }
+
+    /// Validates if a string is a recognized binding value.
+    pub(crate) fn validate(s: &str) -> Result<(), String> {
+        match s.to_lowercase().as_str() {
+            "public" | "internal" | "kubernetes" => Ok(()),
+            _ => Err(format!(
+                "Invalid binding value '{}'. Expected 'public', 'internal', or 'kubernetes'",
+                s
+            )),
+        }
+    }
+}
+
+impl From<Binding> for String {
+    fn from(binding: Binding) -> String {
+        binding.as_str().to_string()
+    }
+}
+
+impl std::str::FromStr for Binding {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "public" => Ok(Binding::Public),
+            "internal" => Ok(Binding::Internal),
+            "kubernetes" => Ok(Binding::Kubernetes),
+            _ => Err(format!(
+                "Invalid binding value '{}'. Expected 'public', 'internal', or 'kubernetes'",
+                s
+            )),
+        }
+    }
+}
+
+impl std::fmt::Display for Binding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 pub(crate) fn default_forwards_to() -> &'static str {
     static FORWARDS_TO: OnceCell<String> = OnceCell::new();
 
