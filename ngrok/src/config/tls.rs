@@ -76,8 +76,7 @@ impl TunnelConfig for TlsOptions {
         let mut tls_endpoint = proto::TlsEndpoint::default();
 
         if let Some(domain) = self.domain.as_ref() {
-            // note: hostname and subdomain are going away in favor of just domain
-            tls_endpoint.hostname = domain.clone();
+            tls_endpoint.domain = domain.clone();
         }
         tls_endpoint.proxy_proto = self.common_opts.proxy_proto;
 
@@ -318,7 +317,7 @@ mod test {
         let opts = tunnel_cfg.opts().unwrap();
         assert!(matches!(opts, BindOpts::Tls { .. }));
         if let BindOpts::Tls(endpoint) = opts {
-            assert_eq!(DOMAIN, endpoint.hostname);
+            assert_eq!(DOMAIN, endpoint.domain);
             assert_eq!(String::default(), endpoint.subdomain);
             assert!(matches!(endpoint.proxy_proto, ProxyProto::V2));
             assert!(!endpoint.mutual_tls_at_agent);
