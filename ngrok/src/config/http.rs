@@ -167,7 +167,8 @@ impl TunnelConfig for HttpOptions {
     fn opts(&self) -> Option<BindOpts> {
         let http_endpoint = HttpEndpoint {
             proxy_proto: self.common_opts.proxy_proto,
-            hostname: self.domain.clone().unwrap_or_default(),
+            domain: self.domain.clone().unwrap_or_default(),
+            hostname: String::new(),
             compression: self.compression.then_some(Compression {}),
             circuit_breaker: (self.circuit_breaker != 0f64).then_some(CircuitBreaker {
                 error_threshold: self.circuit_breaker,
@@ -597,7 +598,7 @@ mod test {
         let opts = tunnel_cfg.opts().unwrap();
         assert!(matches!(opts, BindOpts::Http { .. }));
         if let BindOpts::Http(endpoint) = opts {
-            assert_eq!(DOMAIN, endpoint.hostname);
+            assert_eq!(DOMAIN, endpoint.domain);
             assert_eq!(String::default(), endpoint.subdomain);
             assert!(matches!(endpoint.proxy_proto, ProxyProto::V2));
 
@@ -714,5 +715,29 @@ mod test {
         };
         builder.binding("public");
         builder.binding("internal");
+    }
+
+    #[test]
+    fn test_binding_with_domain() {
+        let mut builder = HttpTunnelBuilder {
+            session: None,
+            options: Default::default(),
+        };
+        builder.binding("internal").domain("foo.internal");
+
+        // Check that both binding and domain are set
+        assert_eq!(vec!["internal"], builder.options.bindings);
+        assert_eq!(Some("foo.internal".to_string()), builder.options.domain);
+
+        // Check that they're properly included in extra() and opts()
+        let extra = builder.options.extra();
+        assert_eq!(vec!["internal"], extra.bindings);
+
+        let opts = builder.options.opts().unwrap();
+        if let BindOpts::Http(endpoint) = opts {
+            assert_eq!("foo.internal", endpoint.domain);
+        } else {
+            panic!("Expected Http endpoint");
+        }
     }
 }

@@ -672,6 +672,8 @@ impl From<String> for PolicyWrapper {
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct HttpEndpoint {
+    #[serde(default)]
+    pub domain: String,
     pub hostname: String,
     pub auth: String,
     pub subdomain: String,
@@ -833,6 +835,8 @@ pub struct TcpEndpoint {
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct TlsEndpoint {
+    #[serde(default)]
+    pub domain: String,
     pub hostname: String,
     pub subdomain: String,
     pub proxy_proto: ProxyProto,
