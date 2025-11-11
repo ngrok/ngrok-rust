@@ -37,7 +37,6 @@ pub const RESTART_REQ: StreamType = StreamType::clamp(4);
 pub const STOP_REQ: StreamType = StreamType::clamp(5);
 pub const UPDATE_REQ: StreamType = StreamType::clamp(6);
 pub const BIND_LABELED_REQ: StreamType = StreamType::clamp(7);
-pub const SRV_INFO_REQ: StreamType = StreamType::clamp(8);
 pub const STOP_TUNNEL_REQ: StreamType = StreamType::clamp(9);
 
 pub const VERSION: &[&str] = &["3", "2"]; // integers in priority order
@@ -548,18 +547,6 @@ pub struct StopTunnel {
 pub type UpdateResp = CommandResp;
 rpc_req!(Update, UpdateResp, UPDATE_REQ);
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default)]
-#[serde(rename_all = "PascalCase")]
-pub struct SrvInfo {}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-#[serde(rename_all = "PascalCase")]
-pub struct SrvInfoResp {
-    pub region: String,
-}
-
-rpc_req!(SrvInfo, SrvInfoResp, SRV_INFO_REQ);
-
 /// The version of [PROXY protocol](https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt)
 /// to use with this tunnel.
 ///
@@ -861,12 +848,6 @@ pub struct TlsTermination {
     pub key: SecretBytes,
     #[serde(default, with = "base64bytes", skip_serializing_if = "is_default")]
     pub sealed_key: Vec<u8>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-#[serde(rename_all = "PascalCase")]
-pub struct LabelEndpoint {
-    pub labels: HashMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
