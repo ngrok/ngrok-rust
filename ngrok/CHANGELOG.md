@@ -1,4 +1,4 @@
-## Unreleased
+## 0.17.0
 
 ### Breaking Changes
 - **Binding is now optional**: Tests no longer hardcode `binding("public")`. The ngrok service will use its default binding configuration when not explicitly specified.
