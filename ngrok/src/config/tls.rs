@@ -161,6 +161,7 @@ impl TlsTunnelBuilder {
     ///
     /// ```no_run
     /// # use ngrok::Session;
+    /// # use ngrok::config::TunnelBuilder;
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let session = Session::builder().authtoken_from_env().connect().await?;
     ///

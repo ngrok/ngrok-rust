@@ -83,7 +83,7 @@ url = "2.5.4"
 ```rust
 #![deny(warnings)]
 use axum::{routing::get, Router};
-use ngrok::config::ForwarderBuilder;
+use ngrok::config::{ForwarderBuilder, TunnelBuilder};
 use std::net::SocketAddr;
 use url::Url;
 
