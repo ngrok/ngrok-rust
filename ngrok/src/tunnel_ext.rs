@@ -227,11 +227,19 @@ fn tls_config(
                 let http2 = (p & TlsFlags::FLAG_HTTP2.bits()) != 0;
                 let verify_upstream_tls = (p & TlsFlags::FLAG_verify_upstream_tls.bits()) != 0;
                 let mut config = crate::session::host_certs_tls_config()?;
+                let provider = rustls::crypto::CryptoProvider::get_default()
+                    .ok_or_else(|| {
+                        io::Error::new(
+                            io::ErrorKind::NotFound,
+                            "no default CryptoProvider installed",
+                        )
+                    })
+                    .unwrap()
+                    .as_ref()
+                    .clone();
                 if !verify_upstream_tls {
                     config.dangerous().set_certificate_verifier(Arc::new(
-                        danger::NoCertificateVerification::new(
-                            rustls::crypto::aws_lc_rs::default_provider(),
-                        ),
+                        danger::NoCertificateVerification::new(provider),
                     ));
                 }
 
