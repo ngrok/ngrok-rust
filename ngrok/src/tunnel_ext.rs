@@ -206,6 +206,13 @@ bitflags! {
     }
 }
 
+static NO_CRYPTO_PROVIDER_ERROR: Lazy<io::Error> = Lazy::new(|| {
+    io::Error::new(
+        io::ErrorKind::NotFound,
+        "no default CryptoProvider installed",
+    )
+});
+
 fn tls_config(
     app_protocol: Option<String>,
     verify_upstream_tls: bool,
@@ -228,10 +235,12 @@ fn tls_config(
                 let verify_upstream_tls = (p & TlsFlags::FLAG_verify_upstream_tls.bits()) != 0;
                 let mut config = crate::session::host_certs_tls_config()?;
                 if !verify_upstream_tls {
+                    let provider = rustls::crypto::CryptoProvider::get_default()
+                        .ok_or(&*NO_CRYPTO_PROVIDER_ERROR)?
+                        .as_ref()
+                        .clone();
                     config.dangerous().set_certificate_verifier(Arc::new(
-                        danger::NoCertificateVerification::new(
-                            rustls::crypto::aws_lc_rs::default_provider(),
-                        ),
+                        danger::NoCertificateVerification::new(provider),
                     ));
                 }
 
