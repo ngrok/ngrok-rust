@@ -26,6 +26,7 @@ pub(crate) mod config {
     mod labeled;
     pub(crate) use labeled::*;
     mod oauth;
+    #[cfg(test)]
     pub(crate) use oauth::*;
     mod oidc;
     pub(crate) use policies::*;

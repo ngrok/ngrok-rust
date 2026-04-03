@@ -65,32 +65,27 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ngrok = {version = "0.14.0"}
+ngrok = {version = "1.0.0"}
 tokio = { version = "1", features = [
     "full"
 ] }
 axum = { version = "0.7.4", features = ["tokio"] }
-async-trait = "0.1.59"
 hyper = {version = "1", features = ["full"]}
 hyper-util = { version = "0.1", features = [
 	"full"
 ] }
-url = "2.5.4"
 ```
 
 `src/main.rs`:
 
 ```rust
-#![deny(warnings)]
-use axum::{routing::get, Router};
-use ngrok::config::{ForwarderBuilder, TunnelBuilder};
+use ngrok::Upstream;
 use std::net::SocketAddr;
-use url::Url;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Create Axum app
-    let app = Router::new().route("/", get(|| async { "Hello from Axum!" }));
+    let app = axum::Router::new().route("/", axum::routing::get(|| async { "Hello from Axum!" }));
 
     // Spawn Axum server
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
@@ -100,28 +95,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             .unwrap();
     });
 
-    // Set up ngrok tunnel
-    let sess1 = ngrok::Session::builder()
-        .authtoken_from_env()
-        .connect()
-        .await?;
-    let sess2 = ngrok::Session::builder()
-        .authtoken_from_env()
-        .connect()
-        .await?;
+    // Set up ngrok forwarder
+    let mut fwd = ngrok::forward(Upstream::new("localhost:3000"))
+        .url("https://your-domain.ngrok.app")
+        .start()
+        .await
+        .expect("failed to start forwarder");
 
-    let _listener = sess1
-        .http_endpoint()
-        .domain("/* your domain*/")
-        .pooling_enabled(true)
-        .listen_and_forward(Url::parse("http://localhost:3000").unwrap())
-        .await?;
-    let _listener2 = sess2
-        .http_endpoint()
-        .domain("/* your domain */")
-        .pooling_enabled(true)
-        .listen_and_forward(Url::parse("http://localhost:8000").unwrap())
-        .await?;
+    println!("Forwarding to: {}", fwd.url());
 
     // Wait indefinitely
     tokio::signal::ctrl_c().await?;

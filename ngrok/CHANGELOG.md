@@ -1,3 +1,68 @@
+## 1.0.0
+
+### Breaking Changes — v2 API
+
+This is a major API redesign aligning ngrok-rust with the ngrok-go v2 API design.
+
+#### New Types
+- **`Agent`** / **`AgentBuilder`**: Replaces `Session` / `SessionBuilder`. Use `Agent::builder()` to configure, `.build()` to create (sync), then `.connect()` / `.listen()` / `.forward()` for async operations. Auto-connects by default on first use.
+- **`EndpointListener`**: Replaces `HttpTunnel`, `TcpTunnel`, `TlsTunnel`, `LabeledTunnel`. A unified endpoint that implements `Stream<Item = Result<EndpointConn, AcceptError>>`.
+- **`EndpointForwarder`**: Replaces `Forwarder<T>`. Wraps an `EndpointListener` that is actively forwarding to an upstream.
+- **`EndpointOptions`** / **`EndpointListenBuilder`** / **`EndpointForwardBuilder`**: Unified endpoint configuration. Protocol is inferred from the URL scheme (`https://`, `tcp://`, `tls://`, `http://`).
+- **`Upstream`**: Describes where traffic is forwarded to.
+- **`Endpoint`** trait: Common interface for endpoint metadata (`id()`, `url()`, `protocol()`, etc.).
+- **`Event`** enum: Unified agent events (connect, disconnect, heartbeat).
+- **`RpcRequest`** trait and method constants: Unified RPC handler interface.
+- **Default agent**: `ngrok::listen()`, `ngrok::forward()`, `ngrok::default_agent()` — top-level convenience using a global default agent initialized from `NGROK_AUTHTOKEN`.
+
+#### Removed from Public API
+- `Session`, `SessionBuilder` — use `Agent`, `AgentBuilder`
+- `HttpTunnelBuilder`, `TcpTunnelBuilder`, `TlsTunnelBuilder`, `LabeledTunnelBuilder` — use `EndpointListenBuilder` with `.url()` to set protocol
+- `Tunnel` trait, `TunnelInfo`, `EndpointInfo`, `EdgeInfo`, `TunnelCloser` — use `Endpoint` trait
+- `HttpTunnel`, `TcpTunnel`, `TlsTunnel`, `LabeledTunnel` — use `EndpointListener`
+- `Forwarder<T>` — use `EndpointForwarder`
+- `OauthOptions`, `OidcOptions`, `Policy`, `Rule`, `Action` — use traffic policy YAML/JSON via `EndpointListenBuilder::traffic_policy()`
+- `Scheme` enum — protocol now inferred from URL
+- `TunnelBuilder`, `ForwarderBuilder` traits
+- `EdgeConn`, `EdgeConnInfo` — labeled tunnels removed
+- `config` module — all configuration now through `EndpointOptions`
+
+#### Migration Guide
+
+**Before (v0.x):**
+```rust
+let session = ngrok::Session::builder()
+    .authtoken_from_env()
+    .connect()
+    .await?;
+let tunnel = session.http_endpoint()
+    .domain("app.ngrok.app")
+    .listen_and_forward(url)
+    .await?;
+```
+
+**After (v1.0):**
+```rust
+let fwd = ngrok::forward(ngrok::Upstream::new("localhost:8080"))
+    .url("https://app.ngrok.app")
+    .start()
+    .await?;
+```
+
+Or with a custom agent:
+```rust
+let agent = ngrok::Agent::builder()
+    .authtoken("your-token")
+    .build()?;
+let listener = agent.listen()
+    .url("https://app.ngrok.app")
+    .start()
+    .await?;
+```
+
+#### Added
+- `ffi` feature flag for FFI-friendly types (`FfiAgent`, `FfiEndpointOptions`, etc.)
+
 ## 0.18.0
 - Add support for CEL filtering when listing resources.
 - Add support for service users
