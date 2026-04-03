@@ -9,43 +9,46 @@ mod internals {
     pub mod raw_session;
 }
 
-/// Tunnel and endpoint configuration types.
-pub mod config {
+/// Tunnel and endpoint configuration types (internal).
+///
+/// The v2 API uses [`EndpointOptions`] and [`EndpointListenBuilder`] instead of
+/// per-protocol builders. These types are kept for internal use.
+pub(crate) mod config {
     #[macro_use]
     mod common;
-    pub use common::*;
+    pub(crate) use common::*;
 
     mod headers;
     mod http;
-    pub use self::http::*;
+    pub(crate) use self::http::*;
     mod labeled;
-    pub use labeled::*;
+    pub(crate) use labeled::*;
     mod oauth;
-    pub use oauth::*;
+    pub(crate) use oauth::*;
     mod oidc;
-    pub use policies::*;
+    pub(crate) use policies::*;
     mod policies;
-    pub use oidc::*;
+    pub(crate) use oidc::*;
     mod tcp;
-    pub use tcp::*;
+    pub(crate) use tcp::*;
     mod tls;
-    pub use tls::*;
+    pub(crate) use tls::*;
     mod webhook_verification;
 }
 
 mod proxy_proto;
 
-/// Types for working with the ngrok session.
-pub mod session;
-/// Types for working with ngrok tunnels.
-pub mod tunnel;
+/// Types for working with the ngrok session (internal).
+pub(crate) mod session;
+/// Types for working with ngrok tunnels (internal).
+pub(crate) mod tunnel;
 
 /// Types for working with ngrok connections.
 pub mod conn;
 
-/// Types for working with connection forwarders.
-pub mod forwarder;
-mod tunnel_ext;
+/// Types for working with connection forwarders (internal).
+pub(crate) mod forwarder;
+pub(crate) mod tunnel_ext;
 
 // ===== v2 API modules =====
 /// Agent configuration and management (v2 API).
@@ -68,19 +71,14 @@ pub mod default_agent;
 #[cfg_attr(docsrs, doc(cfg(feature = "ffi")))]
 pub mod ffi;
 
-// ===== v1 re-exports (kept for backward compatibility) =====
+// ===== Connection types (kept public) =====
 #[doc(inline)]
 pub use conn::{
     Conn,
-    EdgeConn,
+    ConnInfo,
     EndpointConn,
+    EndpointConnInfo,
 };
-#[doc(inline)]
-pub use internals::proto::Error;
-#[doc(inline)]
-pub use session::Session;
-#[doc(inline)]
-pub use tunnel::Tunnel;
 
 // ===== v2 re-exports =====
 #[doc(inline)]
@@ -119,47 +117,14 @@ pub use rpc_handler::{
 #[doc(inline)]
 pub use upstream::Upstream;
 
-/// A prelude of traits for working with ngrok types.
+/// A prelude of traits and types for working with ngrok.
 pub mod prelude {
-    #[allow(deprecated)]
-    #[doc(inline)]
     pub use crate::{
-        config::{
-            Action,
-            ForwarderBuilder,
-            HttpTunnelBuilder,
-            InvalidPolicy,
-            LabeledTunnelBuilder,
-            OauthOptions,
-            OidcOptions,
-            Policy,
-            ProxyProto,
-            Rule,
-            Scheme,
-            TcpTunnelBuilder,
-            TlsTunnelBuilder,
-            TunnelBuilder,
-        },
         conn::{
             Conn,
             ConnInfo,
-            EdgeConnInfo,
             EndpointConnInfo,
         },
-        internals::proto::EdgeType,
-        internals::proto::Error,
-        tunnel::{
-            EdgeInfo,
-            EndpointInfo,
-            Tunnel,
-            TunnelCloser,
-            TunnelInfo,
-        },
-        tunnel_ext::TunnelExt,
-    };
-
-    // v2 API re-exports in prelude
-    pub use crate::{
         Agent,
         AgentBuilder,
         Endpoint,

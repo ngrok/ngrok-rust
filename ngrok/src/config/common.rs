@@ -18,9 +18,11 @@ use crate::{
         IpRestriction,
         MutualTls,
     },
-    session::RpcError,
-    Session,
-    Tunnel,
+    session::{
+        RpcError,
+        Session,
+    },
+    tunnel::Tunnel,
 };
 
 /// Represents the ingress configuration for an ngrok endpoint.

@@ -82,17 +82,17 @@ async fn main() -> Result<(), BoxError> {
     let target_dir = meta.target_directory;
     let doc_dir = target_dir.join("doc");
 
-    let sess = ngrok::Session::builder()
+    let agent = ngrok::Agent::builder()
         .authtoken_from_env()
-        .connect()
-        .await?;
+        .build()
+        .expect("failed to build agent");
 
-    let mut listen_cfg = sess.http_endpoint();
+    let mut builder = agent.listen();
     if let Some(domain) = args.domain {
-        listen_cfg.domain(domain);
+        builder = builder.url(format!("https://{}", domain));
     }
 
-    let mut listener = listen_cfg.listen().await?;
+    let mut listener = builder.start().await?;
 
     let service = service_fn(move |req| {
         let stat = hyper_staticfile::Static::new(&doc_dir);

@@ -19,7 +19,7 @@ use crate::{
         BindOpts,
     },
     tunnel::LabeledTunnel,
-    Session,
+    session::Session,
 };
 
 /// Options for labeled tunnels.

@@ -80,7 +80,7 @@ use super::{
 };
 use crate::{
     tunnel::AcceptError::ListenerClosed,
-    Session,
+    session::Session,
 };
 
 /// Errors arising from tunneling protocol RPC calls.

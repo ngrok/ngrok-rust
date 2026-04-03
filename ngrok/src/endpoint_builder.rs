@@ -497,13 +497,13 @@ impl crate::tunnel::EndpointInfo for EndpointListenerAsTunnel {
     }
 }
 
-impl crate::Tunnel for EndpointListenerAsTunnel {
+impl crate::tunnel::Tunnel for EndpointListenerAsTunnel {
     type Conn = crate::conn::EndpointConn;
 }
 
 /// Dispatch to the correct protocol based on the URL scheme.
 async fn dispatch_listen(
-    session: &crate::Session,
+    session: &crate::session::Session,
     url: &Option<String>,
     inner_opts: InternalEndpointOpts,
 ) -> Result<TunnelInner, RpcError> {

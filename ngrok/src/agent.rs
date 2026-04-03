@@ -21,10 +21,10 @@ use crate::{
     internals::raw_session::RpcError,
     session::{
         Connector,
+        Session,
         SessionBuilder,
     },
     upstream::Upstream,
-    Session,
 };
 
 /// A long-lived ngrok agent identity/configuration.

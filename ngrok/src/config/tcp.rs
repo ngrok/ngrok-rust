@@ -28,7 +28,7 @@ use crate::{
         BindOpts,
     },
     tunnel::TcpTunnel,
-    Session,
+    session::Session,
 };
 
 /// The options for a TCP edge.
