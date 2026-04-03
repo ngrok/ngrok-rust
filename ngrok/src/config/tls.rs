@@ -27,7 +27,7 @@ use crate::{
         TlsTermination,
     },
     tunnel::TlsTunnel,
-    Session,
+    session::Session,
 };
 
 /// The options for TLS edges.

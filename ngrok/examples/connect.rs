@@ -17,44 +17,35 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(std::env::var("RUST_LOG").unwrap_or_default())
         .init();
 
-    let sess = ngrok::Session::builder()
+    let agent = ngrok::Agent::builder()
         .authtoken_from_env()
         .metadata("Online in One Line")
-        // .root_cas("trusted")?
-        .connect()
-        .await?;
+        .build()?;
 
-    let tunnel = sess
-        .tcp_endpoint()
-        // .allow_cidr("0.0.0.0/0")
-        // .deny_cidr("10.1.1.1/32")
-        // .verify_upstream_tls(false)
-        // .pooling_enabled(false)
-        // .forwards_to("example rust"),
-        // .proxy_proto(ProxyProto::None)
-        // .remote_addr("<n>.tcp.ngrok.io:<p>")
-        .metadata("example tunnel metadata from rust")
+    let listener = agent
         .listen()
+        .url("tcp://0.tcp.ngrok.io:0")
+        .metadata("example tunnel metadata from rust")
+        .start()
         .await?;
 
-    handle_tunnel(tunnel, sess);
+    handle_listener(listener, agent.clone());
 
     futures::future::pending().await
 }
 
-fn handle_tunnel(mut tunnel: impl EndpointInfo + Tunnel, sess: ngrok::Session) {
-    info!("bound new tunnel: {}", tunnel.url());
+fn handle_listener(mut listener: ngrok::EndpointListener, agent: ngrok::Agent) {
+    info!("bound new listener: {}", listener.url());
     tokio::spawn(async move {
         loop {
-            let stream = if let Some(stream) = tunnel.try_next().await? {
+            let stream = if let Some(stream) = listener.try_next().await.map_err(|e| anyhow::anyhow!("{}", e))? {
                 stream
             } else {
-                info!("tunnel closed!");
+                info!("listener closed!");
                 break;
             };
 
-            let sess = sess.clone();
-            let id: String = tunnel.id().into();
+            let agent = agent.clone();
 
             tokio::spawn(async move {
                 info!("accepted connection: {:?}", stream.remote_addr());
@@ -70,15 +61,19 @@ fn handle_tunnel(mut tunnel: impl EndpointInfo + Tunnel, sess: ngrok::Session) {
                     }
 
                     if buf.contains("bye!") {
-                        info!("unbind requested");
+                        info!("close requested");
                         tx.write_all("later!".as_bytes()).await?;
-                        sess.close_tunnel(id).await?;
                         return Ok(());
                     } else if buf.contains("another!") {
                         info!("another requested");
-                        let new_tunnel = sess.tcp_endpoint().listen().await?;
-                        tx.write_all(new_tunnel.url().as_bytes()).await?;
-                        handle_tunnel(new_tunnel, sess.clone());
+                        let new_listener = agent
+                            .listen()
+                            .url("tcp://0.tcp.ngrok.io:0")
+                            .start()
+                            .await
+                            .map_err(|e| anyhow::anyhow!("{}", e))?;
+                        tx.write_all(new_listener.url().as_bytes()).await?;
+                        handle_listener(new_listener, agent.clone());
                     } else {
                         info!("read line: {}", buf);
                         tx.write_all(buf.as_bytes()).await?;

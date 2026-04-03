@@ -46,11 +46,17 @@ use tracing::{
 use url::Url;
 
 use crate::{
-    prelude::*,
+    config::ProxyProto,
+    conn::{
+        EdgeConn,
+        EdgeConnInfo,
+        EndpointConn,
+        EndpointConnInfo,
+    },
+    internals::proto::EdgeType,
     proxy_proto,
     session::IoStream,
-    EdgeConn,
-    EndpointConn,
+    tunnel::Tunnel,
 };
 
 #[allow(deprecated)]

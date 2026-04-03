@@ -37,21 +37,12 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         ),
     );
 
-    let sess = ngrok::Session::builder()
-        .authtoken_from_env()
-        .connect()
-        .await?;
-
-    let mut listener = sess
-        .labeled_tunnel()
-        // .app_protocol("http2")
-        // .verify_upstream_tls(false)
-        .label("edge", "edghts_<edge_id>")
+    let mut listener = ngrok::listen()
         .metadata("example tunnel metadata from rust")
-        .listen()
+        .start()
         .await?;
 
-    println!("Labeled listener started!");
+    println!("Listener started on: {}", listener.url());
 
     let mut make_service = app.into_make_service_with_connect_info::<SocketAddr>();
 

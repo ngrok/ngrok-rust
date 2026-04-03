@@ -8,14 +8,14 @@ use tokio::task::JoinHandle;
 use url::Url;
 
 use crate::{
-    prelude::{
+    tunnel::{
         EdgeInfo,
         EndpointInfo,
         TunnelCloser,
         TunnelInfo,
+        Tunnel,
     },
     session::RpcError,
-    Tunnel,
 };
 
 /// An ngrok forwarder.

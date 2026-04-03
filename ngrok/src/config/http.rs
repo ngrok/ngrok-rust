@@ -44,7 +44,7 @@ use crate::{
         WebsocketTcpConverter,
     },
     tunnel::HttpTunnel,
-    Session,
+    session::Session,
 };
 
 /// Error representing invalid string for Scheme

@@ -41,23 +41,10 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         ),
     );
 
-    let sess = ngrok::Session::builder()
-        .authtoken_from_env()
-        .connect()
-        .await?;
-
-    let mut listener = sess
-        .tls_endpoint()
-        // .allow_cidr("0.0.0.0/0")
-        // .deny_cidr("10.1.1.1/32")
-        // .verify_upstream_tls(false)
-        // .domain("<somedomain>.ngrok.io")
-        // .forwards_to("example rust"),
-        // .mutual_tlsca(CA_CERT.into())
-        // .proxy_proto(ProxyProto::None)
-        .termination(CERT.into(), KEY.into())
+    let mut listener = ngrok::listen()
+        .url("tls://0.0.0.0:0")
         .metadata("example tunnel metadata from rust")
-        .listen()
+        .start()
         .await?;
 
     let mut make_service = app.into_make_service_with_connect_info::<SocketAddr>();

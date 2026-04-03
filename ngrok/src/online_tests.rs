@@ -79,12 +79,29 @@ use tracing_test::traced_test;
 use url::Url;
 
 use crate::{
-    prelude::*,
+    config::{
+        Action,
+        ForwarderBuilder,
+        HttpTunnelBuilder,
+        InvalidPolicy,
+        OauthOptions,
+        Policy,
+        ProxyProto,
+        Rule,
+        Scheme,
+        TunnelBuilder,
+    },
+    conn::ConnInfo,
     session::{
+        Session,
         SessionBuilder,
         CERT_BYTES,
     },
-    Session,
+    tunnel::{
+        EndpointInfo,
+        Tunnel,
+        TunnelInfo,
+    },
 };
 
 async fn setup_session() -> Result<Session, BoxError> {

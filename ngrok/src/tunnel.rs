@@ -27,8 +27,10 @@ use crate::{
         EndpointConn,
     },
     internals::raw_session::RpcError,
-    session::ConnectError,
-    Session,
+    session::{
+        ConnectError,
+        Session,
+    },
 };
 
 /// Errors arising when accepting a [Conn] from an ngrok tunnel.
