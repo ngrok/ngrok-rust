@@ -56,11 +56,7 @@ use crate::{
     internals::proto::EdgeType,
     proxy_proto,
     session::IoStream,
-    tunnel::{
-        EndpointInfo,
-        Tunnel,
-        TunnelInfo,
-    },
+    tunnel::Tunnel,
 };
 
 #[allow(deprecated)]

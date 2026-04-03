@@ -74,10 +74,8 @@ use url::Url;
 
 pub use crate::internals::{
     proto::{
-        CommandResp,
         Restart,
         Stop,
-        StopTunnel,
         Update,
     },
     raw_session::{
@@ -87,11 +85,7 @@ pub use crate::internals::{
 };
 use crate::{
     config::{
-        HttpTunnelBuilder,
-        LabeledTunnelBuilder,
         ProxyProto,
-        TcpTunnelBuilder,
-        TlsTunnelBuilder,
         TunnelConfig,
     },
     conn::ConnInner,
@@ -849,40 +843,32 @@ impl SessionBuilder {
 
 impl Session {
     /// Create a new [SessionBuilder] to configure a new ngrok session.
-    pub fn builder() -> SessionBuilder {
+    pub(crate) fn builder() -> SessionBuilder {
         SessionBuilder::default()
     }
 
     /// Start building a tunnel for an HTTP endpoint.
-    ///
-    /// https://ngrok.com/docs/http/
-    pub fn http_endpoint(&self) -> HttpTunnelBuilder {
+    pub(crate) fn http_endpoint(&self) -> crate::config::HttpTunnelBuilder {
         self.clone().into()
     }
 
     /// Start building a tunnel for a TCP endpoint.
-    ///
-    /// https://ngrok.com/docs/tcp/
-    pub fn tcp_endpoint(&self) -> TcpTunnelBuilder {
+    pub(crate) fn tcp_endpoint(&self) -> crate::config::TcpTunnelBuilder {
         self.clone().into()
     }
 
     /// Start building a tunnel for a TLS endpoint.
-    ///
-    /// https://ngrok.com/docs/tls/
-    pub fn tls_endpoint(&self) -> TlsTunnelBuilder {
+    pub(crate) fn tls_endpoint(&self) -> crate::config::TlsTunnelBuilder {
         self.clone().into()
     }
 
     /// Start building a labeled tunnel.
-    ///
-    /// https://ngrok.com/docs/network-edge/edges/#tunnel-group
-    pub fn labeled_tunnel(&self) -> LabeledTunnelBuilder {
+    pub(crate) fn labeled_tunnel(&self) -> crate::config::LabeledTunnelBuilder {
         self.clone().into()
     }
 
     /// Get the unique ID of this session.
-    pub fn id(&self) -> String {
+    pub(crate) fn id(&self) -> String {
         self.inner
             .load()
             .builder

@@ -17,7 +17,6 @@ use hyper_util::{
     rt::TokioExecutor,
     server,
 };
-use ngrok::prelude::*;
 use watchexec::{
     action::{
         Action,

@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+#[allow(dead_code)]
 mod internals {
     #[macro_use]
     pub mod rpc;
@@ -13,6 +14,7 @@ mod internals {
 ///
 /// The v2 API uses [`EndpointOptions`] and [`EndpointListenBuilder`] instead of
 /// per-protocol builders. These types are kept for internal use.
+#[allow(dead_code)]
 pub(crate) mod config {
     #[macro_use]
     mod common;
@@ -28,7 +30,6 @@ pub(crate) mod config {
     mod oidc;
     pub(crate) use policies::*;
     mod policies;
-    pub(crate) use oidc::*;
     mod tcp;
     pub(crate) use tcp::*;
     mod tls;
@@ -39,15 +40,19 @@ pub(crate) mod config {
 mod proxy_proto;
 
 /// Types for working with the ngrok session (internal).
+#[allow(dead_code)]
 pub(crate) mod session;
 /// Types for working with ngrok tunnels (internal).
+#[allow(dead_code)]
 pub(crate) mod tunnel;
 
 /// Types for working with ngrok connections.
 pub mod conn;
 
 /// Types for working with connection forwarders (internal).
+#[allow(dead_code)]
 pub(crate) mod forwarder;
+#[allow(dead_code)]
 pub(crate) mod tunnel_ext;
 
 // ===== v2 API modules =====
