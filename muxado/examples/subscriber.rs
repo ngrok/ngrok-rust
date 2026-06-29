@@ -1,18 +1,18 @@
 use std::sync::atomic::AtomicU64;
 
 use tracing::{
+    Event,
+    Metadata,
+    Subscriber,
     debug,
     info,
     trace,
     warn,
-    Event,
-    Metadata,
-    Subscriber,
 };
 use tracing_subscriber::{
-    util::SubscriberInitExt,
     EnvFilter,
     Layer,
+    util::SubscriberInitExt,
 };
 
 static CTR: AtomicU64 = AtomicU64::new(0);

@@ -15,6 +15,7 @@ use thiserror::Error;
 use tokio::sync::mpsc::Receiver;
 
 use crate::{
+    Session,
     config::{
         HttpTunnelBuilder,
         LabeledTunnelBuilder,
@@ -28,7 +29,6 @@ use crate::{
     },
     internals::raw_session::RpcError,
     session::ConnectError,
-    Session,
 };
 
 /// Errors arising when accepting a [Conn] from an ngrok tunnel.

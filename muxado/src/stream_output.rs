@@ -1,11 +1,11 @@
 use std::{
     pin::Pin,
     sync::{
+        Arc,
         atomic::{
             AtomicU32,
             Ordering,
         },
-        Arc,
     },
     task::{
         Context,

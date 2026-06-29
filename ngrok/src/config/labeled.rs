@@ -9,17 +9,17 @@ use crate::config::{
     TunnelBuilder,
 };
 use crate::{
+    Session,
     config::common::{
-        default_forwards_to,
         CommonOpts,
         TunnelConfig,
+        default_forwards_to,
     },
     internals::proto::{
         BindExtra,
         BindOpts,
     },
     tunnel::LabeledTunnel,
-    Session,
 };
 
 /// Options for labeled tunnels.

@@ -6,11 +6,11 @@ use std::{
     env,
     io,
     sync::{
+        Arc,
         atomic::{
             AtomicBool,
             Ordering,
         },
-        Arc,
     },
     time::Duration,
 };
@@ -19,13 +19,13 @@ use arc_swap::ArcSwap;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{
-    prelude::*,
     FutureExt,
+    prelude::*,
 };
 use futures_rustls::rustls::{
     self,
-    pki_types,
     RootCertStore,
+    pki_types,
 };
 use hyper_http_proxy::{
     Intercept,
@@ -49,17 +49,17 @@ use tokio::{
     },
     runtime::Handle,
     sync::{
-        mpsc::{
-            channel,
-            Sender,
-        },
         Mutex,
         RwLock,
+        mpsc::{
+            Sender,
+            channel,
+        },
     },
 };
 use tokio_retry::{
-    strategy::ExponentialBackoff,
     RetryIf,
+    strategy::ExponentialBackoff,
 };
 use tokio_util::compat::{
     FuturesAsyncReadCompatExt,
@@ -110,10 +110,10 @@ use crate::{
             AcceptError as RawAcceptError,
             CommandHandlers,
             IncomingStreams,
+            NOT_IMPLEMENTED,
             RawSession,
             RpcClient,
             StartSessionError,
-            NOT_IMPLEMENTED,
         },
     },
     tunnel::{

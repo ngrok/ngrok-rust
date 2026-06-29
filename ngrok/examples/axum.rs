@@ -4,15 +4,15 @@ use std::{
 };
 
 use axum::{
+    Router,
     extract::ConnectInfo,
     routing::get,
-    Router,
 };
 use axum_core::BoxError;
 use futures::stream::TryStreamExt;
 use hyper::{
-    body::Incoming,
     Request,
+    body::Incoming,
 };
 use hyper_util::{
     rt::TokioExecutor,
@@ -20,8 +20,8 @@ use hyper_util::{
 };
 use ngrok::prelude::*;
 use tower::{
-    util::ServiceExt,
     Service,
+    util::ServiceExt,
 };
 
 #[tokio::main]

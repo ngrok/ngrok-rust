@@ -10,6 +10,8 @@ use url::Url;
 
 pub use crate::internals::proto::ProxyProto;
 use crate::{
+    Session,
+    Tunnel,
     config::policies::Policy,
     forwarder::Forwarder,
     internals::proto::{
@@ -19,8 +21,6 @@ use crate::{
         MutualTls,
     },
     session::RpcError,
-    Session,
-    Tunnel,
 };
 
 /// Represents the ingress configuration for an ngrok endpoint.

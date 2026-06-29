@@ -6,40 +6,40 @@ use std::{
     net::SocketAddr,
     str::FromStr,
     sync::{
+        Arc,
         atomic::{
             AtomicUsize,
             Ordering,
         },
-        Arc,
     },
     time::Duration,
 };
 
 use anyhow::anyhow;
 use axum::{
-    routing::get,
     BoxError,
     Router,
+    routing::get,
 };
 use bytes::Bytes;
 use flate2::read::GzDecoder;
 use futures::{
+    TryStreamExt,
     channel::oneshot,
     prelude::*,
     stream::FuturesUnordered,
-    TryStreamExt,
 };
 use futures_rustls::rustls::{
-    pki_types,
     ClientConfig,
     RootCertStore,
+    pki_types,
 };
 // use native_tls;
 use hyper::{
-    body::Incoming,
     HeaderMap,
     Request,
     Uri,
+    body::Incoming,
 };
 use hyper_util::{
     rt::TokioExecutor,
@@ -49,13 +49,13 @@ use once_cell::sync::Lazy;
 use paste::paste;
 use proxy_protocol::ProxyHeader;
 use rand::{
+    Rng,
     distributions::Alphanumeric,
     thread_rng,
-    Rng,
 };
 use reqwest::{
-    header,
     StatusCode,
+    header,
 };
 use tokio::{
     io::{
@@ -72,19 +72,19 @@ use tokio_tungstenite::{
 };
 use tokio_util::compat::*;
 use tower::{
-    util::ServiceExt,
     Service,
+    util::ServiceExt,
 };
 use tracing_test::traced_test;
 use url::Url;
 
 use crate::{
+    Session,
     prelude::*,
     session::{
-        SessionBuilder,
         CERT_BYTES,
+        SessionBuilder,
     },
-    Session,
 };
 
 async fn setup_session() -> Result<Session, BoxError> {
@@ -929,20 +929,20 @@ async fn connect_proxy_http() -> Result<(), BoxError> {
 mod connect_proxy {
     use bytes::Bytes;
     use http_body_util::{
-        combinators::BoxBody,
         BodyExt,
         Empty,
         Full,
+        combinators::BoxBody,
     };
     use hyper::{
+        Method,
+        Request,
+        Response,
         client::conn::http1::Builder,
         http,
         server::conn::http1,
         service::service_fn,
         upgrade::Upgraded,
-        Method,
-        Request,
-        Response,
     };
     use hyper_util::rt::TokioIo;
     use tokio::net::TcpStream;

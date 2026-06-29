@@ -12,6 +12,8 @@ use std::{
 
 use async_trait::async_trait;
 use muxado::{
+    Error as MuxadoError,
+    SessionBuilder,
     heartbeat::{
         HeartbeatConfig,
         HeartbeatCtl,
@@ -23,12 +25,10 @@ use muxado::{
         TypedSession,
         TypedStream,
     },
-    Error as MuxadoError,
-    SessionBuilder,
 };
 use serde::{
-    de::DeserializeOwned,
     Deserialize,
+    de::DeserializeOwned,
 };
 use thiserror::Error;
 use tokio::{
@@ -59,28 +59,28 @@ use super::{
         CommandResp,
         ErrResp,
         Error,
+        PROXY_REQ,
         ProxyHeader,
+        RESTART_REQ,
         ReadHeaderError,
         Restart,
+        STOP_REQ,
+        STOP_TUNNEL_REQ,
         StartTunnelWithLabel,
         StartTunnelWithLabelResp,
         Stop,
         StopTunnel,
+        UPDATE_REQ,
         Unbind,
         UnbindResp,
         Update,
-        PROXY_REQ,
-        RESTART_REQ,
-        STOP_REQ,
-        STOP_TUNNEL_REQ,
-        UPDATE_REQ,
         VERSION,
     },
     rpc::RpcRequest,
 };
 use crate::{
-    tunnel::AcceptError::ListenerClosed,
     Session,
+    tunnel::AcceptError::ListenerClosed,
 };
 
 /// Errors arising from tunneling protocol RPC calls.
@@ -275,11 +275,11 @@ impl RpcClient {
         let ok_resp = serde_json::from_slice::<R::Response>(&buf);
         let err_resp = serde_json::from_slice::<ErrResp>(&buf);
 
-        if let Ok(err) = err_resp {
-            if !err.error.is_empty() {
-                debug!(?err, "decoded rpc error response");
-                return Err(RpcError::Response(err.error.as_str().into()));
-            }
+        if let Ok(err) = err_resp
+            && !err.error.is_empty()
+        {
+            debug!(?err, "decoded rpc error response");
+            return Err(RpcError::Response(err.error.as_str().into()));
         }
 
         debug!(resp = ?ok_resp, "decoded rpc response");

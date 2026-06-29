@@ -10,11 +10,11 @@ use tokio::{
     net::TcpListener,
 };
 use tracing::{
+    Event,
+    Metadata,
     info,
     span,
     subscriber::Interest,
-    Event,
-    Metadata,
 };
 
 /// Subscriber that claims that it's always enabled, but does nothing.
@@ -63,10 +63,11 @@ async fn main() -> Result<(), anyhow::Error> {
             let sess = &mut sess;
 
             loop {
-                let mut stream = if let Some(stream) = sess.accept().await {
-                    stream
-                } else {
-                    break;
+                let mut stream = match sess.accept().await {
+                    Some(stream) => stream,
+                    _ => {
+                        break;
+                    }
                 };
 
                 tokio::spawn(

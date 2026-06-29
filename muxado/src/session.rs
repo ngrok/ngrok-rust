@@ -1,16 +1,17 @@
 use std::{
     io,
     sync::{
+        Arc,
         atomic::{
             AtomicBool,
             Ordering,
         },
-        Arc,
     },
 };
 
 use async_trait::async_trait;
 use futures::{
+    SinkExt,
     channel::{
         mpsc,
         oneshot,
@@ -18,7 +19,6 @@ use futures::{
     prelude::*,
     select,
     stream::StreamExt,
-    SinkExt,
 };
 use tokio::io::{
     AsyncRead,
@@ -26,11 +26,11 @@ use tokio::io::{
 };
 use tokio_util::codec::Framed;
 use tracing::{
+    Instrument,
     debug,
     debug_span,
     instrument,
     trace,
-    Instrument,
 };
 
 use crate::{
@@ -254,10 +254,10 @@ where
                         .await?;
                 } else {
                     self.last_stream_processed = stream_id;
-                    if needs_close {
-                        if let Ok(handle) = self.manager.lock().await.get_stream(stream_id) {
-                            handle.data_write_closed = true;
-                        }
+                    if needs_close
+                        && let Ok(handle) = self.manager.lock().await.get_stream(stream_id)
+                    {
+                        handle.data_write_closed = true;
                     }
                 }
             }
@@ -426,7 +426,7 @@ impl OpenClose for MuxadoOpen {
             .map_err(|_| Error::SessionClosed)
             .and_then(|r| r);
 
-        if let Ok(ref mut stream) = &mut res {
+        if let Ok(stream) = &mut res {
             stream.dropref = self.dropref.clone().into();
         }
 
