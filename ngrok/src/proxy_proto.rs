@@ -1,10 +1,7 @@
 use std::{
     io,
     mem,
-    pin::{
-        pin,
-        Pin,
-    },
+    pin::Pin,
     task::{
         ready,
         Context,

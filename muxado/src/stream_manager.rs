@@ -149,7 +149,7 @@ impl StreamManager {
     }
 
     pub fn close_senders(&mut self) {
-        for (_, stream) in self.streams.iter_mut() {
+        for stream in self.streams.values_mut() {
             stream.to_stream.close_channel()
         }
     }
