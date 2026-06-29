@@ -9,7 +9,6 @@ repository = "https://github.com/ngrok/ngrok-rust"
 [dependencies]
 awaitdrop = "0.1.2"
 axum = "0.7.4"
-bstr = "1.4.0"
 cargo_metadata = "0.15.2"
 clap = { version = "4.0.29", features = ["derive"] }
 futures = "0.3.25"
