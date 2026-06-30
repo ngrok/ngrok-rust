@@ -1183,7 +1183,7 @@ async fn accept_incoming(mut incoming: IncomingStreams, inner: Arc<ArcSwap<Sessi
             //   to a FnMut closure would escape via the returned Future, which is
             //   a no-no.
             let error = parking_lot::Mutex::new(Some(error));
-            let reconnect = RetryIf::spawn(
+            let reconnect = RetryIf::start(
                 ExponentialBackoff::from_millis(50),
                 || try_reconnect(inner.clone(), error.lock().clone()).map_err(Arc::new),
                 |err: &Arc<ConnectError>| {
