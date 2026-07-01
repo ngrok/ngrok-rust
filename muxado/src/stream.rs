@@ -365,7 +365,7 @@ pub mod test {
             .unwrap();
 
         assert_eq!(n, 5);
-        let resp = rx.try_next().unwrap().unwrap();
+        let resp = rx.try_recv().unwrap();
         assert_eq!(resp, Frame::from(Body::Data(MSG2[0..5].into())).syn());
 
         // Next, send the stream an inc and a data frame
@@ -382,7 +382,7 @@ pub mod test {
             .unwrap();
         assert_eq!(buf, "Hello, world!");
         // Reading the data should generate a wndinc
-        let resp = rx.try_next().unwrap().unwrap();
+        let resp = rx.try_recv().unwrap();
         assert_eq!(resp, Body::WndInc(WndInc::clamp(MSG.len() as u32)).into());
 
         // Finally, try writing again. If the previous read handled the wndinc, we'll have capacity for 5 more bytes
@@ -391,11 +391,11 @@ pub mod test {
             .unwrap()
             .unwrap();
         assert_eq!(n, 5);
-        let resp = rx.try_next().unwrap().unwrap();
+        let resp = rx.try_recv().unwrap();
         assert_eq!(resp, Body::Data(MSG2[5..10].into()).into());
 
         stream.shutdown().await.unwrap();
 
-        assert!(rx.try_next().unwrap().unwrap().is_fin());
+        assert!(rx.try_recv().unwrap().is_fin());
     }
 }
