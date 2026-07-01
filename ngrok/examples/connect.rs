@@ -46,11 +46,12 @@ fn handle_tunnel(mut tunnel: impl EndpointInfo + Tunnel, sess: ngrok::Session) {
     info!("bound new tunnel: {}", tunnel.url());
     tokio::spawn(async move {
         loop {
-            let stream = if let Some(stream) = tunnel.try_next().await? {
-                stream
-            } else {
-                info!("tunnel closed!");
-                break;
+            let stream = match tunnel.try_next().await? {
+                Some(stream) => stream,
+                _ => {
+                    info!("tunnel closed!");
+                    break;
+                }
             };
 
             let sess = sess.clone();

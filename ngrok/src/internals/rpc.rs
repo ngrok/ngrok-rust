@@ -2,8 +2,8 @@ use std::fmt::Debug;
 
 use muxado::typed::StreamType;
 use serde::{
-    de::DeserializeOwned,
     Serialize,
+    de::DeserializeOwned,
 };
 
 pub trait RpcRequest: Serialize + Debug {

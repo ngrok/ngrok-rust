@@ -9,11 +9,11 @@ use std::{
     error::Error as StdError,
     io,
     sync::{
+        Arc,
         atomic::{
             AtomicU64,
             Ordering,
         },
-        Arc,
     },
     time::Duration,
 };

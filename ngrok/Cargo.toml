@@ -1,7 +1,7 @@
 [package]
 name = "ngrok"
 version = "0.18.0"
-edition = "2021"
+edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "The ngrok agent SDK"
 repository = "https://github.com/ngrok/ngrok-rust"
@@ -42,7 +42,8 @@ tokio = { version = "1.23.0", features = [
 	"time",
 	"rt",
 ] }
-tokio-retry = "0.3.0"
+# 0.3.2 introduced RetryIf::start(), which session.rs uses; declare it as the minimum.
+tokio-retry = "0.3.2"
 tokio-socks = "0.5.1"
 tokio-util = { version = "0.7.4", features = ["compat"] }
 tower-service = { version = "0.3.3"}

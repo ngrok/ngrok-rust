@@ -14,13 +14,13 @@ use std::{
 
 use muxado::typed::StreamType;
 use serde::{
+    Deserialize,
+    Serialize,
+    Serializer,
     de::{
         DeserializeOwned,
         Visitor,
     },
-    Deserialize,
-    Serialize,
-    Serializer,
 };
 use thiserror::Error;
 use tokio::io::{
@@ -882,7 +882,7 @@ fn serialize_policy<S: Serializer>(v: &Policy, s: S) -> Result<S::Ok, S::Error> 
         Err(_) => {
             return Err(serde::ser::Error::custom(
                 "policy could not be converted to valid json",
-            ))
+            ));
         }
     };
     s.serialize_str(&abc)

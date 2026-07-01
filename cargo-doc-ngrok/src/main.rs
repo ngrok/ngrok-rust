@@ -1,5 +1,4 @@
 use std::{
-    io,
     path::PathBuf,
     process::Stdio,
     sync::Arc,
@@ -19,20 +18,15 @@ use hyper_util::{
 };
 use ngrok::prelude::*;
 use watchexec::{
-    action::{
-        Action,
-        Outcome,
-    },
-    command::Command,
-    config::{
-        InitConfig,
-        RuntimeConfig,
+    Id,
+    Watchexec,
+    command::{
+        Command,
+        Program,
     },
     error::CriticalError,
-    handler::PrintDebug,
-    signal::source::MainSignal,
-    Watchexec,
 };
+use watchexec_signals::Signal;
 
 #[derive(Parser, Debug)]
 struct Cargo {
@@ -150,40 +144,37 @@ fn make_watcher(
 ) -> Result<Arc<Watchexec>, Box<CriticalError>> {
     let target_dir = target_dir.into();
     let root_dir = root_dir.into();
-    let mut init = InitConfig::default();
-    init.on_error(PrintDebug(std::io::stderr()));
-
-    let mut runtime = RuntimeConfig::default();
-    runtime.pathset([root_dir]);
-    runtime.command(Command::Exec {
-        prog: "cargo".into(),
-        args: [String::from("doc")].into_iter().chain(args).collect(),
+    let job_id = Id::default();
+    let command = Arc::new(Command {
+        program: Program::Exec {
+            prog: "cargo".into(),
+            args: [String::from("doc")].into_iter().chain(args).collect(),
+        },
+        options: Default::default(),
     });
-    runtime.on_action({
-        move |action: Action| {
-            let target_dir = target_dir.clone();
-            async move {
-                let sigs = action
-                    .events
-                    .iter()
-                    .flat_map(|event| event.signals())
-                    .collect::<Vec<_>>();
-                if sigs.iter().any(|sig| sig == &MainSignal::Interrupt) {
-                    action.outcome(Outcome::Exit);
-                } else if action
-                    .events
-                    .iter()
-                    .any(|e| e.paths().any(|(p, _)| !p.starts_with(&target_dir)))
-                {
-                    action.outcome(Outcome::if_running(
-                        Outcome::both(Outcome::Stop, Outcome::Start),
-                        Outcome::Start,
-                    ));
-                }
 
-                Result::<_, io::Error>::Ok(())
+    let wx = Watchexec::new_async(move |mut action| {
+        let target_dir = target_dir.clone();
+        let command = command.clone();
+        Box::new(async move {
+            if action.signals().any(|sig| sig == Signal::Interrupt) {
+                action.quit();
+                return action;
             }
-        }
-    });
-    Watchexec::new(init, runtime).map_err(Box::new)
+
+            let job = action.get_or_create_job(job_id, move || command.clone());
+
+            let changed_outside_target = action.paths().any(|(p, _)| !p.starts_with(&target_dir));
+
+            if changed_outside_target {
+                job.restart().await;
+            }
+
+            action
+        })
+    })
+    .map_err(Box::new)?;
+
+    wx.config.pathset([root_dir]);
+    Ok(wx)
 }

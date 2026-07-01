@@ -1,14 +1,11 @@
 use std::{
     io,
     mem,
-    pin::{
-        pin,
-        Pin,
-    },
+    pin::Pin,
     task::{
-        ready,
         Context,
         Poll,
+        ready,
     },
 };
 
@@ -263,9 +260,10 @@ where
     ) -> Poll<io::Result<()>> {
         let mut this = self.project();
 
-        ready!(this
-            .read_state
-            .poll_read_header_once(cx, this.inner.as_mut()))?;
+        ready!(
+            this.read_state
+                .poll_read_header_once(cx, this.inner.as_mut())
+        )?;
 
         match this.read_state {
             ReadState::Error(_, remainder) | ReadState::Header(_, remainder) => {
@@ -296,9 +294,10 @@ where
     ) -> Poll<Result<usize, io::Error>> {
         let mut this = self.project();
 
-        ready!(this
-            .write_state
-            .poll_write_header_once(cx, this.inner.as_mut()))?;
+        ready!(
+            this.write_state
+                .poll_write_header_once(cx, this.inner.as_mut())
+        )?;
 
         this.inner.poll_write(cx, buf)
     }
@@ -367,9 +366,9 @@ mod test {
         io,
         pin::Pin,
         task::{
-            ready,
             Context,
             Poll,
+            ready,
         },
         time::Duration,
     };
@@ -379,11 +378,11 @@ mod test {
         BytesMut,
     };
     use proxy_protocol::{
+        ProxyHeader,
         version2::{
             self,
             ProxyCommand,
         },
-        ProxyHeader,
     };
     use tokio::io::{
         AsyncRead,
@@ -582,12 +581,14 @@ mod test {
         right.shutdown().await.expect("shutdown");
         drop(right);
 
-        assert!(proxy_stream
-            .proxy_header()
-            .await
-            .unwrap()
-            .unwrap()
-            .is_none());
+        assert!(
+            proxy_stream
+                .proxy_header()
+                .await
+                .unwrap()
+                .unwrap()
+                .is_none()
+        );
 
         let mut buf = String::new();
 

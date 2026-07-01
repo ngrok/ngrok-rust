@@ -6,11 +6,11 @@ use std::{
     env,
     io,
     sync::{
+        Arc,
         atomic::{
             AtomicBool,
             Ordering,
         },
-        Arc,
     },
     time::Duration,
 };
@@ -19,13 +19,13 @@ use arc_swap::ArcSwap;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{
-    prelude::*,
     FutureExt,
+    prelude::*,
 };
 use futures_rustls::rustls::{
     self,
-    pki_types,
     RootCertStore,
+    pki_types,
 };
 use hyper_http_proxy::{
     Intercept,
@@ -49,17 +49,17 @@ use tokio::{
     },
     runtime::Handle,
     sync::{
-        mpsc::{
-            channel,
-            Sender,
-        },
         Mutex,
         RwLock,
+        mpsc::{
+            Sender,
+            channel,
+        },
     },
 };
 use tokio_retry::{
-    strategy::ExponentialBackoff,
     RetryIf,
+    strategy::ExponentialBackoff,
 };
 use tokio_util::compat::{
     FuturesAsyncReadCompatExt,
@@ -110,10 +110,10 @@ use crate::{
             AcceptError as RawAcceptError,
             CommandHandlers,
             IncomingStreams,
+            NOT_IMPLEMENTED,
             RawSession,
             RpcClient,
             StartSessionError,
-            NOT_IMPLEMENTED,
         },
     },
     tunnel::{
@@ -1183,7 +1183,7 @@ async fn accept_incoming(mut incoming: IncomingStreams, inner: Arc<ArcSwap<Sessi
             //   to a FnMut closure would escape via the returned Future, which is
             //   a no-no.
             let error = parking_lot::Mutex::new(Some(error));
-            let reconnect = RetryIf::spawn(
+            let reconnect = RetryIf::start(
                 ExponentialBackoff::from_millis(50),
                 || try_reconnect(inner.clone(), error.lock().clone()).map_err(Arc::new),
                 |err: &Arc<ConnectError>| {

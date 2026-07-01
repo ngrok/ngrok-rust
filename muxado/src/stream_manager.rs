@@ -2,11 +2,11 @@ use std::{
     collections::HashMap,
     pin::Pin,
     sync::{
+        Arc,
         atomic::{
             AtomicBool,
             Ordering,
         },
-        Arc,
     },
     task::{
         Context,
@@ -149,7 +149,7 @@ impl StreamManager {
     }
 
     pub fn close_senders(&mut self) {
-        for (_, stream) in self.streams.iter_mut() {
+        for stream in self.streams.values_mut() {
             stream.to_stream.close_channel()
         }
     }
@@ -189,7 +189,7 @@ impl StreamT for StreamManager {
         // it's somehow closed (shouldn't happen).
         if let Poll::Ready(Some(mut frame)) = self.as_mut().sys_rx().poll_next(cx) {
             if let Body::GoAway {
-                ref mut last_stream_id,
+                last_stream_id,
                 error: _,
                 message: _,
             } = &mut frame.body

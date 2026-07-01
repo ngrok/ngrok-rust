@@ -4,8 +4,8 @@ use bytes::Bytes;
 use url::Url;
 
 use super::{
-    common::ProxyProto,
     Policy,
+    common::ProxyProto,
 };
 // These are used for doc comment links.
 #[allow(unused_imports)]
@@ -14,11 +14,12 @@ use crate::config::{
     TunnelBuilder,
 };
 use crate::{
+    Session,
     config::common::{
-        default_forwards_to,
         Binding,
         CommonOpts,
         TunnelConfig,
+        default_forwards_to,
     },
     internals::proto::{
         self,
@@ -27,7 +28,6 @@ use crate::{
         TlsTermination,
     },
     tunnel::TlsTunnel,
-    Session,
 };
 
 /// The options for TLS edges.

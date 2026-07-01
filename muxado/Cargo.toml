@@ -1,7 +1,7 @@
 [package]
 name = "muxado"
 version = "0.5.3"
-edition = "2021"
+edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "The muxado stream multiplexing protocol"
 repository = "https://github.com/ngrok/ngrok-rust"

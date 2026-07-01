@@ -10,8 +10,8 @@ use thiserror::Error;
 use url::Url;
 
 use super::{
-    common::ProxyProto,
     Policy,
+    common::ProxyProto,
 };
 // These are used for doc comment links.
 #[allow(unused_imports)]
@@ -20,12 +20,13 @@ use crate::config::{
     TunnelBuilder,
 };
 use crate::{
+    Session,
     config::{
         common::{
-            default_forwards_to,
             Binding,
             CommonOpts,
             TunnelConfig,
+            default_forwards_to,
         },
         headers::Headers,
         oauth::OauthOptions,
@@ -44,7 +45,6 @@ use crate::{
         WebsocketTcpConverter,
     },
     tunnel::HttpTunnel,
-    Session,
 };
 
 /// Error representing invalid string for Scheme

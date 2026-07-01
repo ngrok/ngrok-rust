@@ -14,15 +14,15 @@ use bitflags::bitflags;
 use futures::stream::TryStreamExt;
 use futures_rustls::rustls::{
     self,
-    pki_types,
     ClientConfig,
+    pki_types,
 };
 #[cfg(feature = "hyper")]
 use hyper::{
-    server::conn::http1,
-    service::service_fn,
     Response,
     StatusCode,
+    server::conn::http1,
+    service::service_fn,
 };
 use once_cell::sync::Lazy;
 use proxy_protocol::ProxyHeader;
@@ -38,19 +38,19 @@ use tokio_util::compat::{
 #[cfg(feature = "hyper")]
 use tracing::debug;
 use tracing::{
-    field,
-    warn,
     Instrument,
     Span,
+    field,
+    warn,
 };
 use url::Url;
 
 use crate::{
+    EdgeConn,
+    EndpointConn,
     prelude::*,
     proxy_proto,
     session::IoStream,
-    EdgeConn,
-    EndpointConn,
 };
 
 #[allow(deprecated)]
@@ -97,14 +97,15 @@ where
     <T as Tunnel>::Conn: ConnExt,
 {
     loop {
-        let tunnel_conn = if let Some(conn) = tun
+        let tunnel_conn = match tun
             .try_next()
             .await
             .map_err(|err| io::Error::new(io::ErrorKind::NotConnected, err))?
         {
-            conn
-        } else {
-            return Ok(());
+            Some(conn) => conn,
+            _ => {
+                return Ok(());
+            }
         };
 
         tunnel_conn.forward_to(&url);
@@ -365,7 +366,7 @@ async fn connect(
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!("unrecognized scheme in forwarding url: {url}"),
-            ))
+            ));
         }
     };
 
@@ -432,13 +433,13 @@ fn serve_gateway_error(
 mod danger {
     use futures_rustls::rustls;
     use rustls::{
+        DigitallySignedStruct,
         client::danger::HandshakeSignatureValid,
         crypto::{
+            CryptoProvider,
             verify_tls12_signature,
             verify_tls13_signature,
-            CryptoProvider,
         },
-        DigitallySignedStruct,
     };
 
     use super::pki_types::{
