@@ -390,7 +390,7 @@ impl RpcClient {
     }
 }
 
-pub const NOT_IMPLEMENTED: &str = "the agent has no defined a callback for this operation";
+pub const NOT_IMPLEMENTED: &str = "the agent has no defined callback for this operation";
 
 async fn read_req<T>(stream: &mut TypedStream) -> Result<T, Either<io::Error, serde_json::Error>>
 where
