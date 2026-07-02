@@ -149,7 +149,43 @@ async fn serve_http(
 
     let tun = build_tunnel(&mut sess.http_endpoint()).listen().await?;
 
-    Ok(start_http_server(tun, router))
+    let guard = start_http_server(tun, router);
+
+    // A freshly-created endpoint isn't immediately routable at the ngrok edge:
+    // for a brief window after `listen()` returns, requests race ahead of the
+    // endpoint coming online and get served the edge's "endpoint offline"
+    // (ERR_NGROK_3200) page instead of our backend. Wait for it to come online
+    // here so no HTTP test has to worry about that startup race.
+    wait_until_online(&guard.url).await;
+
+    Ok(guard)
+}
+
+/// Poll `url` until the ngrok edge stops serving its "endpoint offline"
+/// (ERR_NGROK_3200) page, i.e. until the endpoint is actually routable. Bounded
+/// by a deadline so a genuinely-down endpoint still surfaces through the
+/// caller's real assertion rather than hanging.
+async fn wait_until_online(url: &str) {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        if let Ok(resp) = reqwest::get(url).await {
+            // Only the offline page carries this marker; any other response
+            // (including this endpoint's own error responses, e.g. IP policy
+            // denials or OAuth redirects) means the endpoint is reachable.
+            let offline = resp
+                .text()
+                .await
+                .map(|body| body.contains("ERR_NGROK_3200"))
+                .unwrap_or(false);
+            if !offline {
+                return;
+            }
+        }
+        if Instant::now() >= deadline {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
 }
 
 fn start_http_server<T>(mut tun: T, router: Router) -> TunnelGuard
@@ -199,30 +235,12 @@ fn hello_router() -> Router {
 
 async fn check_body(url: impl AsRef<str>, expected: impl AsRef<str>) -> Result<(), BoxError> {
     let url = url.as_ref();
-    let expected = expected.as_ref();
-
-    // A freshly-created endpoint isn't always immediately routable at the ngrok
-    // edge: for a brief window after `listen()` returns, a request can race
-    // ahead of the endpoint coming online and get served the edge's
-    // "endpoint offline" (ERR_NGROK_3200) page instead of our backend. Poll for
-    // a short budget so that startup race doesn't flake the test; a genuinely
-    // wrong body still fails (with the usual assert diff) once the budget runs
-    // out.
-    let deadline = Instant::now() + Duration::from_secs(30);
-    loop {
-        match reqwest::get(url).await {
-            Ok(resp) => {
-                let body = resp.text().await?;
-                if body == expected || Instant::now() >= deadline {
-                    assert_eq!(body, expected);
-                    return Ok(());
-                }
-            }
-            Err(e) if Instant::now() >= deadline => return Err(e.into()),
-            Err(_) => {}
-        }
-        tokio::time::sleep(Duration::from_millis(500)).await;
-    }
+    // Endpoints reached by a URL other than the tunnel's own (e.g. a custom
+    // domain) aren't covered by serve_http's readiness wait, so guard here too.
+    wait_until_online(url).await;
+    let body: String = reqwest::get(url).await?.text().await?;
+    assert_eq!(body, expected.as_ref());
+    Ok(())
 }
 
 #[cfg_attr(not(feature = "online-tests"), ignore)]
