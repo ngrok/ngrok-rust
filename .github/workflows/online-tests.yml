@@ -1,0 +1,43 @@
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+    secrets:
+      NGROK_AUTHTOKEN:
+        required: true
+
+name: Online tests
+
+# These tests exercise the live ngrok service (paid + long-running suites in
+# ngrok/src/online_tests.rs). They are inherently flaky against a real backend,
+# so they live in their own workflow and are intentionally NOT part of the
+# release gate (publish.yml -> ci.yml): a service blip must never be able to
+# wedge a publish. The online tests still run on every push/PR as their own
+# check.
+
+jobs:
+  test-stable:
+    name: Test Stable (online)
+    runs-on: ubuntu-latest
+    # The online tests have no in-test timeouts and `cargo test` can't bound an
+    # individual test, so a stuck network call would otherwise hang until
+    # GitHub's 6h default. This job-level cap is the backstop that keeps a hang
+    # to a few minutes.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      # We don't actually have sccache installed here (yet), but it still
+      # benefits from the cargo cache.
+      - uses: ./.github/workflows/rust-cache
+      - uses: actions-rs/cargo@v1
+        env:
+          NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
+        with:
+          command: test
+          args: --features=paid-tests,long-tests --workspace --all-targets

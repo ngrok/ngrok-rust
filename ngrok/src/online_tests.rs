@@ -12,7 +12,10 @@ use std::{
             Ordering,
         },
     },
-    time::Duration,
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 use anyhow::anyhow;
@@ -195,9 +198,31 @@ fn hello_router() -> Router {
 }
 
 async fn check_body(url: impl AsRef<str>, expected: impl AsRef<str>) -> Result<(), BoxError> {
-    let body: String = reqwest::get(url.as_ref()).await?.text().await?;
-    assert_eq!(body, expected.as_ref());
-    Ok(())
+    let url = url.as_ref();
+    let expected = expected.as_ref();
+
+    // A freshly-created endpoint isn't always immediately routable at the ngrok
+    // edge: for a brief window after `listen()` returns, a request can race
+    // ahead of the endpoint coming online and get served the edge's
+    // "endpoint offline" (ERR_NGROK_3200) page instead of our backend. Poll for
+    // a short budget so that startup race doesn't flake the test; a genuinely
+    // wrong body still fails (with the usual assert diff) once the budget runs
+    // out.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        match reqwest::get(url).await {
+            Ok(resp) => {
+                let body = resp.text().await?;
+                if body == expected || Instant::now() >= deadline {
+                    assert_eq!(body, expected);
+                    return Ok(());
+                }
+            }
+            Err(e) if Instant::now() >= deadline => return Err(e.into()),
+            Err(_) => {}
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
 }
 
 #[cfg_attr(not(feature = "online-tests"), ignore)]
