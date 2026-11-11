@@ -6,6 +6,7 @@ use std::{
     env,
     io,
     iter,
+    num::NonZeroU32,
     pin::pin,
     sync::{
         Arc,
@@ -422,16 +423,18 @@ pub struct SessionBuilder {
     id: Option<String>,
 }
 
-/// The built-in [ReconnectPolicy], which [SessionBuilder::reconnect_backoff]
-/// and [SessionBuilder::reconnect_jitter] configure: `initial` before the
+/// The built-in [ReconnectPolicy], which [SessionBuilder::reconnect_backoff],
+/// [SessionBuilder::reconnect_jitter] and
+/// [SessionBuilder::reconnect_max_attempts] configure: `initial` before the
 /// second attempt (the first is immediate), doubling each time up to `max`,
-/// each wait scaled by a random factor in [0, 1) when `jitter` is on. It never
-/// stops reconnecting.
+/// each wait scaled by a random factor in [0, 1) when `jitter` is on. It stops
+/// reconnecting only once `max_attempts` attempts of one outage have failed.
 #[derive(Copy, Clone, Debug)]
 struct ReconnectBackoff {
     initial: Duration,
     max: Duration,
     jitter: bool,
+    max_attempts: Option<NonZeroU32>,
 }
 
 impl Default for ReconnectBackoff {
@@ -440,6 +443,7 @@ impl Default for ReconnectBackoff {
             initial: Duration::from_millis(50),
             max: Duration::from_secs(30),
             jitter: true,
+            max_attempts: None,
         }
     }
 }
@@ -477,11 +481,18 @@ impl ReconnectPolicy for ReconnectBackoff {
             initial,
             max,
             jitter: jittered,
+            max_attempts,
         } = *self;
-        let mut waits = iter::successors(Some(initial.min(max)), move |wait| {
+        let waits = iter::successors(Some(initial.min(max)), move |wait| {
             Some((*wait * 2).min(max))
         })
         .map(move |wait| if jittered { jitter(wait) } else { wait });
+        // One wait between each two attempts, so a limit of n attempts allows
+        // n - 1 waits. Without a limit the waits never run out.
+        let mut waits: Box<dyn Iterator<Item = Duration> + Send> = match max_attempts {
+            Some(n) => Box::new(waits.take(n.get() as usize - 1)),
+            None => Box::new(waits),
+        };
         Box::new(move |_: &ConnectError| waits.next())
     }
 }
@@ -668,10 +679,11 @@ impl SessionBuilder {
     /// 50 ms and 30 s. For a fixed wait between every attempt, pass the same
     /// value for both and turn jitter off.
     ///
-    /// These waits never stop the session from reconnecting: only a
-    /// [Connector] that returns [ConnectError::Canceled], or closing the
-    /// session, does. A [ReconnectPolicy] set with
-    /// [SessionBuilder::reconnect_policy] takes precedence over this.
+    /// These waits never stop the session from reconnecting on their own:
+    /// [SessionBuilder::reconnect_max_attempts], a [Connector] that returns
+    /// [ConnectError::Canceled], or closing the session does. A
+    /// [ReconnectPolicy] set with [SessionBuilder::reconnect_policy] takes
+    /// precedence over this.
     ///
     /// Rejects an `initial` below 1 ms or above `max`, and a `max` above one
     /// day, and leaves the builder unchanged. A binding for another language
@@ -690,9 +702,11 @@ impl SessionBuilder {
     /// between attempts to reconnect after it loses its connection, given
     /// each attempt's error, and when it stops trying.
     ///
-    /// It takes precedence over [SessionBuilder::reconnect_backoff] and
-    /// [SessionBuilder::reconnect_jitter], whichever order they are called
-    /// in: those still check their arguments, but no longer change the waits.
+    /// It takes precedence over [SessionBuilder::reconnect_backoff],
+    /// [SessionBuilder::reconnect_jitter] and
+    /// [SessionBuilder::reconnect_max_attempts], whichever order they are
+    /// called in: those still check their arguments, but no longer change the
+    /// waits or when reconnecting stops.
     pub fn reconnect_policy(&mut self, policy: impl ReconnectPolicy) -> &mut Self {
         self.reconnect_policy = Some(Arc::new(policy));
         self
@@ -705,6 +719,21 @@ impl SessionBuilder {
     /// precedence over this.
     pub fn reconnect_jitter(&mut self, enabled: bool) -> &mut Self {
         self.reconnect.jitter = enabled;
+        self
+    }
+
+    /// Configures the session to stop reconnecting after `attempts` failed
+    /// attempts in one outage, counting the immediate first attempt. Every
+    /// tunnel then receives the last attempt's error. Each new outage starts
+    /// the count again. Without this, the session never stops on its own.
+    ///
+    /// A [ReconnectPolicy] set with [SessionBuilder::reconnect_policy] takes
+    /// precedence over this, and decides for itself when to stop.
+    ///
+    /// A binding for another language that takes the count as a number reports
+    /// zero itself, since [NonZeroU32] cannot hold it.
+    pub fn reconnect_max_attempts(&mut self, attempts: NonZeroU32) -> &mut Self {
+        self.reconnect.max_attempts = Some(attempts);
         self
     }
 
@@ -1872,6 +1901,85 @@ mod test {
         let gaps = reconnect_gaps(&mut attempts, 6).await;
 
         assert_eq!(gaps, [50, 100, 200, 0, 50, 100].map(Duration::from_millis));
+    }
+
+    fn attempts(n: u32) -> NonZeroU32 {
+        NonZeroU32::new(n).unwrap()
+    }
+
+    /// With reconnect_max_attempts(3), the session makes three attempts, the
+    /// immediate first included, then stops and tells the tunnels.
+    #[tokio::test(start_paused = true)]
+    async fn reconnect_max_attempts_stops_after_that_many_attempts() {
+        let (session, mut attempt_rx) =
+            connect_then_fail_reconnects(Session::builder().reconnect_max_attempts(attempts(3)))
+                .await;
+        let mut tunnel = add_tunnel(&session).await;
+
+        for _ in 0..3 {
+            next_attempt(&mut attempt_rx).await;
+        }
+        assert_no_attempt_for_a_day(&mut attempt_rx).await;
+
+        let err = tunnel_error(&mut tunnel).await;
+        assert!(
+            matches!(&*err, ConnectError::Tcp(e) if e.kind() == io::ErrorKind::ConnectionRefused),
+            "the tunnel should receive the last attempt's error: {err:?}",
+        );
+    }
+
+    /// The limit counts the attempts of one outage: after a reconnect
+    /// succeeds, the next outage gets the full count again.
+    #[tokio::test(start_paused = true)]
+    async fn reconnect_max_attempts_counts_each_outage_on_its_own() {
+        let (_session, mut attempt_rx) = connect_scripted(
+            Session::builder().reconnect_max_attempts(attempts(2)),
+            |k| match k {
+                0 | 2 => Answer::Serve,
+                _ => Answer::Refuse,
+            },
+        )
+        .await;
+
+        // Attempt 1 fails and attempt 2 reconnects; the new connection drops
+        // at once, and attempts 3 and 4 both fail before the session stops.
+        for _ in 0..4 {
+            next_attempt(&mut attempt_rx).await;
+        }
+        assert_no_attempt_for_a_day(&mut attempt_rx).await;
+    }
+
+    /// A custom policy decides for itself: reconnect_max_attempts does not
+    /// stop it.
+    #[tokio::test(start_paused = true)]
+    async fn reconnect_max_attempts_does_not_limit_a_custom_policy() {
+        let errors = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut builder = Session::builder();
+        builder
+            .reconnect_policy(counting_policy(errors))
+            .reconnect_max_attempts(attempts(1));
+        let (_session, mut attempt_rx) = connect_then_fail_reconnects(&mut builder).await;
+
+        for _ in 0..3 {
+            next_attempt(&mut attempt_rx).await;
+        }
+    }
+
+    /// reconnect_backoff, called after reconnect_max_attempts, keeps the
+    /// limit.
+    #[tokio::test(start_paused = true)]
+    async fn reconnect_backoff_keeps_the_attempt_limit() {
+        let mut builder = Session::builder();
+        builder
+            .reconnect_max_attempts(attempts(2))
+            .reconnect_backoff(Duration::from_secs(1), Duration::from_secs(4))
+            .expect("1 s to 4 s is accepted");
+        let (_session, mut attempt_rx) = connect_then_fail_reconnects(&mut builder).await;
+
+        for _ in 0..2 {
+            next_attempt(&mut attempt_rx).await;
+        }
+        assert_no_attempt_for_a_day(&mut attempt_rx).await;
     }
 
     /// With jitter off, the default waits are exactly 50 ms before the
