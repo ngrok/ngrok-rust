@@ -1211,7 +1211,265 @@ async fn accept_incoming(mut incoming: IncomingStreams, inner: Arc<ArcSwap<Sessi
 
 #[cfg(test)]
 mod test {
+    use std::sync::atomic::AtomicUsize;
+
+    use muxado::typed::{
+        TypedAccept,
+        TypedOpenClose,
+    };
+    use tokio::{
+        io::{
+            AsyncReadExt,
+            AsyncWriteExt,
+            DuplexStream,
+        },
+        sync::mpsc,
+        time::Instant,
+    };
+
     use super::*;
+    use crate::internals::proto::{
+        AUTH_REQ,
+        AuthResp,
+    };
+
+    /// Plays the ngrok service for one connection: accepts the session's
+    /// authentication, then closes the session, which the client sees as a
+    /// lost connection.
+    async fn serve_auth_then_disconnect(io: DuplexStream) {
+        let mut sess = muxado::typed::Typed::new(muxado::SessionBuilder::new(io).server().start());
+        // Hold the other streams the client opens, such as its heartbeat,
+        // so that nothing but the close below ends the session.
+        let mut held = Vec::new();
+        let mut auth = loop {
+            let stream = sess.accept_typed().await.expect("client opens a stream");
+            if stream.typ() == AUTH_REQ {
+                break stream;
+            }
+            held.push(stream);
+        };
+        let mut req = Vec::new();
+        while serde_json::from_slice::<serde_json::Value>(&req).is_err() {
+            let mut buf = [0u8; 1024];
+            let n = auth.read(&mut buf).await.expect("client sends auth");
+            assert_ne!(n, 0, "client closed the auth stream before a request");
+            req.extend_from_slice(&buf[..n]);
+        }
+        let resp = AuthResp {
+            version: "2".into(),
+            client_id: "fake-client-id".into(),
+            extra: Default::default(),
+        };
+        auth.write_all(&serde_json::to_vec(&resp).unwrap())
+            .await
+            .expect("write auth response");
+        auth.shutdown().await.expect("end auth response");
+        // Closing the session drops data still in flight, so wait for the
+        // client to read the response and let go of the stream.
+        let _ = auth.read_to_end(&mut Vec::new()).await;
+        sess.close(muxado::Error::None, "".into())
+            .await
+            .expect("close session");
+    }
+
+    /// What the fake ngrok service does with one connect.
+    #[derive(Clone, Copy)]
+    enum Answer {
+        /// Accept the session's authentication, then drop the connection.
+        Serve,
+        /// Fail the connect as a refused TCP connection.
+        Refuse,
+        /// Fail the connect with ConnectError::Canceled.
+        Cancel,
+    }
+
+    /// A reconnect attempt: when it started, and the cause the session
+    /// passed to its connector.
+    #[derive(Debug)]
+    struct Attempt {
+        at: Instant,
+        cause: Option<AcceptError>,
+    }
+
+    /// Connects `builder` to a fake ngrok service that answers connect k
+    /// (from 0, the first connect) with `script(k)`.
+    ///
+    /// Returns the session, which must be kept alive for it to keep
+    /// reconnecting, and a receiver of every reconnect attempt, that is
+    /// every connect after the first.
+    async fn connect_scripted(
+        builder: &mut SessionBuilder,
+        script: impl Fn(usize) -> Answer + Send + Sync + 'static,
+    ) -> (Session, mpsc::UnboundedReceiver<Attempt>) {
+        let connects = Arc::new(AtomicUsize::new(0));
+        let (attempt_tx, attempt_rx) = mpsc::unbounded_channel();
+        let connector =
+            move |_: String, _: u16, _: Arc<rustls::ClientConfig>, cause: Option<AcceptError>| {
+                let k = connects.fetch_add(1, Ordering::SeqCst);
+                if k > 0 {
+                    let _ = attempt_tx.send(Attempt {
+                        at: Instant::now(),
+                        cause,
+                    });
+                }
+                let answer = script(k);
+                async move {
+                    match answer {
+                        Answer::Serve => {
+                            let (client, server) = tokio::io::duplex(64 * 1024);
+                            tokio::spawn(serve_auth_then_disconnect(server));
+                            Ok(Box::new(client) as Box<dyn IoStream>)
+                        }
+                        Answer::Refuse => {
+                            Err(ConnectError::Tcp(io::ErrorKind::ConnectionRefused.into()))
+                        }
+                        Answer::Cancel => Err(ConnectError::Canceled),
+                    }
+                }
+            };
+        let session = builder
+            .connector(connector)
+            .connect()
+            .await
+            .expect("connects to the fake ngrok service");
+        (session, attempt_rx)
+    }
+
+    /// Connects `builder` to a fake ngrok service that drops the session
+    /// after it starts, and fails every reconnect attempt after that.
+    async fn connect_then_fail_reconnects(
+        builder: &mut SessionBuilder,
+    ) -> (Session, mpsc::UnboundedReceiver<Attempt>) {
+        connect_scripted(builder, |k| {
+            if k == 0 {
+                Answer::Serve
+            } else {
+                Answer::Refuse
+            }
+        })
+        .await
+    }
+
+    async fn next_attempt(attempts: &mut mpsc::UnboundedReceiver<Attempt>) -> Attempt {
+        attempts.recv().await.expect("session keeps reconnecting")
+    }
+
+    /// Asserts that the session makes no reconnect attempt for a day, which
+    /// on tokio's paused clock takes no real time.
+    async fn assert_no_attempt_for_a_day(attempts: &mut mpsc::UnboundedReceiver<Attempt>) {
+        let next = tokio::time::timeout(Duration::from_secs(24 * 60 * 60), attempts.recv()).await;
+        assert!(next.is_err(), "the session reconnected again: {next:?}");
+    }
+
+    /// Adds a tunnel to `session` by hand, as a bound listener would, and
+    /// returns the receiver its listener reads connections and errors from.
+    async fn add_tunnel(session: &Session) -> mpsc::Receiver<Result<ConnInner, AcceptError>> {
+        let (tx, rx) = channel(1);
+        let tunnel = BoundTunnel {
+            proto: "tcp".into(),
+            opts: None,
+            extra: Default::default(),
+            labels: Default::default(),
+            forwards_to: String::new(),
+            forwards_proto: String::new(),
+            verify_upstream_tls: false,
+            tx,
+        };
+        session
+            .inner
+            .load()
+            .tunnels
+            .write()
+            .await
+            .insert("fake-tunnel".into(), tunnel);
+        rx
+    }
+
+    /// The reconnect error a tunnel's listener receives within a day, on
+    /// tokio's paused clock. Waiting no longer keeps a session that never
+    /// stops reconnecting from hanging the test.
+    async fn tunnel_error(
+        tunnel: &mut mpsc::Receiver<Result<ConnInner, AcceptError>>,
+    ) -> Arc<ConnectError> {
+        let next = tokio::time::timeout(Duration::from_secs(24 * 60 * 60), tunnel.recv())
+            .await
+            .expect("the tunnel should receive an error within a day");
+        match next {
+            Some(Err(AcceptError::Reconnect(err))) => err,
+            Some(Err(other)) => panic!("the tunnel should receive a reconnect error: {other:?}"),
+            Some(Ok(_)) => panic!("the tunnel should receive an error, not a connection"),
+            None => panic!("the tunnel closed without an error"),
+        }
+    }
+
+    /// The first reconnect attempt starts the moment the connection drops,
+    /// with the disconnect as its cause; each later attempt's cause is the
+    /// previous attempt's error.
+    #[tokio::test(start_paused = true)]
+    async fn reconnect_starts_at_once_and_passes_on_each_cause() {
+        let (_session, mut attempts) = connect_then_fail_reconnects(&mut Session::builder()).await;
+        let dropped = Instant::now();
+
+        let first = next_attempt(&mut attempts).await;
+        let second = next_attempt(&mut attempts).await;
+
+        assert_eq!(first.at, dropped);
+        assert!(
+            matches!(first.cause, Some(AcceptError::Transport(_))),
+            "the first attempt's cause should be the dropped connection: {:?}",
+            first.cause,
+        );
+        match second.cause {
+            Some(AcceptError::Reconnect(err)) => assert!(
+                matches!(&*err, ConnectError::Tcp(e) if e.kind() == io::ErrorKind::ConnectionRefused),
+                "the second attempt's cause should be the first attempt's error: {err:?}",
+            ),
+            other => panic!("the second attempt's cause should be a reconnect error: {other:?}"),
+        }
+    }
+
+    /// A connector returning Canceled stops reconnecting, and every tunnel
+    /// receives that error.
+    #[tokio::test(start_paused = true)]
+    async fn canceled_connect_stops_reconnecting_and_tells_the_tunnels() {
+        let (session, mut attempts) = connect_scripted(&mut Session::builder(), |k| match k {
+            0 => Answer::Serve,
+            3 => Answer::Cancel,
+            _ => Answer::Refuse,
+        })
+        .await;
+        let mut tunnel = add_tunnel(&session).await;
+
+        for _ in 0..3 {
+            next_attempt(&mut attempts).await;
+        }
+        assert_no_attempt_for_a_day(&mut attempts).await;
+
+        let err = tunnel_error(&mut tunnel).await;
+        assert!(
+            matches!(*err, ConnectError::Canceled),
+            "the tunnel should receive the cancel: {err:?}",
+        );
+    }
+
+    /// Closing the session while it waits to reconnect stops reconnecting
+    /// without another connect, and every tunnel receives Canceled.
+    #[tokio::test(start_paused = true)]
+    async fn closing_during_a_wait_stops_reconnecting() {
+        let (mut session, mut attempts) =
+            connect_then_fail_reconnects(&mut Session::builder()).await;
+        let mut tunnel = add_tunnel(&session).await;
+        next_attempt(&mut attempts).await;
+
+        let _ = session.close().await;
+
+        assert_no_attempt_for_a_day(&mut attempts).await;
+        let err = tunnel_error(&mut tunnel).await;
+        assert!(
+            matches!(*err, ConnectError::Canceled),
+            "the tunnel should receive Canceled: {err:?}",
+        );
+    }
 
     #[test]
     fn test_sanitize_ua() {
