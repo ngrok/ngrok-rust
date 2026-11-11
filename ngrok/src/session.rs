@@ -182,8 +182,9 @@ pub trait Connector: Sync + Send + 'static {
     /// be populated.
     ///
     /// If it returns `Err(ConnectError::Canceled)`, reconnecting will be canceled
-    /// and the session will be terminated. Note that this error will never be
-    /// returned from the [default_connect] function.
+    /// and the session will be terminated, without asking the session's
+    /// [ReconnectPolicy]. Note that this error will never be returned from the
+    /// [default_connect] function.
     async fn connect(
         &self,
         host: String,
@@ -210,24 +211,93 @@ where
     }
 }
 
-/// The shortest wait between reconnect attempts:
-/// [SessionBuilder::reconnect_backoff] rejects a shorter one, since tokio's
-/// timers fire on millisecond ticks, so a shorter wait retries about every
-/// millisecond.
+/// The shortest wait between reconnect attempts. A shorter wait from a
+/// [ReconnectPolicy] is raised to this, and [SessionBuilder::reconnect_backoff]
+/// rejects one: tokio's timers fire on millisecond ticks, so a shorter wait
+/// retries about every millisecond.
 const MIN_RECONNECT_WAIT: Duration = Duration::from_millis(1);
 
-/// The longest wait between reconnect attempts:
-/// [SessionBuilder::reconnect_backoff] rejects a longer one. It also keeps
-/// the doubling in [ReconnectBackoff] from overflowing.
+/// The longest wait between reconnect attempts. A longer wait from a
+/// [ReconnectPolicy] is reduced to this, and
+/// [SessionBuilder::reconnect_backoff] rejects one. It also keeps the doubling
+/// in [ReconnectBackoff] from overflowing.
 const MAX_RECONNECT_WAIT: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// Decides how long a session waits between attempts to reconnect after it
+/// loses its connection to the ngrok service, and when it stops trying. Set
+/// it with [SessionBuilder::reconnect_policy].
+///
+/// It is implemented for closures returning a [ReconnectSchedule]. For
+/// example, to give up after five failed attempts, waiting a second longer
+/// after each:
+///
+/// ```
+/// # use std::time::Duration;
+/// # use ngrok::session::ConnectError;
+/// # let mut builder = ngrok::Session::builder();
+/// builder.reconnect_policy(|| {
+///     let mut failures = 0;
+///     move |_err: &ConnectError| {
+///         failures += 1;
+///         (failures < 5).then(|| Duration::from_secs(failures))
+///     }
+/// });
+/// ```
+///
+/// The inner closure needs its parameter's type written out, `&ConnectError`:
+/// without it, Rust infers a closure for one particular lifetime, which is not
+/// a [ReconnectSchedule].
+pub trait ReconnectPolicy: Send + Sync + 'static {
+    /// Called each time the session loses its connection, before its first
+    /// reconnect attempt, which is immediate. The schedule it returns decides
+    /// the waits of that outage only.
+    fn start(&self) -> Box<dyn ReconnectSchedule>;
+}
+
+impl<F, S> ReconnectPolicy for F
+where
+    F: Fn() -> S + Send + Sync + 'static,
+    S: ReconnectSchedule + 'static,
+{
+    fn start(&self) -> Box<dyn ReconnectSchedule> {
+        Box::new(self())
+    }
+}
+
+/// The waits of one outage, from a [ReconnectPolicy].
+///
+/// It is implemented for closures taking the `&ConnectError` and returning an
+/// `Option<Duration>`.
+pub trait ReconnectSchedule: Send {
+    /// Called after each failed reconnect attempt with its error: how long to
+    /// wait before the next attempt, or `None` to stop reconnecting, after
+    /// which every tunnel receives that error.
+    ///
+    /// A wait under 1 ms is raised to 1 ms, and one over a day is reduced to
+    /// a day. A [Connector] returning [ConnectError::Canceled] stops
+    /// reconnecting without calling this. Closing the session stops
+    /// reconnecting and cuts short a wait already started, but an attempt
+    /// already under way when the session closes can still fail and call
+    /// this.
+    fn next_wait(&mut self, err: &ConnectError) -> Option<Duration>;
+}
+
+impl<F> ReconnectSchedule for F
+where
+    F: FnMut(&ConnectError) -> Option<Duration> + Send,
+{
+    fn next_wait(&mut self, err: &ConnectError) -> Option<Duration> {
+        self(err)
+    }
+}
 
 /// The default ngrok connector.
 ///
 /// Establishes a TCP connection to `addr`, and then performs a TLS handshake
 /// using the `tls_config`.
 ///
-/// Discards any errors during reconnect, allowing attempts to recur
-/// indefinitely.
+/// Never returns [ConnectError::Canceled], so it leaves when to stop
+/// reconnecting to the session's [ReconnectPolicy].
 pub async fn default_connect(
     host: String,
     port: u16,
@@ -345,14 +415,15 @@ pub struct SessionBuilder {
     tls_config: Option<rustls::ClientConfig>,
     connector: Arc<dyn Connector>,
     reconnect: ReconnectBackoff,
+    // Takes precedence over `reconnect` when set.
+    reconnect_policy: Option<Arc<dyn ReconnectPolicy>>,
     handlers: CommandHandlers,
     cookie: Option<SecretString>,
     id: Option<String>,
 }
 
-/// How long a session waits between attempts to reconnect after it loses its
-/// connection, as [SessionBuilder::reconnect_backoff] and
-/// [SessionBuilder::reconnect_jitter] configure it: `initial` before the
+/// The built-in [ReconnectPolicy], which [SessionBuilder::reconnect_backoff]
+/// and [SessionBuilder::reconnect_jitter] configure: `initial` before the
 /// second attempt (the first is immediate), doubling each time up to `max`,
 /// each wait scaled by a random factor in [0, 1) when `jitter` is on. It never
 /// stops reconnecting.
@@ -396,13 +467,12 @@ impl ReconnectBackoff {
             }),
         }
     }
+}
 
-    /// The waits of one outage: called with each failed attempt's error, it
-    /// answers how long to wait before the next attempt.
-    ///
+impl ReconnectPolicy for ReconnectBackoff {
     /// `with_waits` keeps `max` at most [MAX_RECONNECT_WAIT], which keeps the
     /// doubling from overflowing.
-    fn start(&self) -> impl FnMut(&ConnectError) -> Option<Duration> + Send + use<> {
+    fn start(&self) -> Box<dyn ReconnectSchedule> {
         let ReconnectBackoff {
             initial,
             max,
@@ -412,7 +482,7 @@ impl ReconnectBackoff {
             Some((*wait * 2).min(max))
         })
         .map(move |wait| if jittered { jitter(wait) } else { wait });
-        move |_: &ConnectError| waits.next()
+        Box::new(move |_: &ConnectError| waits.next())
     }
 }
 
@@ -448,7 +518,8 @@ pub enum ConnectError {
     /// The (re)connect function gave up.
     ///
     /// This will never be returned by the default connect function, and is
-    /// instead used to cancel the reconnect loop.
+    /// instead used by a [Connector] to cancel the reconnect loop. A
+    /// [ReconnectPolicy] can also stop it, by answering `None`.
     #[error("the connect function gave up")]
     Canceled,
 }
@@ -515,6 +586,7 @@ impl Default for SessionBuilder {
             tls_config: None,
             connector: Arc::new(default_connect),
             reconnect: Default::default(),
+            reconnect_policy: None,
             handlers: Default::default(),
             cookie: None,
             id: None,
@@ -598,7 +670,8 @@ impl SessionBuilder {
     ///
     /// These waits never stop the session from reconnecting: only a
     /// [Connector] that returns [ConnectError::Canceled], or closing the
-    /// session, does.
+    /// session, does. A [ReconnectPolicy] set with
+    /// [SessionBuilder::reconnect_policy] takes precedence over this.
     ///
     /// Rejects an `initial` below 1 ms or above `max`, and a `max` above one
     /// day, and leaves the builder unchanged. A binding for another language
@@ -613,9 +686,23 @@ impl SessionBuilder {
         Ok(self)
     }
 
+    /// Configures a custom [ReconnectPolicy]: how long the session waits
+    /// between attempts to reconnect after it loses its connection, given
+    /// each attempt's error, and when it stops trying.
+    ///
+    /// It takes precedence over [SessionBuilder::reconnect_backoff] and
+    /// [SessionBuilder::reconnect_jitter], whichever order they are called
+    /// in: those still check their arguments, but no longer change the waits.
+    pub fn reconnect_policy(&mut self, policy: impl ReconnectPolicy) -> &mut Self {
+        self.reconnect_policy = Some(Arc::new(policy));
+        self
+    }
+
     /// Configures whether each wait between reconnect attempts is scaled by a
     /// random factor in [0, 1). On by default, so that sessions that lose
-    /// their connections together don't all reconnect at the same moment.
+    /// their connections together don't all reconnect at the same moment. A
+    /// [ReconnectPolicy] set with [SessionBuilder::reconnect_policy] takes
+    /// precedence over this.
     pub fn reconnect_jitter(&mut self, enabled: bool) -> &mut Self {
         self.reconnect.jitter = enabled;
         self
@@ -1319,16 +1406,23 @@ async fn accept_incoming(mut incoming: IncomingStreams, inner: Arc<ArcSwap<Sessi
 }
 
 /// Reconnects a session that lost its connection with `cause`: tries at
-/// once, then again after each wait the session's backoff gives, until an
-/// attempt succeeds or fails with [ConnectError::Canceled]. Each attempt
-/// passes the previous one's error to the connector as its cause.
+/// once, then again after each wait the session's [ReconnectPolicy] gives,
+/// until an attempt succeeds, the policy answers `None`, or an attempt fails
+/// with [ConnectError::Canceled]. Each attempt passes the previous one's error
+/// to the connector as its cause.
 async fn reconnect(
     inner: &Arc<ArcSwap<SessionInner>>,
     mut cause: AcceptError,
 ) -> Result<IncomingStreams, Arc<ConnectError>> {
     // Each successful reconnect stores a clone of the builder, so this reads
     // what the caller configured.
-    let mut schedule = inner.load().builder.reconnect.start();
+    let mut schedule = {
+        let session = inner.load();
+        match &session.builder.reconnect_policy {
+            Some(policy) => policy.start(),
+            None => session.builder.reconnect.start(),
+        }
+    };
     loop {
         let error = match try_reconnect(inner.clone(), cause).await {
             Ok(incoming) => return Ok(incoming),
@@ -1337,9 +1431,10 @@ async fn reconnect(
         if let ConnectError::Canceled = *error {
             return Err(error);
         }
-        let Some(wait) = schedule(&error) else {
+        let Some(wait) = schedule.next_wait(&error) else {
             return Err(error);
         };
+        let wait = wait.clamp(MIN_RECONNECT_WAIT, MAX_RECONNECT_WAIT);
         // Closing the session ends the wait early; the next attempt then sees
         // `closed` and stops. Registering for the notification before reading
         // `closed` means a close between the two is not missed.
@@ -1632,6 +1727,132 @@ mod test {
             matches!(*err, ConnectError::Canceled),
             "the tunnel should receive Canceled: {err:?}",
         );
+    }
+
+    /// A policy that waits 1 s, then 2 s, then 3 s, and so on, recording the
+    /// error it is given each time.
+    fn counting_policy(errors: Arc<std::sync::Mutex<Vec<String>>>) -> impl ReconnectPolicy {
+        move || {
+            let errors = errors.clone();
+            let mut failures = 0;
+            move |err: &ConnectError| {
+                errors.lock().unwrap().push(format!("{err:?}"));
+                failures += 1;
+                Some(Duration::from_secs(failures))
+            }
+        }
+    }
+
+    /// A custom policy is asked once per failed attempt, with that attempt's
+    /// error, and its answers are the waits between attempts.
+    #[tokio::test(start_paused = true)]
+    async fn reconnect_policy_sees_each_error_and_sets_the_waits() {
+        let errors = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (_session, mut attempts) = connect_then_fail_reconnects(
+            Session::builder().reconnect_policy(counting_policy(errors.clone())),
+        )
+        .await;
+
+        let gaps = reconnect_gaps(&mut attempts, 3).await;
+
+        assert_eq!(gaps, [1, 2, 3].map(Duration::from_secs));
+        // Four attempts have failed, and the policy has been asked after each.
+        let errors = errors.lock().unwrap().clone();
+        assert_eq!(
+            errors.len(),
+            4,
+            "the policy should be asked once per failure: {errors:?}"
+        );
+        assert!(
+            errors.iter().all(|e| e.contains("ConnectionRefused")),
+            "the policy should see each attempt's error: {errors:?}",
+        );
+    }
+
+    /// When a policy answers None, the session stops reconnecting and every
+    /// tunnel receives the error of the last attempt.
+    #[tokio::test(start_paused = true)]
+    async fn reconnect_policy_stops_reconnecting_with_none() {
+        let mut builder = Session::builder();
+        builder.reconnect_policy(|| {
+            let mut failures = 0;
+            move |_err: &ConnectError| {
+                failures += 1;
+                (failures < 3).then(|| Duration::from_secs(1))
+            }
+        });
+        let (session, mut attempts) = connect_then_fail_reconnects(&mut builder).await;
+        let mut tunnel = add_tunnel(&session).await;
+
+        for _ in 0..3 {
+            next_attempt(&mut attempts).await;
+        }
+        assert_no_attempt_for_a_day(&mut attempts).await;
+
+        let err = tunnel_error(&mut tunnel).await;
+        assert!(
+            matches!(&*err, ConnectError::Tcp(e) if e.kind() == io::ErrorKind::ConnectionRefused),
+            "the tunnel should receive the last attempt's error: {err:?}",
+        );
+    }
+
+    /// A wait under 1 ms is raised to 1 ms, and one over a day is reduced to
+    /// a day.
+    #[tokio::test(start_paused = true)]
+    async fn reconnect_policy_waits_are_kept_between_1ms_and_1_day() {
+        let mut builder = Session::builder();
+        builder.reconnect_policy(|| {
+            let mut answers = [Duration::ZERO, Duration::MAX].into_iter().cycle();
+            move |_err: &ConnectError| answers.next()
+        });
+        let (_session, mut attempts) = connect_then_fail_reconnects(&mut builder).await;
+
+        let gaps = reconnect_gaps(&mut attempts, 2).await;
+
+        assert_eq!(
+            gaps,
+            [Duration::from_millis(1), Duration::from_secs(24 * 60 * 60)]
+        );
+    }
+
+    /// reconnect_backoff and reconnect_jitter, called after a custom policy,
+    /// do not replace it.
+    #[tokio::test(start_paused = true)]
+    async fn reconnect_policy_takes_precedence_over_the_backoff_setters() {
+        let errors = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut builder = Session::builder();
+        builder
+            .reconnect_policy(counting_policy(errors))
+            .reconnect_jitter(false)
+            .reconnect_backoff(Duration::from_millis(100), Duration::from_millis(100))
+            .expect("100 ms to 100 ms is accepted");
+        let (_session, mut attempts) = connect_then_fail_reconnects(&mut builder).await;
+
+        let gaps = reconnect_gaps(&mut attempts, 3).await;
+
+        assert_eq!(gaps, [1, 2, 3].map(Duration::from_secs));
+    }
+
+    /// A custom policy starts a fresh schedule on each outage, and is kept
+    /// across a successful reconnect.
+    #[tokio::test(start_paused = true)]
+    async fn reconnect_policy_starts_fresh_on_each_outage() {
+        let errors = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (_session, mut attempts) = connect_scripted(
+            Session::builder().reconnect_policy(counting_policy(errors)),
+            |k| match k {
+                0 | 4 => Answer::Serve,
+                _ => Answer::Refuse,
+            },
+        )
+        .await;
+
+        // Attempts 1 to 3 fail, attempt 4 reconnects and is dropped at once,
+        // so attempt 5 follows it immediately, and 6 and 7 wait as 2 and 3
+        // did.
+        let gaps = reconnect_gaps(&mut attempts, 6).await;
+
+        assert_eq!(gaps, [1, 2, 3, 0, 1, 2].map(Duration::from_secs));
     }
 
     /// After a reconnect succeeds, the next lost connection starts its waits
