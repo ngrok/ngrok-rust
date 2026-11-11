@@ -5,6 +5,7 @@ use std::{
     },
     env,
     io,
+    iter,
     sync::{
         Arc,
         atomic::{
@@ -57,7 +58,7 @@ use tokio::{
         },
     },
 };
-use tokio_retry::strategy::ExponentialBackoff;
+use tokio_retry::strategy::jitter;
 use tokio_util::compat::{
     FuturesAsyncReadCompatExt,
     TokioAsyncReadCompatExt,
@@ -328,9 +329,51 @@ pub struct SessionBuilder {
     ca_cert: Option<bytes::Bytes>,
     tls_config: Option<rustls::ClientConfig>,
     connector: Arc<dyn Connector>,
+    reconnect: ReconnectBackoff,
     handlers: CommandHandlers,
     cookie: Option<SecretString>,
     id: Option<String>,
+}
+
+/// How long a session waits between attempts to reconnect after it loses its
+/// connection: `initial` before the second attempt (the first is immediate),
+/// doubling each time up to `max`, each wait scaled by a random factor in
+/// [0, 1) when `jitter` is on. It never stops reconnecting.
+#[derive(Copy, Clone, Debug)]
+struct ReconnectBackoff {
+    initial: Duration,
+    max: Duration,
+    jitter: bool,
+}
+
+impl Default for ReconnectBackoff {
+    fn default() -> Self {
+        ReconnectBackoff {
+            initial: Duration::from_millis(50),
+            max: Duration::from_secs(30),
+            jitter: true,
+        }
+    }
+}
+
+impl ReconnectBackoff {
+    /// The waits of one outage: called with each failed attempt's error, it
+    /// answers how long to wait before the next attempt.
+    ///
+    /// The cap keeps the doubling from overflowing, and each wait small
+    /// enough to add to the clock.
+    fn start(&self) -> impl FnMut(&ConnectError) -> Option<Duration> + Send + use<> {
+        let ReconnectBackoff {
+            initial,
+            max,
+            jitter: jittered,
+        } = *self;
+        let mut waits = iter::successors(Some(initial.min(max)), move |wait| {
+            Some((*wait * 2).min(max))
+        })
+        .map(move |wait| if jittered { jitter(wait) } else { wait });
+        move |_: &ConnectError| waits.next()
+    }
 }
 
 /// Errors arising at [SessionBuilder::connect] time.
@@ -421,6 +464,7 @@ impl Default for SessionBuilder {
             ca_cert: None,
             tls_config: None,
             connector: Arc::new(default_connect),
+            reconnect: Default::default(),
             handlers: Default::default(),
             cookie: None,
             id: None,
@@ -1187,14 +1231,16 @@ async fn accept_incoming(mut incoming: IncomingStreams, inner: Arc<ArcSwap<Sessi
 }
 
 /// Reconnects a session that lost its connection with `cause`: tries at
-/// once, then again after each wait, until an attempt succeeds or fails with
-/// [ConnectError::Canceled]. Each attempt passes the previous one's error to
-/// the connector as its cause.
+/// once, then again after each wait the session's backoff gives, until an
+/// attempt succeeds or fails with [ConnectError::Canceled]. Each attempt
+/// passes the previous one's error to the connector as its cause.
 async fn reconnect(
     inner: &Arc<ArcSwap<SessionInner>>,
     mut cause: AcceptError,
 ) -> Result<IncomingStreams, Arc<ConnectError>> {
-    let mut waits = ExponentialBackoff::from_millis(50);
+    // Each successful reconnect stores a clone of the builder, so this reads
+    // what the caller configured.
+    let mut schedule = inner.load().builder.reconnect.start();
     loop {
         let error = match try_reconnect(inner.clone(), cause).await {
             Ok(incoming) => return Ok(incoming),
@@ -1203,7 +1249,7 @@ async fn reconnect(
         if let ConnectError::Canceled = *error {
             return Err(error);
         }
-        let Some(wait) = waits.next() else {
+        let Some(wait) = schedule(&error) else {
             return Err(error);
         };
         tokio::time::sleep(wait).await;
@@ -1352,6 +1398,25 @@ mod test {
         .await
     }
 
+    /// The waits between the next `n + 1` reconnect attempts.
+    ///
+    /// On tokio's paused clock these are exact when every wait is a whole
+    /// number of milliseconds, since the clock jumps straight to each
+    /// timer's deadline and timers fire on millisecond ticks.
+    async fn reconnect_gaps(
+        attempts: &mut mpsc::UnboundedReceiver<Attempt>,
+        n: usize,
+    ) -> Vec<Duration> {
+        let mut last = next_attempt(attempts).await.at;
+        let mut gaps = Vec::new();
+        for _ in 0..n {
+            let attempt = next_attempt(attempts).await.at;
+            gaps.push(attempt - last);
+            last = attempt;
+        }
+        gaps
+    }
+
     async fn next_attempt(attempts: &mut mpsc::UnboundedReceiver<Attempt>) -> Attempt {
         attempts.recv().await.expect("session keeps reconnecting")
     }
@@ -1470,6 +1535,59 @@ mod test {
         assert!(
             matches!(*err, ConnectError::Canceled),
             "the tunnel should receive Canceled: {err:?}",
+        );
+    }
+
+    /// With jitter off, the default waits are exactly 50 ms before the
+    /// second attempt, doubling each time up to 30 s.
+    #[tokio::test(start_paused = true)]
+    async fn reconnect_waits_without_jitter_double_from_50ms_to_30s() {
+        let mut builder = Session::builder();
+        builder.reconnect.jitter = false;
+        let (_session, mut attempts) = connect_then_fail_reconnects(&mut builder).await;
+
+        let gaps = reconnect_gaps(&mut attempts, 12).await;
+
+        let expected = [
+            50, 100, 200, 400, 800, 1_600, 3_200, 6_400, 12_800, 25_600, 30_000, 30_000,
+        ]
+        .map(Duration::from_millis);
+        assert_eq!(gaps, expected);
+    }
+
+    /// A session whose connection drops after it starts, and whose every
+    /// reconnect attempt then fails, waits at most 50 ms before its second
+    /// attempt, at most twice as long before each one after that, and never
+    /// more than 30 s, at jittered intervals.
+    ///
+    /// The clock is tokio's paused clock, which jumps to each timer, so an
+    /// uncapped backoff's hours-long waits take no real time.
+    #[tokio::test(start_paused = true)]
+    async fn reconnect_attempts_double_up_to_30s_and_are_jittered() {
+        let (_session, mut attempt_rx) =
+            connect_then_fail_reconnects(&mut Session::builder()).await;
+
+        // Sixteen attempts, so fifteen gaps: ten while the delay doubles from
+        // 50 ms to 25.6 s, then five at the cap. Each gap is checked as it
+        // arrives, so an uncapped backoff fails before its waits grow large
+        // enough to overflow the clock.
+        let mut last = next_attempt(&mut attempt_rx).await.at;
+        let mut gaps = Vec::new();
+        for k in 0..15 {
+            let attempt = next_attempt(&mut attempt_rx).await.at;
+            let gap = attempt - last;
+            last = attempt;
+            gaps.push(gap);
+            let bound = Duration::from_millis(50 << k).min(Duration::from_secs(30));
+            assert!(
+                gap <= bound,
+                "reconnect wait {k} is longer than {bound:?}; gaps: {gaps:?}",
+            );
+        }
+        let capped = &gaps[10..];
+        assert!(
+            capped.windows(2).any(|w| w[0] != w[1]),
+            "reconnect delays at the cap are all equal, so they are not jittered; gaps: {gaps:?}",
         );
     }
 
