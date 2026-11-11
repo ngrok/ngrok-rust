@@ -57,10 +57,7 @@ use tokio::{
         },
     },
 };
-use tokio_retry::{
-    RetryIf,
-    strategy::ExponentialBackoff,
-};
+use tokio_retry::strategy::ExponentialBackoff;
 use tokio_util::compat::{
     FuturesAsyncReadCompatExt,
     TokioAsyncReadCompatExt,
@@ -1175,27 +1172,7 @@ async fn accept_incoming(mut incoming: IncomingStreams, inner: Arc<ArcSwap<Sessi
     let error: AcceptError = loop {
         if let Err(error) = accept_one(&mut incoming, &inner).await {
             debug!(%error, "failed to accept stream, attempting reconnect");
-            // This is gross, but should perform fine. Couple of notes:
-            // * Mutex so that both the action and condition can share access to
-            //   `error`. Realistically, the lock calls should be non-concurrent,
-            //   but Rust can't prove that.
-            // * Not setting the error in the action because then a a reference
-            //   to a FnMut closure would escape via the returned Future, which is
-            //   a no-no.
-            let error = parking_lot::Mutex::new(Some(error));
-            let reconnect = RetryIf::start(
-                ExponentialBackoff::from_millis(50),
-                || try_reconnect(inner.clone(), error.lock().clone()).map_err(Arc::new),
-                |err: &Arc<ConnectError>| {
-                    if let ConnectError::Canceled = **err {
-                        false
-                    } else {
-                        *error.lock() = Some(AcceptError::Reconnect(err.clone()));
-                        true
-                    }
-                },
-            );
-            incoming = match reconnect.await {
+            incoming = match reconnect(&inner, error).await {
                 Ok(incoming) => incoming,
                 Err(error) => {
                     debug!(%error, "reconnect failed, giving up");
@@ -1206,6 +1183,31 @@ async fn accept_incoming(mut incoming: IncomingStreams, inner: Arc<ArcSwap<Sessi
     };
     for (_id, tun) in inner.load().tunnels.write().await.drain() {
         let _ = tun.tx.send(Err(error.clone())).await;
+    }
+}
+
+/// Reconnects a session that lost its connection with `cause`: tries at
+/// once, then again after each wait, until an attempt succeeds or fails with
+/// [ConnectError::Canceled]. Each attempt passes the previous one's error to
+/// the connector as its cause.
+async fn reconnect(
+    inner: &Arc<ArcSwap<SessionInner>>,
+    mut cause: AcceptError,
+) -> Result<IncomingStreams, Arc<ConnectError>> {
+    let mut waits = ExponentialBackoff::from_millis(50);
+    loop {
+        let error = match try_reconnect(inner.clone(), cause).await {
+            Ok(incoming) => return Ok(incoming),
+            Err(error) => Arc::new(error),
+        };
+        if let ConnectError::Canceled = *error {
+            return Err(error);
+        }
+        let Some(wait) = waits.next() else {
+            return Err(error);
+        };
+        tokio::time::sleep(wait).await;
+        cause = AcceptError::Reconnect(error);
     }
 }
 
