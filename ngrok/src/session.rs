@@ -59,7 +59,10 @@ use tokio::{
 };
 use tokio_retry::{
     RetryIf,
-    strategy::ExponentialBackoff,
+    strategy::{
+        ExponentialBackoff,
+        jitter,
+    },
 };
 use tokio_util::compat::{
     FuturesAsyncReadCompatExt,
@@ -1171,6 +1174,16 @@ async fn try_reconnect(
     Ok(new_incoming)
 }
 
+// tokio-retry raises the base to the n-th power, so base 2 with factor 25
+// gives 50ms, 100ms, 200ms. The cap and the jitter keep a session from
+// waiting hours to reconnect and spread out a fleet that drops at once.
+fn reconnect_backoff() -> impl Iterator<Item = Duration> {
+    ExponentialBackoff::from_millis(2)
+        .factor(25)
+        .max_delay(Duration::from_secs(30))
+        .map(jitter)
+}
+
 async fn accept_incoming(mut incoming: IncomingStreams, inner: Arc<ArcSwap<SessionInner>>) {
     let error: AcceptError = loop {
         if let Err(error) = accept_one(&mut incoming, &inner).await {
@@ -1184,7 +1197,7 @@ async fn accept_incoming(mut incoming: IncomingStreams, inner: Arc<ArcSwap<Sessi
             //   a no-no.
             let error = parking_lot::Mutex::new(Some(error));
             let reconnect = RetryIf::start(
-                ExponentialBackoff::from_millis(50),
+                reconnect_backoff(),
                 || try_reconnect(inner.clone(), error.lock().clone()).map_err(Arc::new),
                 |err: &Arc<ConnectError>| {
                     if let ConnectError::Canceled = **err {
@@ -1223,5 +1236,14 @@ mod test {
             sanitize_ua_string("something@really☺weird"),
             "something#really#weird"
         );
+    }
+
+    #[test]
+    fn test_reconnect_backoff() {
+        let delays: Vec<Duration> = reconnect_backoff().take(20).collect();
+        assert!(delays[0] <= Duration::from_millis(50));
+        for delay in delays {
+            assert!(delay <= Duration::from_secs(30), "{delay:?}");
+        }
     }
 }
