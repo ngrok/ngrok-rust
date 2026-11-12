@@ -1383,7 +1383,6 @@ dependencies = [
  "hyper-util",
  "muxado",
  "once_cell",
- "parking_lot",
  "paste",
  "pin-project",
  "proxy-protocol",

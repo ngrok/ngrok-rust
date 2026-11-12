@@ -673,7 +673,8 @@ async fn websocket_conversion() -> Result<(), BoxError> {
         .listen()
         .await?;
 
-    let url = Uri::from_str(&tun.url().replacen("https", "wss", 1))?;
+    let https_url = tun.url().to_string();
+    let url = Uri::from_str(&https_url.replacen("https", "wss", 1))?;
 
     tokio::spawn(async move {
         while let Some(mut conn) = tun.try_next().await? {
@@ -681,6 +682,10 @@ async fn websocket_conversion() -> Result<(), BoxError> {
         }
         Result::<_, BoxError>::Ok(())
     });
+
+    // The endpoint can serve the "endpoint offline" (ERR_NGROK_3200) page for a
+    // moment after `listen()` returns, which fails the websocket handshake.
+    wait_until_online(&https_url).await;
 
     let mut wss = connect_async(url).await.expect("connect").0;
 

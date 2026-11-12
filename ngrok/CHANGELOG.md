@@ -1,3 +1,16 @@
+## 0.19.1
+- Cap the wait between reconnect attempts after a session loses its connection. It starts at 50 ms and doubles up to 30 s, scaled by a random factor in [0, 1) so that sessions that drop together don't reconnect at the same moment. Before, the wait grew 50-fold per attempt with no limit: about 1 h 44 min before the fifth attempt, and a wait long enough to overflow the clock ended reconnecting for good.
+- Add `SessionBuilder::reconnect_backoff`, which sets the first wait and the cap, and `SessionBuilder::reconnect_jitter`, which turns the random factor off or on.
+- Closing a session ends a wait between reconnect attempts at once, so its tunnels learn of the close without waiting out the delay.
+- Add `SessionBuilder::reconnect_max_attempts`, which makes a session stop reconnecting after that many failed attempts in one outage; every tunnel then receives the last attempt's error.
+- Add the `ReconnectPolicy` and `ReconnectSchedule` traits and `SessionBuilder::reconnect_policy`, for deciding each wait, and when to stop, from the error of the attempt that failed. A custom policy takes precedence over the options above, and each wait it gives is kept between 1 ms and one day.
+- Drop the `parking_lot` dependency.
+
+## 0.19.0
+- Move to Rust edition 2024. ngrok and muxado now use let chains, so they need Rust 1.88 or later.
+- Require tokio-retry 0.3.2 or later, the first version with `RetryIf::start`.
+- With `verify_upstream_tls(false)`, use the process's default rustls `CryptoProvider` rather than always aws-lc-rs.
+
 ## 0.18.0
 - Add support for CEL filtering when listing resources.
 - Add support for service users
