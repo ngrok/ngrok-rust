@@ -563,7 +563,7 @@ where
 }
 
 macro_rules! proxy_proto_test {
-    (genone: $ept:ident, $vers:ident, $tun:ident, $req:expr, $cont:expr) => {
+    (genone: $ept:ident, $vers:ident, $tun:ident, $url:expr, $cont:expr) => {
         paste! {
             #[traced_test]
             #[cfg_attr(not(feature = "paid-tests"), ignore)]
@@ -575,15 +575,23 @@ macro_rules! proxy_proto_test {
                     .[<$ept _endpoint>]()
                     .proxy_proto(ProxyProto::$vers).listen().await?;
 
-                let req = $req;
-                tokio::spawn(req);
-
+                // Until the edge routes the new endpoint, a request fails
+                // without reaching the tunnel, so keep sending them until one
+                // arrives.
+                let url = $url;
+                let requests = tokio::spawn(async move {
+                    loop {
+                        let _ = reqwest::get(&url).await;
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                    }
+                });
 
                 let mut buf = vec![0u8; 12];
-                let mut conn = $tun
-                    .try_next()
-                    .await?
+                let mut conn = tokio::time::timeout(Duration::from_secs(30), $tun.try_next())
+                    .await
+                    .map_err(|_| anyhow!("no connection reached the tunnel within 30s"))??
                     .ok_or_else(|| anyhow!("tunnel closed"))?;
+                requests.abort();
 
                 conn.read_exact(&mut buf).await?;
 
@@ -594,9 +602,9 @@ macro_rules! proxy_proto_test {
         }
     };
 
-    ($vers:ident, $ex:expr, [$(($ept:ident, |$tun:ident| $req:expr)),*]) => {
+    ($vers:ident, $ex:expr, [$(($ept:ident, |$tun:ident| $url:expr)),*]) => {
         $(
-            proxy_proto_test!(genone: $ept, $vers, $tun, $req, $ex);
+            proxy_proto_test!(genone: $ept, $vers, $tun, $url, $ex);
         )*
     };
 
@@ -610,12 +618,8 @@ macro_rules! proxy_proto_test {
 proxy_proto_test!(
     [(V1, &b"PROXY TCP"[..]), (V2, &b"\x0D\x0A\x0D\x0A\x00\x0D\x0A\x51\x55\x49\x54\x0A"[..])]
     [
-        (http, |tun| {
-            reqwest::get(tun.url().to_string())
-        }),
-        (tcp, |tun| {
-            reqwest::get(tun.url().to_string().replacen("tcp", "http", 1))
-        })
+        (http, |tun| tun.url().to_string()),
+        (tcp, |tun| tun.url().to_string().replacen("tcp", "http", 1))
     ]
 );
 
