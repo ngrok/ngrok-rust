@@ -35,8 +35,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: jrobsonchase/direnv-action@v0.7
-      - uses: $/.github/workflows/rust-cache
+      - uses: $/.github/actions/nix-dev-env
+      - uses: $/.github/actions/rust-cache
       - name: cargo udeps
         run: cargo udeps --workspace --all-targets --all-features
 
@@ -46,7 +46,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: jrobsonchase/direnv-action@v0.7
+      - uses: $/.github/actions/nix-dev-env
       - name: cargo fmt
         run: cargo fmt --all -- --check
 
@@ -56,8 +56,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: jrobsonchase/direnv-action@v0.7
-      - uses: $/.github/workflows/rust-cache
+      - uses: $/.github/actions/nix-dev-env
+      - uses: $/.github/actions/rust-cache
       - name: cargo clippy
         run: cargo clippy --all-targets --all-features --workspace -- -D warnings
 
@@ -67,8 +67,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: jrobsonchase/direnv-action@v0.7
-      - uses: $/.github/workflows/rust-cache
+      - uses: $/.github/actions/nix-dev-env
+      - uses: $/.github/actions/rust-cache
       - name: cargo test
         env:
           NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
@@ -88,7 +88,7 @@ jobs:
           rustup default stable
       # We don't actually have sccache installed here (yet), but it still
       # benefits from the cargo cache.
-      - uses: $/.github/workflows/rust-cache
+      - uses: $/.github/actions/rust-cache
       - name: cargo test
         env:
           NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
@@ -103,8 +103,8 @@ jobs:
         crate: [muxado, ngrok]
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: jrobsonchase/direnv-action@v0.7
-      - uses: $/.github/workflows/rust-cache
+      - uses: $/.github/actions/nix-dev-env
+      - uses: $/.github/actions/rust-cache
       - name: semver checks
         run: cargo semver-checks check-release -p ${{ matrix.crate }}
 

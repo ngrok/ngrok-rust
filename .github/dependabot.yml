@@ -3,7 +3,8 @@ updates:
   - package-ecosystem: "github-actions"
     directories:
       - "/"                                # .github/workflows
-      - "/.github/workflows/rust-cache"    # local composite action
+      - "/.github/actions/nix-dev-env"     # local composite actions
+      - "/.github/actions/rust-cache"
     schedule:
       interval: "monthly"
     cooldown:

@@ -34,7 +34,7 @@ jobs:
           rustup default stable
       # We don't actually have sccache installed here (yet), but it still
       # benefits from the cargo cache.
-      - uses: $/.github/workflows/rust-cache
+      - uses: $/.github/actions/rust-cache
       - name: cargo test
         env:
           NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}

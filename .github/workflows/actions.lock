@@ -7,7 +7,7 @@ workflows:
         - 'actions/cache@v6.1.0'
         - 'actions/checkout@v7.0.1'
         - 'actions/github-script@v9.0.0'
-        - 'jrobsonchase/direnv-action@v0.7'
+        - 'cachix/install-nix-action@v32.0.0'
     '.github/workflows/docs.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/deploy-pages@v5.0.1'
@@ -18,14 +18,10 @@ workflows:
         - 'actions/github-script@v9.0.0'
     '.github/workflows/publish.yml': []
     '.github/workflows/release.yml':
+        - 'actions/cache@v6.1.0'
         - 'actions/checkout@v7.0.1'
-        - 'jrobsonchase/direnv-action@v0.7'
+        - 'cachix/install-nix-action@v32.0.0'
 dependencies:
-    'actions/cache@v3':
-        ref: 'v3'
-        commit: 'sha1-6f8efc29b200d32929f49075959781ed54ec270c'
-        owner_id: 44036562
-        repo_id: 215566462
     'actions/cache@v6.1.0':
         ref: 'v6.1.0'
         commit: 'sha1-55cc8345863c7cc4c66a329aec7e433d2d1c52a9'
@@ -58,16 +54,8 @@ dependencies:
         repo_id: 496012378
         uses:
             - 'actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f'
-    'cachix/install-nix-action@v18':
-        ref: 'v18'
-        commit: 'sha1-daddc62a2e67d1decb56e028c9fa68344b9b7c2a'
+    'cachix/install-nix-action@v32.0.0':
+        ref: 'v32.0.0'
+        commit: 'sha1-bb0495a1086c46893eee56f32fd192dfe4a15bb9'
         owner_id: 36824654
         repo_id: 212301524
-    'jrobsonchase/direnv-action@v0.7':
-        ref: 'v0.7'
-        commit: 'sha1-57d5101f123f9106acdd8797515c262b565ec7a5'
-        owner_id: 1553581
-        repo_id: 588225501
-        uses:
-            - 'actions/cache@v3'
-            - 'cachix/install-nix-action@v18'
