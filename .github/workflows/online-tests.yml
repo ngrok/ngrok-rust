@@ -26,16 +26,16 @@ jobs:
     # to a few minutes.
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v4.4.0
+      - uses: actions-rs/toolchain@v1.0.7
         with:
           profile: minimal
           toolchain: stable
           override: true
       # We don't actually have sccache installed here (yet), but it still
       # benefits from the cargo cache.
-      - uses: ./.github/workflows/rust-cache
-      - uses: actions-rs/cargo@v1
+      - uses: $/.github/workflows/rust-cache
+      - uses: actions-rs/cargo@v1.0.3
         env:
           NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
         with:

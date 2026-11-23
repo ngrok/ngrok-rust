@@ -10,15 +10,34 @@ on:
 name: Continuous integration
 
 jobs:
+  actions-lock:
+    name: Verify actions lockfile
+    # Not part of the release gate: a moved upstream tag can fail this check
+    # without any repo change. When publish.yml calls this workflow, the event
+    # is the caller's workflow_dispatch, so the job is skipped there.
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4.4.0
+      - name: Install gh-actions-lock
+        run: gh extension install github/gh-actions-lock --pin v0.5.1
+      - name: Verify .github/workflows/actions.lock is complete and current
+        run: gh actions-lock --verify --fail-on-warning
+
   udeps:
     name: Udeps
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
       - uses: jrobsonchase/direnv-action@v0.7
-      - uses: ./.github/workflows/rust-cache
-      - uses: actions-rs/cargo@v1
+      - uses: $/.github/workflows/rust-cache
+      - uses: actions-rs/cargo@v1.0.3
         with:
           command: udeps
           args: --workspace --all-targets --all-features
@@ -28,9 +47,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
       - uses: jrobsonchase/direnv-action@v0.7
-      - uses: actions-rs/cargo@v1
+      - uses: actions-rs/cargo@v1.0.3
         with:
           command: fmt
           args: --all -- --check
@@ -40,10 +59,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
       - uses: jrobsonchase/direnv-action@v0.7
-      - uses: ./.github/workflows/rust-cache
-      - uses: actions-rs/cargo@v1
+      - uses: $/.github/workflows/rust-cache
+      - uses: actions-rs/cargo@v1.0.3
         with:
           command: clippy
           args: --all-targets --all-features --workspace -- -D warnings
@@ -53,10 +72,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
       - uses: jrobsonchase/direnv-action@v0.7
-      - uses: ./.github/workflows/rust-cache
-      - uses: actions-rs/cargo@v1
+      - uses: $/.github/workflows/rust-cache
+      - uses: actions-rs/cargo@v1.0.3
         env:
           NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
         with:
@@ -69,16 +88,16 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v4.4.0
+      - uses: actions-rs/toolchain@v1.0.7
         with:
           profile: minimal
           toolchain: stable
           override: true
       # We don't actually have sccache installed here (yet), but it still
       # benefits from the cargo cache.
-      - uses: ./.github/workflows/rust-cache
-      - uses: actions-rs/cargo@v1
+      - uses: $/.github/workflows/rust-cache
+      - uses: actions-rs/cargo@v1.0.3
         env:
           NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
         with:
@@ -93,10 +112,10 @@ jobs:
       matrix:
         crate: [muxado, ngrok]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
       - uses: jrobsonchase/direnv-action@v0.7
-      - uses: ./.github/workflows/rust-cache
-      - uses: actions-rs/cargo@v1
+      - uses: $/.github/workflows/rust-cache
+      - uses: actions-rs/cargo@v1.0.3
         name: semver checks
         with:
           command: semver-checks

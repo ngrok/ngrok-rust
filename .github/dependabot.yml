@@ -1,0 +1,13 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directories:
+      - "/"                                # .github/workflows
+      - "/.github/workflows/rust-cache"    # local composite action
+    schedule:
+      interval: "monthly"
+    cooldown:
+      default-days: 3
+    groups:
+      github-actions:
+        patterns: ["*"]
