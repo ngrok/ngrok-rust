@@ -6,25 +6,25 @@ workflows:
     '.github/workflows/ci.yml':
         - 'actions-rs/cargo@v1.0.3'
         - 'actions-rs/toolchain@v1.0.7'
-        - 'actions/cache@v3.5.0'
-        - 'actions/checkout@v4.4.0'
-        - 'actions/github-script@v6.4.1'
+        - 'actions/cache@v6.1.0'
+        - 'actions/checkout@v7.0.1'
+        - 'actions/github-script@v9.0.0'
         - 'jrobsonchase/direnv-action@v0.7'
     '.github/workflows/docs.yml':
         - 'actions-rs/cargo@v1.0.3'
         - 'actions-rs/toolchain@v1.0.7'
-        - 'actions/checkout@v4.4.0'
-        - 'actions/deploy-pages@v4.0.5'
-        - 'actions/upload-pages-artifact@v3.0.1'
+        - 'actions/checkout@v7.0.1'
+        - 'actions/deploy-pages@v5.0.1'
+        - 'actions/upload-pages-artifact@v5.0.0'
     '.github/workflows/online-tests.yml':
         - 'actions-rs/cargo@v1.0.3'
         - 'actions-rs/toolchain@v1.0.7'
-        - 'actions/cache@v3.5.0'
-        - 'actions/checkout@v4.4.0'
-        - 'actions/github-script@v6.4.1'
+        - 'actions/cache@v6.1.0'
+        - 'actions/checkout@v7.0.1'
+        - 'actions/github-script@v9.0.0'
     '.github/workflows/publish.yml': []
     '.github/workflows/release.yml':
-        - 'actions/checkout@v4.4.0'
+        - 'actions/checkout@v7.0.1'
         - 'jrobsonchase/direnv-action@v0.7'
 dependencies:
     'actions-rs/cargo@v1.0.3':
@@ -42,38 +42,38 @@ dependencies:
         commit: 'sha1-6f8efc29b200d32929f49075959781ed54ec270c'
         owner_id: 44036562
         repo_id: 215566462
-    'actions/cache@v3.5.0':
-        ref: 'v3.5.0'
-        commit: 'sha1-6f8efc29b200d32929f49075959781ed54ec270c'
+    'actions/cache@v6.1.0':
+        ref: 'v6.1.0'
+        commit: 'sha1-55cc8345863c7cc4c66a329aec7e433d2d1c52a9'
         owner_id: 44036562
         repo_id: 215566462
-    'actions/checkout@v4.4.0':
-        ref: 'v4.4.0'
-        commit: 'sha1-11d5960a326750d5838078e36cf38b85af677262'
+    'actions/checkout@v7.0.1':
+        ref: 'v7.0.1'
+        commit: 'sha1-3d3c42e5aac5ba805825da76410c181273ba90b1'
         owner_id: 44036562
         repo_id: 197814629
-    'actions/deploy-pages@v4.0.5':
-        ref: 'v4.0.5'
-        commit: 'sha1-d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e'
+    'actions/deploy-pages@v5.0.1':
+        ref: 'v5.0.1'
+        commit: 'sha1-368f82528645a54fb793d4d04e342629a3f51346'
         owner_id: 44036562
         repo_id: 438112499
-    'actions/github-script@v6.4.1':
-        ref: 'v6.4.1'
-        commit: 'sha1-d7906e4ad0b1822421a7e6a35d5ca353c962f410'
+    'actions/github-script@v9.0.0':
+        ref: 'v9.0.0'
+        commit: 'sha1-3a2844b7e9c422d3c10d287c895573f7108da1b3'
         owner_id: 44036562
         repo_id: 205262760
-    'actions/upload-artifact@v4':
-        ref: 'v4'
-        commit: 'sha1-ea165f8d65b6e75b540449e92b4886f43607fa02'
+    'actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f':
+        ref: 'v7.0.0'
+        commit: 'sha1-bbbca2ddaa5d8feaa63e36b76fdaad77386f024f'
         owner_id: 44036562
         repo_id: 192625955
-    'actions/upload-pages-artifact@v3.0.1':
-        ref: 'v3.0.1'
-        commit: 'sha1-56afc609e74202658d3ffba0e8f6dda462b719fa'
+    'actions/upload-pages-artifact@v5.0.0':
+        ref: 'v5.0.0'
+        commit: 'sha1-fc324d3547104276b827a68afc52ff2a11cc49c9'
         owner_id: 44036562
         repo_id: 496012378
         uses:
-            - 'actions/upload-artifact@v4'
+            - 'actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f'
     'cachix/install-nix-action@v18':
         ref: 'v18'
         commit: 'sha1-daddc62a2e67d1decb56e028c9fa68344b9b7c2a'

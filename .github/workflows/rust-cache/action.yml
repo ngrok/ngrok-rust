@@ -6,7 +6,7 @@ runs:
   using: "composite"
   steps:
     - name: configure sccache
-      uses: actions/github-script@v6.4.1
+      uses: actions/github-script@v9.0.0
       with:
         script: |
           core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
@@ -14,7 +14,7 @@ runs:
           core.exportVariable('SCCACHE_GHA_CACHE_TO', 'sccache-${{runner.os}}-${{github.ref_name}}');
           core.exportVariable('SCCACHE_GHA_CACHE_FROM', 'sccache-${{runner.os}}-main,sccache-${{runner.os}}-');
     - name: cargo registry cache
-      uses: actions/cache@v3.5.0
+      uses: actions/cache@v6.1.0
       with:
         key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.toml') }}-${{ github.sha }}
         restore-keys: |

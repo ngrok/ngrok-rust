@@ -9,7 +9,7 @@ jobs:
     name: Build Rustdocs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.4.0
+      - uses: actions/checkout@v7.0.1
       - uses: actions-rs/toolchain@v1.0.7
         with:
           profile: minimal
@@ -34,7 +34,7 @@ jobs:
           done
 
       - name: Upload static files as artifact
-        uses: actions/upload-pages-artifact@v3.0.1
+        uses: actions/upload-pages-artifact@v5.0.0
         with:
           path: target/doc
 
@@ -54,4 +54,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4.0.5
+        uses: actions/deploy-pages@v5.0.1

@@ -23,7 +23,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4.4.0
+      - uses: actions/checkout@v7.0.1
       - name: Install gh-actions-lock
         run: gh extension install github/gh-actions-lock --pin v0.5.1
       - name: Verify .github/workflows/actions.lock is complete and current
@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4.4.0
+      - uses: actions/checkout@v7.0.1
       - uses: jrobsonchase/direnv-action@v0.7
       - uses: $/.github/workflows/rust-cache
       - uses: actions-rs/cargo@v1.0.3
@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4.4.0
+      - uses: actions/checkout@v7.0.1
       - uses: jrobsonchase/direnv-action@v0.7
       - uses: actions-rs/cargo@v1.0.3
         with:
@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4.4.0
+      - uses: actions/checkout@v7.0.1
       - uses: jrobsonchase/direnv-action@v0.7
       - uses: $/.github/workflows/rust-cache
       - uses: actions-rs/cargo@v1.0.3
@@ -72,7 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4.4.0
+      - uses: actions/checkout@v7.0.1
       - uses: jrobsonchase/direnv-action@v0.7
       - uses: $/.github/workflows/rust-cache
       - uses: actions-rs/cargo@v1.0.3
@@ -88,7 +88,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4.4.0
+      - uses: actions/checkout@v7.0.1
       - uses: actions-rs/toolchain@v1.0.7
         with:
           profile: minimal
@@ -112,7 +112,7 @@ jobs:
       matrix:
         crate: [muxado, ngrok]
     steps:
-      - uses: actions/checkout@v4.4.0
+      - uses: actions/checkout@v7.0.1
       - uses: jrobsonchase/direnv-action@v0.7
       - uses: $/.github/workflows/rust-cache
       - uses: actions-rs/cargo@v1.0.3
