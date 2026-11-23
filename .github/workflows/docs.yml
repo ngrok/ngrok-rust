@@ -10,20 +10,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: actions-rs/toolchain@v1.0.7
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+      - name: Install stable Rust toolchain
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
 
       - name: update apt
         run: sudo apt-get update
       - name: install protoc
         run: sudo apt-get -o Acquire::Retries=3 install -y protobuf-compiler
-      - uses: actions-rs/cargo@v1.0.3
-        with:
-          command: doc
-          args: --no-deps
+      - name: cargo doc
+        run: cargo doc --no-deps
 
       - name: Archive docs
         shell: sh

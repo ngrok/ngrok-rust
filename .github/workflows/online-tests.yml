@@ -27,17 +27,15 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: actions-rs/toolchain@v1.0.7
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+      - name: Install stable Rust toolchain
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
       # We don't actually have sccache installed here (yet), but it still
       # benefits from the cargo cache.
       - uses: $/.github/workflows/rust-cache
-      - uses: actions-rs/cargo@v1.0.3
+      - name: cargo test
         env:
           NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
-        with:
-          command: test
-          args: --features=paid-tests,long-tests --workspace --all-targets
+        run: cargo test --features=paid-tests,long-tests --workspace --all-targets

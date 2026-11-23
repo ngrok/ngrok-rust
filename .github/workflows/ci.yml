@@ -37,10 +37,8 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - uses: jrobsonchase/direnv-action@v0.7
       - uses: $/.github/workflows/rust-cache
-      - uses: actions-rs/cargo@v1.0.3
-        with:
-          command: udeps
-          args: --workspace --all-targets --all-features
+      - name: cargo udeps
+        run: cargo udeps --workspace --all-targets --all-features
 
   fmt:
     name: Rustfmt
@@ -49,10 +47,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: jrobsonchase/direnv-action@v0.7
-      - uses: actions-rs/cargo@v1.0.3
-        with:
-          command: fmt
-          args: --all -- --check
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
 
   clippy:
     name: Clippy
@@ -62,10 +58,8 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - uses: jrobsonchase/direnv-action@v0.7
       - uses: $/.github/workflows/rust-cache
-      - uses: actions-rs/cargo@v1.0.3
-        with:
-          command: clippy
-          args: --all-targets --all-features --workspace -- -D warnings
+      - name: cargo clippy
+        run: cargo clippy --all-targets --all-features --workspace -- -D warnings
 
   test-nix:
     name: Test Nix
@@ -75,12 +69,10 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - uses: jrobsonchase/direnv-action@v0.7
       - uses: $/.github/workflows/rust-cache
-      - uses: actions-rs/cargo@v1.0.3
+      - name: cargo test
         env:
           NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
-        with:
-          command: test
-          args: --workspace --all-targets
+        run: cargo test --workspace --all-targets
 
 
   test-win:
@@ -89,20 +81,18 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: actions-rs/toolchain@v1.0.7
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+      - name: Install stable Rust toolchain
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
       # We don't actually have sccache installed here (yet), but it still
       # benefits from the cargo cache.
       - uses: $/.github/workflows/rust-cache
-      - uses: actions-rs/cargo@v1.0.3
+      - name: cargo test
         env:
           NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
-        with:
-          command: test
-          args: --workspace --all-targets
+        run: cargo test --workspace --all-targets
 
   semver:
     name: Semver Check
@@ -115,10 +105,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - uses: jrobsonchase/direnv-action@v0.7
       - uses: $/.github/workflows/rust-cache
-      - uses: actions-rs/cargo@v1.0.3
-        name: semver checks
-        with:
-          command: semver-checks
-          args: check-release -p ${{ matrix.crate }}
+      - name: semver checks
+        run: cargo semver-checks check-release -p ${{ matrix.crate }}
 
 

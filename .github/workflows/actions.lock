@@ -4,21 +4,15 @@
 version: 'v0.0.3'
 workflows:
     '.github/workflows/ci.yml':
-        - 'actions-rs/cargo@v1.0.3'
-        - 'actions-rs/toolchain@v1.0.7'
         - 'actions/cache@v6.1.0'
         - 'actions/checkout@v7.0.1'
         - 'actions/github-script@v9.0.0'
         - 'jrobsonchase/direnv-action@v0.7'
     '.github/workflows/docs.yml':
-        - 'actions-rs/cargo@v1.0.3'
-        - 'actions-rs/toolchain@v1.0.7'
         - 'actions/checkout@v7.0.1'
         - 'actions/deploy-pages@v5.0.1'
         - 'actions/upload-pages-artifact@v5.0.0'
     '.github/workflows/online-tests.yml':
-        - 'actions-rs/cargo@v1.0.3'
-        - 'actions-rs/toolchain@v1.0.7'
         - 'actions/cache@v6.1.0'
         - 'actions/checkout@v7.0.1'
         - 'actions/github-script@v9.0.0'
@@ -27,16 +21,6 @@ workflows:
         - 'actions/checkout@v7.0.1'
         - 'jrobsonchase/direnv-action@v0.7'
 dependencies:
-    'actions-rs/cargo@v1.0.3':
-        ref: 'v1.0.3'
-        commit: 'sha1-844f36862e911db73fe0815f00a4a2602c279505'
-        owner_id: 55226457
-        repo_id: 208143758
-    'actions-rs/toolchain@v1.0.7':
-        ref: 'v1.0.7'
-        commit: 'sha1-16499b5e05bf2e26879000db0c1d13f7e13fa3af'
-        owner_id: 55226457
-        repo_id: 208060770
     'actions/cache@v3':
         ref: 'v3'
         commit: 'sha1-6f8efc29b200d32929f49075959781ed54ec270c'
