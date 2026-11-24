@@ -10,58 +10,69 @@ on:
 name: Continuous integration
 
 jobs:
+  actions-lock:
+    name: Verify actions lockfile
+    # Not part of the release gate: a moved upstream tag can fail this check
+    # without any repo change. When publish.yml calls this workflow, the event
+    # is the caller's workflow_dispatch, so the job is skipped there.
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Install gh-actions-lock
+        run: gh extension install github/gh-actions-lock --pin v0.5.1
+      - name: Verify .github/workflows/actions.lock is complete and current
+        run: gh actions-lock --verify --fail-on-warning
+
   udeps:
     name: Udeps
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: jrobsonchase/direnv-action@v0.7
-      - uses: ./.github/workflows/rust-cache
-      - uses: actions-rs/cargo@v1
-        with:
-          command: udeps
-          args: --workspace --all-targets --all-features
+      - uses: actions/checkout@v7.0.1
+      - uses: $/.github/actions/nix-dev-env
+      - uses: $/.github/actions/rust-cache
+      - name: cargo udeps
+        run: cargo udeps --workspace --all-targets --all-features
 
   fmt:
     name: Rustfmt
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: jrobsonchase/direnv-action@v0.7
-      - uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+      - uses: actions/checkout@v7.0.1
+      - uses: $/.github/actions/nix-dev-env
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
 
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: jrobsonchase/direnv-action@v0.7
-      - uses: ./.github/workflows/rust-cache
-      - uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: --all-targets --all-features --workspace -- -D warnings
+      - uses: actions/checkout@v7.0.1
+      - uses: $/.github/actions/nix-dev-env
+      - uses: $/.github/actions/rust-cache
+      - name: cargo clippy
+        run: cargo clippy --all-targets --all-features --workspace -- -D warnings
 
   test-nix:
     name: Test Nix
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: jrobsonchase/direnv-action@v0.7
-      - uses: ./.github/workflows/rust-cache
-      - uses: actions-rs/cargo@v1
+      - uses: actions/checkout@v7.0.1
+      - uses: $/.github/actions/nix-dev-env
+      - uses: $/.github/actions/rust-cache
+      - name: cargo test
         env:
           NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
-        with:
-          command: test
-          args: --workspace --all-targets
+        run: cargo test --workspace --all-targets
 
 
   test-win:
@@ -69,21 +80,19 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+      - uses: actions/checkout@v7.0.1
+      - name: Install stable Rust toolchain
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
       # We don't actually have sccache installed here (yet), but it still
       # benefits from the cargo cache.
-      - uses: ./.github/workflows/rust-cache
-      - uses: actions-rs/cargo@v1
+      - uses: $/.github/actions/rust-cache
+      - name: cargo test
         env:
           NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
-        with:
-          command: test
-          args: --workspace --all-targets
+        run: cargo test --workspace --all-targets
 
   semver:
     name: Semver Check
@@ -93,13 +102,10 @@ jobs:
       matrix:
         crate: [muxado, ngrok]
     steps:
-      - uses: actions/checkout@v4
-      - uses: jrobsonchase/direnv-action@v0.7
-      - uses: ./.github/workflows/rust-cache
-      - uses: actions-rs/cargo@v1
-        name: semver checks
-        with:
-          command: semver-checks
-          args: check-release -p ${{ matrix.crate }}
+      - uses: actions/checkout@v7.0.1
+      - uses: $/.github/actions/nix-dev-env
+      - uses: $/.github/actions/rust-cache
+      - name: semver checks
+        run: cargo semver-checks check-release -p ${{ matrix.crate }}
 
 

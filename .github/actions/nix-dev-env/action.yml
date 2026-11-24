@@ -1,0 +1,48 @@
+name: 'nix dev environment'
+description: >-
+  Install Nix, load this repo's flake dev shell via direnv, and export it to
+  the rest of the job. Vendored replacement for jrobsonchase/direnv-action:
+  direnv now comes from the nixpkgs revision pinned in flake.lock instead of
+  an unpinned download of the latest GitHub release.
+inputs: {}
+outputs: {}
+runs:
+  using: "composite"
+  steps:
+    - uses: cachix/install-nix-action@v32.0.0
+
+    - name: Cache direnv
+      uses: actions/cache@v6.1.0
+      with:
+        key: direnv-${{ runner.os }}-${{ hashFiles('**/flake.lock', '**/flake.nix', '.envrc') }}-${{ github.ref_name }}
+        restore-keys: |
+          direnv-${{ runner.os }}-${{ hashFiles('**/flake.lock', '**/flake.nix', '.envrc') }}-main
+          direnv-${{ runner.os }}-${{ hashFiles('**/flake.lock', '**/flake.nix', '.envrc') }}-
+          direnv-${{ runner.os }}-
+        path: /tmp/direnv-out
+
+    - name: Import direnv cache
+      shell: bash
+      run: |
+        if [ -f /tmp/direnv-out ]; then
+          echo "cache hit, importing direnv store paths"
+          nix-store --import < /tmp/direnv-out
+        else
+          echo "cache miss, skipping import"
+        fi
+
+    - name: Install direnv from the flake's pinned nixpkgs
+      shell: bash
+      run: |
+        direnv_out=$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#direnv)
+        echo "${direnv_out}/bin" >> "$GITHUB_PATH"
+
+    - name: Load dev shell
+      shell: bash
+      run: |
+        direnv allow
+        direnv export gha >> "$GITHUB_ENV"
+
+    - name: Export direnv cache
+      shell: bash
+      run: nix-store --export $(nix-store -qR $(find .direnv -type l)) > /tmp/direnv-out
