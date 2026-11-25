@@ -22,6 +22,6 @@ awaitdrop = "0.1.1"
 [dev-dependencies]
 anyhow = { version = "1.0" }
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
-tokio = { version = "1.44.1", features = ["full"] }
+tokio = { version = "1.44.1", features = ["full", "test-util"] }
 tracing-core = { version = "0.1.30" }
 tracing-test = "0.2.3"
