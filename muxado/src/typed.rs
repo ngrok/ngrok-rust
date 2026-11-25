@@ -27,6 +27,7 @@ use crate::{
         Accept,
         OpenClose,
         Session,
+        ShutdownHandle,
     },
     stream::Stream,
 };
@@ -101,6 +102,14 @@ pub trait TypedSession: TypedAccept + TypedOpenClose {
 
     /// Split the typed session into open/accept components.
     fn split_typed(self) -> (Self::TypedOpen, Self::TypedAccept);
+
+    /// Get a handle that can forcibly shut down this session, if supported.
+    ///
+    /// Wrappers around a [TypedSession] should forward this to the wrapped
+    /// session, or heartbeat timeouts can't close the underlying transport.
+    fn shutdown_handle(&self) -> Option<ShutdownHandle> {
+        None
+    }
 }
 
 /// Typed analogue to the [Accept] trait.
@@ -180,5 +189,9 @@ where
     fn split_typed(self) -> (Self::TypedOpen, Self::TypedAccept) {
         let (open, accept) = self.inner.split();
         (Typed { inner: open }, Typed { inner: accept })
+    }
+
+    fn shutdown_handle(&self) -> Option<ShutdownHandle> {
+        self.inner.shutdown_handle()
     }
 }
