@@ -39,6 +39,7 @@ use tokio::{
 
 use crate::{
     errors::Error,
+    session::ShutdownHandle,
     typed::{
         StreamType,
         TypedAccept,
@@ -436,6 +437,10 @@ where
                 inner: accept,
             },
         )
+    }
+
+    fn shutdown_handle(&self) -> Option<ShutdownHandle> {
+        self.inner.shutdown_handle()
     }
 }
 
