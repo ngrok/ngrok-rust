@@ -1,3 +1,6 @@
+## Unreleased
+- If a heartbeat handler returns an error, the error is now logged and the handler keeps being called. Before, the handler was never called again, so later missed heartbeats went unreported.
+
 ## 0.19.1
 - Cap the wait between reconnect attempts after a session loses its connection. It starts at 50 ms and doubles up to 30 s, scaled by a random factor in [0, 1) so that sessions that drop together don't reconnect at the same moment. Before, the wait grew 50-fold per attempt with no limit: about 1 h 44 min before the fifth attempt, and a wait long enough to overflow the clock ended reconnecting for good.
 - Add `SessionBuilder::reconnect_backoff`, which sets the first wait and the cap, and `SessionBuilder::reconnect_jitter`, which turns the random factor off or on.
