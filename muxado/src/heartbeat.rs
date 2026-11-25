@@ -314,7 +314,7 @@ fn start_responder(rt: &Handle, mut stream: TypedStream, drop_waiter: awaitdrop:
         async move {
             loop {
                 let mut buf = [0u8; 4];
-                if let Err(e) = stream.read(&mut buf[..]).await {
+                if let Err(e) = stream.read_exact(&mut buf[..]).await {
                     tracing::debug!(?e, "heartbeat responder exiting");
                     return;
                 }
@@ -404,4 +404,58 @@ fn get_durations(durations: &Arc<(AtomicU64, AtomicU64)>) -> (Duration, Duration
         Duration::from_nanos(durations.0.load(Ordering::Relaxed)),
         Duration::from_nanos(durations.1.load(Ordering::Relaxed)),
     )
+}
+
+#[cfg(test)]
+mod test {
+    use tokio::io::duplex;
+
+    use super::*;
+    use crate::{
+        SessionBuilder,
+        typed::Typed,
+    };
+
+    /// The responder echoes each heartbeat whole even when it arrives in
+    /// pieces, and stops when the remote ends the stream rather than echoing
+    /// zeroes.
+    #[tokio::test(start_paused = true)]
+    async fn responder_echoes_whole_heartbeats_and_stops_at_eof() {
+        let (left, right) = duplex(64 * 1024);
+        let server = Typed::new(SessionBuilder::new(left).server().start());
+        let (mut server_open, mut server_accept) = server.split_typed();
+        // Hold the client's own heartbeat stream without answering it; the
+        // long interval keeps that from closing the session.
+        tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok(stream) = server_accept.accept_typed().await {
+                held.push(stream);
+            }
+        });
+
+        let client = Typed::new(SessionBuilder::new(right).client().start());
+        let cfg = HeartbeatConfig {
+            interval: Duration::from_secs(3600),
+            tolerance: Duration::from_secs(3600),
+            handler: None,
+        };
+        let (mut hb, _ctl) = Heartbeat::start(client, cfg).await.unwrap();
+        tokio::spawn(async move { while hb.accept_typed().await.is_ok() {} });
+
+        let mut stream = server_open.open_typed(HEARTBEAT_TYPE).await.unwrap();
+        stream.write_all(&[1, 2]).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        stream.write_all(&[3, 4]).await.unwrap();
+        let mut buf = [0u8; 4];
+        tokio::time::timeout(Duration::from_secs(1), stream.read_exact(&mut buf))
+            .await
+            .expect("the responder should echo the heartbeat")
+            .unwrap();
+        assert_eq!(buf, [1, 2, 3, 4]);
+
+        stream.shutdown().await.unwrap();
+        let mut rest = Vec::new();
+        let _ = tokio::time::timeout(Duration::from_secs(1), stream.read_to_end(&mut rest)).await;
+        assert!(rest.is_empty(), "the responder echoed after EOF: {rest:?}");
+    }
 }
