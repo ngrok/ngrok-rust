@@ -890,8 +890,8 @@ impl SessionBuilder {
 
     /// Call the provided handler whenever a heartbeat response is received.
     ///
-    /// If the handler returns an error, the heartbeat task will exit, resulting
-    /// in the session eventually dying as well.
+    /// An error returned from the handler is logged and otherwise ignored: it
+    /// doesn't stop heartbeats or close the session.
     pub fn handle_heartbeat(&mut self, callback: impl HeartbeatHandler) -> &mut Self {
         self.heartbeat_handler = Some(Arc::new(callback));
         self

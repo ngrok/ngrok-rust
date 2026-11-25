@@ -78,7 +78,8 @@ pub trait HeartbeatHandler: Send + Sync + 'static {
     /// A `None` latency implies that the timeout was reached before the
     /// heartbeat reply was received.
     ///
-    /// If this returns an error, the heartbeat task will exit.
+    /// An error returned from this is logged and otherwise ignored: it
+    /// doesn't stop heartbeats or close the session.
     async fn handle_heartbeat(&self, latency: Option<Duration>) -> Result<(), Box<dyn StdError>>;
 }
 
@@ -194,21 +195,18 @@ impl HeartbeatCtl {
                 async move {
                     let mut deadline = tokio::time::Instant::now() + interval + tolerance;
                     loop {
-                        match tokio::time::timeout_at(deadline, mark.recv()).await {
-                            Err(_e) => {
-                                if let Some(cb) = cb.as_ref() {
-                                    cb.handle_heartbeat(None).await?;
-                                }
-                            }
-                            Ok(Some(lat)) => {
-                                if let Some(cb) = cb.as_ref() {
-                                    cb.handle_heartbeat(lat.into()).await?;
-                                }
-                            }
-                            Ok(None) => {
-                                return Result::<(), Box<dyn StdError>>::Ok(());
-                            }
+                        let latency = match tokio::time::timeout_at(deadline, mark.recv()).await {
+                            Err(_) => None,
+                            Ok(Some(lat)) => Some(lat),
+                            Ok(None) => return,
                         };
+                        // A failing handler says nothing about whether the
+                        // connection is alive, so don't stop checking it.
+                        if let Some(cb) = cb.as_ref()
+                            && let Err(error) = cb.handle_heartbeat(latency).await
+                        {
+                            tracing::warn!(%error, "heartbeat handler error");
+                        }
 
                         // Slight divergence from Go implementation: this didn't
                         // previously happen in the "timeout" case, which did noting but
@@ -408,6 +406,8 @@ fn get_durations(durations: &Arc<(AtomicU64, AtomicU64)>) -> (Duration, Duration
 
 #[cfg(test)]
 mod test {
+    use std::sync::Mutex;
+
     use tokio::io::duplex;
 
     use super::*;
@@ -415,6 +415,43 @@ mod test {
         SessionBuilder,
         typed::Typed,
     };
+
+    fn config(handler: Option<Arc<dyn HeartbeatHandler>>) -> HeartbeatConfig {
+        HeartbeatConfig {
+            interval: Duration::from_secs(1),
+            tolerance: Duration::from_secs(1),
+            handler,
+        }
+    }
+
+    type Calls = Arc<Mutex<Vec<Option<Duration>>>>;
+
+    /// A handler that returns an error neither closes the session nor
+    /// stops heartbeats.
+    #[tokio::test(start_paused = true)]
+    async fn handler_error_keeps_session_open() {
+        let (left, right) = duplex(64 * 1024);
+        let server = Typed::new(SessionBuilder::new(left).server().start());
+        let (mut server, _server_ctl) = Heartbeat::start(server, config(None)).await.unwrap();
+        tokio::spawn(async move { while server.accept_typed().await.is_ok() {} });
+
+        let calls: Calls = Default::default();
+        let c = calls.clone();
+        let handler = move |lat: Option<Duration>| {
+            c.lock().unwrap().push(lat);
+            async { Err::<(), Box<dyn StdError>>("boom".into()) }
+        };
+        let client = Typed::new(SessionBuilder::new(right).client().start());
+        let (mut hb, _ctl) = Heartbeat::start(client, config(Some(Arc::new(handler))))
+            .await
+            .unwrap();
+
+        let res = tokio::time::timeout(Duration::from_secs(10), hb.accept_typed()).await;
+        assert!(res.is_err(), "session should stay open");
+        let calls = calls.lock().unwrap();
+        assert!(calls.len() >= 9, "heartbeats should continue: {calls:?}");
+        assert!(calls.iter().all(Option::is_some), "{calls:?}");
+    }
 
     /// The responder echoes each heartbeat whole even when it arrives in
     /// pieces, and stops when the remote ends the stream rather than echoing
