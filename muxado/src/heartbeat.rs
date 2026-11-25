@@ -31,6 +31,7 @@ use tokio::{
     runtime::Handle,
     select,
     sync::{
+        Notify,
         mpsc,
         oneshot,
     },
@@ -48,6 +49,11 @@ use crate::{
 };
 
 const HEARTBEAT_TYPE: StreamType = StreamType::clamp(0xFFFFFFFF);
+
+// The shortest interval between scheduled heartbeats. Shorter intervals,
+// including zero, are raised to this, both for sending heartbeats and for
+// timing them out.
+const MIN_INTERVAL: Duration = Duration::from_millis(1);
 
 /// Wrapper for a muxado [TypedSession] that adds heartbeating over a dedicated
 /// typed stream.
@@ -67,6 +73,8 @@ pub struct HeartbeatCtl {
     #[allow(dead_code)]
     dropref: awaitdrop::Ref,
     durations: Arc<(AtomicU64, AtomicU64)>,
+    // Wakes the requester so it picks up a new interval right away.
+    interval_changed: Arc<Notify>,
     on_demand: mpsc::Sender<oneshot::Sender<Duration>>,
 }
 
@@ -139,6 +147,7 @@ where
                 (cfg.interval.as_nanos() as u64).into(),
                 (cfg.tolerance.as_nanos() as u64).into(),
             )),
+            interval_changed: Arc::new(Notify::new()),
             on_demand: dtx,
         };
 
@@ -168,10 +177,16 @@ impl HeartbeatCtl {
     }
 
     /// Change the heartbeat interval.
+    ///
+    /// If the new interval would make a heartbeat due sooner, the next one is
+    /// brought forward; otherwise it's sent as already scheduled and the new
+    /// interval applies from then on. Heartbeats are sent at most once a
+    /// millisecond.
     pub fn set_interval(&self, interval: Duration) {
         self.durations
             .0
             .store(interval.as_nanos() as u64, Ordering::Relaxed);
+        self.interval_changed.notify_one();
     }
 
     /// Change the heartbeat tolerance.
@@ -236,8 +251,13 @@ impl HeartbeatCtl {
         mark: mpsc::Sender<Duration>,
         drop_waiter: awaitdrop::WaitFuture,
     ) -> Result<(), io::Error> {
-        let (interval, _) = self.get_durations();
-        let mut ticker = tokio::time::interval(interval);
+        let mut interval = self.get_durations().0;
+        // When the last scheduled heartbeat was sent, and when the next one
+        // is due. The first is due right away.
+        let mut last_tick = tokio::time::Instant::now();
+        let mut next_tick = last_tick;
+        let durations = self.durations.clone();
+        let interval_changed = self.interval_changed.clone();
 
         tokio::spawn(
             select(
@@ -245,15 +265,35 @@ impl HeartbeatCtl {
                     loop {
                         let mut resp_chan: Option<oneshot::Sender<Duration>> = None;
 
+                        // Pick up interval changes. The check task's current
+                        // deadline is based on an earlier interval, so the
+                        // heartbeat that's already due is never pushed back:
+                        // a new interval can only bring it forward, and no
+                        // earlier than now. Later ones follow the new
+                        // interval.
+                        let new_interval = get_durations(&durations).0;
+                        if new_interval != interval {
+                            interval = new_interval;
+                            let rescheduled =
+                                (last_tick + interval).max(tokio::time::Instant::now());
+                            next_tick = next_tick.min(rescheduled);
+                        }
+
+                        let mut scheduled = false;
                         select! {
-                            // If on_demand is closed, this will return None
-                            // immediately. In that case, wait on the next tick instead.
-                            c = on_demand.recv() => if c.is_none() {
-                                ticker.tick().await;
-                            } else {
-                                resp_chan = c;
+                            // Loop around to pick up the new interval.
+                            _ = interval_changed.notified() => continue,
+                            // on_demand only closes when the HeartbeatCtl is
+                            // dropped, which tears the heartbeat down.
+                            c = on_demand.recv() => match c {
+                                Some(c) => resp_chan = Some(c),
+                                None => return,
                             },
-                            _ = ticker.tick() => {},
+                            _ = tokio::time::sleep_until(next_tick) => scheduled = true,
+                        }
+                        if scheduled {
+                            last_tick = tokio::time::Instant::now();
+                            next_tick = last_tick + interval;
                         }
 
                         tracing::debug!("sending heartbeat");
@@ -262,6 +302,7 @@ impl HeartbeatCtl {
                         let id: i32 = rand::random();
 
                         if stream.write_all(&id.to_be_bytes()[..]).await.is_err() {
+                            tracing::debug!("error writing heartbeat");
                             return;
                         }
 
@@ -279,6 +320,7 @@ impl HeartbeatCtl {
                         let resp_id = i32::from_be_bytes(resp_bytes);
 
                         if id != resp_id {
+                            tracing::debug!("heartbeat response id mismatch");
                             return;
                         }
 
@@ -399,7 +441,7 @@ where
 
 fn get_durations(durations: &Arc<(AtomicU64, AtomicU64)>) -> (Duration, Duration) {
     (
-        Duration::from_nanos(durations.0.load(Ordering::Relaxed)),
+        Duration::from_nanos(durations.0.load(Ordering::Relaxed)).max(MIN_INTERVAL),
         Duration::from_nanos(durations.1.load(Ordering::Relaxed)),
     )
 }
@@ -425,6 +467,148 @@ mod test {
     }
 
     type Calls = Arc<Mutex<Vec<Option<Duration>>>>;
+
+    fn recorder() -> (Arc<dyn HeartbeatHandler>, Calls) {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let c = calls.clone();
+        let handler = move |lat: Option<Duration>| {
+            c.lock().unwrap().push(lat);
+            async { Ok::<(), Box<dyn StdError>>(()) }
+        };
+        (Arc::new(handler), calls)
+    }
+
+    /// Changing the interval at runtime, up or down, doesn't make a healthy
+    /// session time out.
+    #[tokio::test(start_paused = true)]
+    async fn set_interval_keeps_session() {
+        for (from, to) in [(10, 1), (1, 10)] {
+            let (left, right) = duplex(64 * 1024);
+            let server = Typed::new(SessionBuilder::new(left).server().start());
+            let (mut server, _server_ctl) = Heartbeat::start(server, config(None)).await.unwrap();
+            tokio::spawn(async move { while server.accept_typed().await.is_ok() {} });
+
+            let (handler, calls) = recorder();
+            let client = Typed::new(SessionBuilder::new(right).client().start());
+            let cfg = HeartbeatConfig {
+                interval: Duration::from_secs(from),
+                tolerance: Duration::from_secs(2),
+                handler: Some(handler),
+            };
+            let (mut hb, ctl) = Heartbeat::start(client, cfg).await.unwrap();
+
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            ctl.set_interval(Duration::from_secs(to));
+
+            let res = tokio::time::timeout(Duration::from_secs(60), hb.accept_typed()).await;
+            assert!(res.is_err(), "{from}s -> {to}s: session should stay open");
+            let calls = calls.lock().unwrap();
+            assert!(
+                calls.iter().all(Option::is_some),
+                "{from}s -> {to}s: {calls:?}"
+            );
+            let expected = 60 / to.max(1) as usize;
+            assert!(
+                calls.len() + 2 >= expected,
+                "{from}s -> {to}s: expected about {expected} beats, got {}",
+                calls.len()
+            );
+        }
+    }
+
+    /// A client with the given interval and tolerance, and a server that
+    /// answers its heartbeats. The server sends none of its own, so the
+    /// client doesn't have to keep accepting for the session to stay up.
+    async fn healthy_pair(
+        interval: Duration,
+        tolerance: Duration,
+    ) -> (Heartbeat<Typed<crate::MuxadoSession>>, HeartbeatCtl, Calls) {
+        let (left, right) = duplex(64 * 1024);
+        let mut server = Typed::new(SessionBuilder::new(left).server().start());
+        tokio::spawn(async move {
+            while let Ok(mut stream) = server.accept_typed().await {
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 4];
+                    while stream.read_exact(&mut buf).await.is_ok() {
+                        if stream.write_all(&buf).await.is_err() {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+
+        let (handler, calls) = recorder();
+        let client = Typed::new(SessionBuilder::new(right).client().start());
+        let cfg = HeartbeatConfig {
+            interval,
+            tolerance,
+            handler: Some(handler),
+        };
+        let (hb, ctl) = Heartbeat::start(client, cfg).await.unwrap();
+        (hb, ctl, calls)
+    }
+
+    /// Lowering the interval long after the last heartbeat sends one
+    /// heartbeat right away, not one for every new interval that has passed.
+    #[tokio::test(start_paused = true)]
+    async fn lowering_interval_late_doesnt_burst() {
+        let (mut hb, ctl, calls) =
+            healthy_pair(Duration::from_secs(60), Duration::from_secs(2)).await;
+
+        tokio::time::sleep(Duration::from_secs(50)).await;
+        assert_eq!(calls.lock().unwrap().len(), 1);
+        ctl.set_interval(Duration::from_secs(1));
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(
+            calls.lock().unwrap().len(),
+            2,
+            "one heartbeat should follow the change at once"
+        );
+
+        let res = tokio::time::timeout(Duration::from_millis(5500), hb.accept_typed()).await;
+        assert!(res.is_err(), "session should stay open");
+        let calls = calls.lock().unwrap();
+        assert!(calls.iter().all(Option::is_some), "{calls:?}");
+        assert!((6..=8).contains(&calls.len()), "{}", calls.len());
+    }
+
+    /// Several interval changes before the next heartbeat don't push it past
+    /// the deadline the check task is already waiting on.
+    #[tokio::test(start_paused = true)]
+    async fn consecutive_set_interval_keeps_session() {
+        let (mut hb, ctl, calls) =
+            healthy_pair(Duration::from_secs(1), Duration::from_secs(2)).await;
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        ctl.set_interval(Duration::from_secs(10));
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        ctl.set_interval(Duration::from_secs(20));
+
+        let res = tokio::time::timeout(Duration::from_secs(120), hb.accept_typed()).await;
+        assert!(res.is_err(), "session should stay open");
+        let calls = calls.lock().unwrap();
+        assert!(calls.iter().all(Option::is_some), "{calls:?}");
+    }
+
+    /// A zero interval doesn't stop heartbeating.
+    #[tokio::test(start_paused = true)]
+    async fn zero_interval_keeps_heartbeating() {
+        let (mut hb, ctl, calls) =
+            healthy_pair(Duration::from_secs(1), Duration::from_secs(2)).await;
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        ctl.set_interval(Duration::ZERO);
+        let res = tokio::time::timeout(Duration::from_secs(1), hb.accept_typed()).await;
+        assert!(res.is_err(), "session should stay open");
+        ctl.beat().await.expect("the requester should still run");
+
+        ctl.set_interval(Duration::from_secs(1));
+        let res = tokio::time::timeout(Duration::from_secs(30), hb.accept_typed()).await;
+        assert!(res.is_err(), "session should stay open");
+        let calls = calls.lock().unwrap();
+        assert!(calls.iter().all(Option::is_some), "{calls:?}");
+    }
 
     /// A handler that returns an error neither closes the session nor
     /// stops heartbeats.
