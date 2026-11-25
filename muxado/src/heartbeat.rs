@@ -36,6 +36,7 @@ use tokio::{
         oneshot,
     },
 };
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     errors::Error,
@@ -62,6 +63,9 @@ pub struct Heartbeat<S> {
     runtime: Handle,
     drop_waiter: awaitdrop::Waiter,
     typ: StreamType,
+    // Cancelled when a heartbeat is missed. Once cancelled, the session is
+    // considered dead: accepts and opens fail with [Error::SessionClosed].
+    dead: CancellationToken,
     inner: S,
 }
 
@@ -85,7 +89,8 @@ pub trait HeartbeatHandler: Send + Sync + 'static {
     /// Handle the heartbeat
     ///
     /// A `None` latency implies that the timeout was reached before the
-    /// heartbeat reply was received.
+    /// heartbeat reply was received. At that point the session has already
+    /// been closed, and the handler won't be called again.
     ///
     /// An error returned from this is logged and otherwise ignored: it
     /// doesn't stop heartbeats or close the session.
@@ -108,7 +113,7 @@ pub struct HeartbeatConfig {
     /// The interval on which heartbeats will be sent.
     pub interval: Duration,
     /// The amount of time past a missed heartbeat that the other side will be
-    /// considered dead.
+    /// considered dead. Once it is, the session is closed.
     pub tolerance: Duration,
     /// An optional callback to run when a heartbeat is received.
     pub handler: Option<Arc<dyn HeartbeatHandler>>,
@@ -132,11 +137,14 @@ where
     /// Returns an error if the stream can't be opened.
     pub async fn start(sess: S, cfg: HeartbeatConfig) -> Result<(Self, HeartbeatCtl), io::Error> {
         let (dropref, drop_waiter) = awaitdrop::awaitdrop();
+        let dead = CancellationToken::new();
+        let shutdown = sess.shutdown_handle();
 
         let mut hb = Heartbeat {
             runtime: Handle::current(),
             drop_waiter: drop_waiter.clone(),
             typ: HEARTBEAT_TYPE,
+            dead: dead.clone(),
             inner: sess,
         };
 
@@ -158,9 +166,16 @@ where
             .await
             .map_err(|_| io::ErrorKind::ConnectionReset)?;
 
-        ctl.start_requester(stream, drx, mtx, drop_waiter.wait())
-            .await?;
-        ctl.start_check(mrx, cfg.handler, drop_waiter.wait())?;
+        ctl.start_requester(
+            stream,
+            drx,
+            mtx,
+            dead.clone(),
+            shutdown.clone(),
+            drop_waiter.wait(),
+        )
+        .await?;
+        ctl.start_check(mrx, cfg.handler, dead, shutdown, drop_waiter.wait())?;
 
         Ok((hb, ctl))
     }
@@ -201,46 +216,84 @@ impl HeartbeatCtl {
         &mut self,
         mut mark: mpsc::Receiver<Duration>,
         cb: Option<Arc<dyn HeartbeatHandler>>,
+        dead: CancellationToken,
+        shutdown: Option<ShutdownHandle>,
         dropped: awaitdrop::WaitFuture,
     ) -> Result<(), io::Error> {
         let (mut interval, mut tolerance) = self.get_durations();
         let durations = self.durations.clone();
 
-        tokio::spawn(
-            select(
-                async move {
-                    let mut deadline = tokio::time::Instant::now() + interval + tolerance;
-                    loop {
-                        let latency = match tokio::time::timeout_at(deadline, mark.recv()).await {
-                            Err(_) => None,
-                            Ok(Some(lat)) => Some(lat),
-                            Ok(None) => return,
-                        };
-                        // A failing handler says nothing about whether the
-                        // connection is alive, so don't stop checking it.
-                        if let Some(cb) = cb.as_ref()
-                            && let Err(error) = cb.handle_heartbeat(latency).await
-                        {
-                            tracing::warn!(%error, "heartbeat handler error");
-                        }
+        // Why the check loop ended.
+        enum Ended {
+            // The heartbeat is being torn down, or the requester has already
+            // dealt with a failed heartbeat stream.
+            Quietly,
+            TimedOut,
+        }
 
-                        // Slight divergence from Go implementation: this didn't
-                        // previously happen in the "timeout" case, which did noting but
-                        // the callback. Presumably, this usually killed the connection,
-                        // causing the goroutine to exit *anyway*. If we didn't reset
-                        // the deadline here, it would timeout immediately rather than
-                        // blocking indefinitely as in Go.
-                        (interval, tolerance) = get_durations(&durations);
-                        deadline = tokio::time::Instant::now() + interval + tolerance;
-                    }
+        tokio::spawn(async move {
+            let cb = cb.as_ref();
+            let check = async {
+                let mut deadline = tokio::time::Instant::now() + interval + tolerance;
+                loop {
+                    match tokio::time::timeout_at(deadline, mark.recv()).await {
+                        Ok(Some(lat)) => {
+                            // A failing handler says nothing about whether
+                            // the connection is alive. Closing the session
+                            // over it would make a handler that always fails
+                            // reconnect as fast as the network allows.
+                            if let Some(cb) = cb
+                                && let Err(error) = cb.handle_heartbeat(lat.into()).await
+                            {
+                                tracing::warn!(%error, "heartbeat handler error");
+                            }
+                        }
+                        // The requester exited. Either the heartbeat stream
+                        // failed, in which case the requester has already
+                        // closed the session, or the heartbeat is being torn
+                        // down. Either way this isn't a missed heartbeat, so
+                        // exit without reporting one.
+                        Ok(None) => return Ended::Quietly,
+                        Err(_) => {
+                            tracing::warn!(
+                                ?interval,
+                                ?tolerance,
+                                "heartbeat timeout, closing session"
+                            );
+                            return Ended::TimedOut;
+                        }
+                    };
+
+                    (interval, tolerance) = get_durations(&durations);
+                    deadline = tokio::time::Instant::now() + interval + tolerance;
                 }
-                .boxed(),
-                dropped,
-            )
-            .then(|_| async move {
-                tracing::debug!("check exited");
-            }),
-        );
+            };
+            // Only the loop stops when the heartbeat is dropped. What follows
+            // closes the session, which usually makes its owner drop the
+            // heartbeat, for example to reconnect. That mustn't cut short the
+            // handler's last call.
+            let ended = select! {
+                ended = check => ended,
+                _ = dropped => Ended::Quietly,
+            };
+
+            if matches!(ended, Ended::TimedOut) {
+                // The deadline passed without a heartbeat reply. As in the Go
+                // implementation, consider the session dead and close it so
+                // that accept fails and owners can reconnect. Do this before
+                // calling the handler so that a slow handler can't delay it.
+                dead.cancel();
+                if let Some(shutdown) = shutdown {
+                    shutdown.shutdown();
+                }
+                if let Some(cb) = cb
+                    && let Err(error) = cb.handle_heartbeat(None).await
+                {
+                    tracing::debug!(%error, "heartbeat handler error");
+                }
+            }
+            tracing::debug!("check exited");
+        });
 
         Ok(())
     }
@@ -250,6 +303,8 @@ impl HeartbeatCtl {
         mut stream: TypedStream,
         mut on_demand: mpsc::Receiver<oneshot::Sender<Duration>>,
         mark: mpsc::Sender<Duration>,
+        dead: CancellationToken,
+        shutdown: Option<ShutdownHandle>,
         drop_waiter: awaitdrop::WaitFuture,
     ) -> Result<(), io::Error> {
         let mut interval = self.get_durations().0;
@@ -259,6 +314,20 @@ impl HeartbeatCtl {
         let mut next_tick = last_tick;
         let durations = self.durations.clone();
         let interval_changed = self.interval_changed.clone();
+
+        // The heartbeat stream failed, so no more heartbeats can be sent.
+        // Close the session rather than waiting for the check task to time
+        // out on a session that can no longer be monitored.
+        let fail_dead = dead.clone();
+        let fail = move |reason: &str| {
+            if !fail_dead.is_cancelled() {
+                tracing::debug!(reason, "heartbeat stream failed, closing session");
+            }
+            fail_dead.cancel();
+            if let Some(shutdown) = &shutdown {
+                shutdown.shutdown();
+            }
+        };
 
         tokio::spawn(
             select(
@@ -282,6 +351,7 @@ impl HeartbeatCtl {
 
                         let mut scheduled = false;
                         select! {
+                            _ = dead.cancelled() => return,
                             // Loop around to pick up the new interval.
                             _ = interval_changed.notified() => continue,
                             // on_demand only closes when the HeartbeatCtl is
@@ -303,7 +373,7 @@ impl HeartbeatCtl {
                         let id: i32 = rand::random();
 
                         if stream.write_all(&id.to_be_bytes()[..]).await.is_err() {
-                            tracing::debug!("error writing heartbeat");
+                            fail("error writing heartbeat");
                             return;
                         }
 
@@ -311,9 +381,18 @@ impl HeartbeatCtl {
 
                         tracing::debug!("waiting for response");
 
-                        if stream.read_exact(&mut resp_bytes[..]).await.is_err() {
-                            tracing::debug!("error reading response");
-                            return;
+                        // The read has no timeout of its own: the check task
+                        // closes the session if no reply arrives within
+                        // interval + tolerance, which cancels this read.
+                        select! {
+                            _ = dead.cancelled() => {
+                                tracing::debug!("session dead, abandoning heartbeat");
+                                return;
+                            }
+                            res = stream.read_exact(&mut resp_bytes[..]) => if res.is_err() {
+                                fail("error reading heartbeat response");
+                                return;
+                            }
                         }
 
                         tracing::debug!("got response");
@@ -321,7 +400,7 @@ impl HeartbeatCtl {
                         let resp_id = i32::from_be_bytes(resp_bytes);
 
                         if id != resp_id {
-                            tracing::debug!("heartbeat response id mismatch");
+                            fail("heartbeat response id mismatch");
                             return;
                         }
 
@@ -377,7 +456,11 @@ where
 {
     async fn accept_typed(&mut self) -> Result<TypedStream, Error> {
         loop {
-            let stream = self.inner.accept_typed().await?;
+            let stream = select! {
+                biased;
+                _ = self.dead.cancelled() => return Err(Error::SessionClosed),
+                res = self.inner.accept_typed() => res?,
+            };
             let typ = stream.typ();
 
             if typ == self.typ {
@@ -401,7 +484,11 @@ where
             return Err(Error::StreamRefused);
         }
 
-        self.inner.open_typed(typ).await
+        select! {
+            biased;
+            _ = self.dead.cancelled() => Err(Error::SessionClosed),
+            res = self.inner.open_typed(typ) => res,
+        }
     }
 
     async fn close(&mut self, error: Error, msg: String) -> Result<(), Error> {
@@ -422,18 +509,21 @@ where
         let drop_waiter = self.drop_waiter;
         let typ = self.typ;
         let runtime = self.runtime;
+        let dead = self.dead;
         let (open, accept) = self.inner.split_typed();
         (
             Heartbeat {
                 runtime: runtime.clone(),
                 drop_waiter: drop_waiter.clone(),
                 typ,
+                dead: dead.clone(),
                 inner: open,
             },
             Heartbeat {
                 runtime,
                 drop_waiter,
                 typ,
+                dead,
                 inner: accept,
             },
         )
@@ -481,6 +571,150 @@ mod test {
             async { Ok::<(), Box<dyn StdError>>(()) }
         };
         (Arc::new(handler), calls)
+    }
+
+    /// A remote that never answers heartbeats gets the session closed within
+    /// interval + tolerance: accept fails, open fails, open streams fail, the
+    /// transport is dropped, and the handler is told once.
+    #[tokio::test(start_paused = true)]
+    async fn missed_heartbeat_closes_session() {
+        let (left, right) = duplex(64 * 1024);
+        // The remote accepts streams but never answers anything on them.
+        let mut server = Typed::new(SessionBuilder::new(left).server().start());
+        let held = tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok(stream) = server.accept_typed().await {
+                held.push(stream);
+            }
+            // accept fails once the client drops the transport.
+        });
+
+        let (handler, calls) = recorder();
+        let client = Typed::new(SessionBuilder::new(right).client().start());
+        let (hb, _ctl) = Heartbeat::start(client, config(Some(handler)))
+            .await
+            .unwrap();
+        let (mut open, mut accept) = hb.split_typed();
+        let mut user_stream = open.open_typed(StreamType::clamp(1)).await.unwrap();
+        user_stream.write_all(b"hi").await.unwrap();
+
+        let start = tokio::time::Instant::now();
+        let res = tokio::time::timeout(Duration::from_secs(60), accept.accept_typed())
+            .await
+            .expect("accept should fail after a missed heartbeat");
+        assert!(matches!(res, Err(Error::SessionClosed)));
+        assert!(start.elapsed() <= Duration::from_secs(2) + Duration::from_millis(10));
+
+        assert!(matches!(
+            open.open_typed(StreamType::clamp(1)).await,
+            Err(Error::SessionClosed)
+        ));
+
+        // A stream from the dead session doesn't hang.
+        let mut buf = Vec::new();
+        let read = tokio::time::timeout(Duration::from_secs(1), user_stream.read_to_end(&mut buf))
+            .await
+            .expect("stream read should not hang after the session closes");
+        assert!(read.is_err() || buf.is_empty(), "{read:?}");
+
+        // The transport is closed, so the remote sees the session end.
+        tokio::time::timeout(Duration::from_secs(1), held)
+            .await
+            .expect("remote should see the transport close")
+            .unwrap();
+
+        tokio::time::sleep(Duration::from_secs(10)).await;
+        assert_eq!(*calls.lock().unwrap(), vec![None]);
+    }
+
+    /// A remote that answers heartbeats keeps the session alive.
+    #[tokio::test(start_paused = true)]
+    async fn answered_heartbeats_keep_session() {
+        let (left, right) = duplex(64 * 1024);
+        let server = Typed::new(SessionBuilder::new(left).server().start());
+        let (mut server, _server_ctl) = Heartbeat::start(server, config(None)).await.unwrap();
+        tokio::spawn(async move { while server.accept_typed().await.is_ok() {} });
+
+        let (handler, calls) = recorder();
+        let client = Typed::new(SessionBuilder::new(right).client().start());
+        let (mut hb, ctl) = Heartbeat::start(client, config(Some(handler)))
+            .await
+            .unwrap();
+
+        let res = tokio::time::timeout(Duration::from_secs(30), hb.accept_typed()).await;
+        assert!(res.is_err(), "session should stay open");
+        ctl.beat().await.expect("on-demand heartbeat");
+
+        let calls = calls.lock().unwrap();
+        assert!(calls.len() >= 25, "{}", calls.len());
+        assert!(calls.iter().all(Option::is_some), "{calls:?}");
+    }
+
+    /// An on-demand heartbeat doesn't hang when the remote never answers.
+    #[tokio::test(start_paused = true)]
+    async fn beat_fails_after_missed_heartbeat() {
+        let (left, right) = duplex(64 * 1024);
+        let mut server = Typed::new(SessionBuilder::new(left).server().start());
+        tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok(stream) = server.accept_typed().await {
+                held.push(stream);
+            }
+        });
+
+        let client = Typed::new(SessionBuilder::new(right).client().start());
+        let (_hb, ctl) = Heartbeat::start(client, config(None)).await.unwrap();
+        let res = tokio::time::timeout(Duration::from_secs(60), ctl.beat())
+            .await
+            .expect("beat should not hang");
+        assert!(res.is_err(), "{res:?}");
+    }
+
+    /// A local graceful close or a remote disconnect isn't reported to the
+    /// handler as a missed heartbeat.
+    #[tokio::test(start_paused = true)]
+    async fn close_is_not_a_missed_heartbeat() {
+        for local in [true, false] {
+            let (left, right) = duplex(64 * 1024);
+            let server = Typed::new(SessionBuilder::new(left).server().start());
+            let (server, _server_ctl) = Heartbeat::start(server, config(None)).await.unwrap();
+            let (mut server_open, mut server_accept) = server.split_typed();
+            // Accepting runs the server's heartbeat responder.
+            tokio::spawn(async move { while server_accept.accept_typed().await.is_ok() {} });
+            let (server_closed_tx, server_closed_rx) = oneshot::channel::<()>();
+            if !local {
+                tokio::spawn(async move {
+                    tokio::time::sleep(Duration::from_millis(1500)).await;
+                    let _ = server_open.close(Error::None, "bye".into()).await;
+                    let _ = server_closed_tx.send(());
+                });
+            }
+
+            let (handler, calls) = recorder();
+            let client = Typed::new(SessionBuilder::new(right).client().start());
+            let (mut hb, _ctl) = Heartbeat::start(client, config(Some(handler)))
+                .await
+                .unwrap();
+            if local {
+                tokio::time::sleep(Duration::from_millis(1500)).await;
+                hb.close(Error::None, "bye".into()).await.unwrap();
+            } else {
+                server_closed_rx.await.unwrap();
+            }
+            let res = tokio::time::timeout(Duration::from_secs(10), hb.accept_typed()).await;
+            assert!(
+                matches!(res, Ok(Err(_))),
+                "local={local}: accept should fail"
+            );
+
+            tokio::time::sleep(Duration::from_secs(30)).await;
+            let calls = calls.lock().unwrap();
+            assert!(!calls.is_empty(), "local={local}");
+            assert!(
+                calls.iter().all(Option::is_some),
+                "local={local}: close isn't a missed heartbeat: {calls:?}"
+            );
+        }
     }
 
     /// Changing the interval at runtime, up or down, doesn't make a healthy
@@ -683,5 +917,146 @@ mod test {
         let mut rest = Vec::new();
         let _ = tokio::time::timeout(Duration::from_secs(1), stream.read_to_end(&mut rest)).await;
         assert!(rest.is_empty(), "the responder echoed after EOF: {rest:?}");
+    }
+
+    /// A heartbeat stream that fails, or a reply that doesn't match the
+    /// request, closes the session without reporting a missed heartbeat.
+    #[tokio::test(start_paused = true)]
+    async fn heartbeat_stream_failure_closes_session() {
+        for mismatch in [false, true] {
+            let (left, right) = duplex(64 * 1024);
+            let mut server = Typed::new(SessionBuilder::new(left).server().start());
+            let server = tokio::spawn(async move {
+                let mut held = Vec::new();
+                while let Ok(mut stream) = server.accept_typed().await {
+                    let mut buf = [0u8; 4];
+                    if stream.read_exact(&mut buf).await.is_err() {
+                        continue;
+                    }
+                    if mismatch {
+                        buf[0] = !buf[0];
+                        let _ = stream.write_all(&buf).await;
+                        held.push(stream);
+                    }
+                    // Otherwise drop the stream without answering.
+                }
+            });
+
+            let (handler, calls) = recorder();
+            let client = Typed::new(SessionBuilder::new(right).client().start());
+            let cfg = HeartbeatConfig {
+                interval: Duration::from_secs(10),
+                tolerance: Duration::from_secs(10),
+                handler: Some(handler),
+            };
+            let (mut hb, _ctl) = Heartbeat::start(client, cfg).await.unwrap();
+
+            // Well before the heartbeat timeout.
+            let res = tokio::time::timeout(Duration::from_secs(1), hb.accept_typed())
+                .await
+                .unwrap_or_else(|_| panic!("mismatch={mismatch}: accept should fail"));
+            assert!(matches!(res, Err(Error::SessionClosed)));
+            tokio::time::timeout(Duration::from_secs(1), server)
+                .await
+                .unwrap_or_else(|_| panic!("mismatch={mismatch}: remote should see the close"))
+                .unwrap();
+
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            let calls = calls.lock().unwrap();
+            assert!(calls.is_empty(), "mismatch={mismatch}: {calls:?}");
+        }
+    }
+
+    /// Once a heartbeat is missed, a handler that takes a while over the
+    /// `None` call runs to completion even if the heartbeat is torn down in
+    /// the meantime, as happens when the owner reconnects.
+    #[tokio::test(start_paused = true)]
+    async fn slow_handler_survives_teardown() {
+        let (left, right) = duplex(64 * 1024);
+        let mut server = Typed::new(SessionBuilder::new(left).server().start());
+        tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok(stream) = server.accept_typed().await {
+                held.push(stream);
+            }
+        });
+
+        let finished = Arc::new(Mutex::new(Vec::new()));
+        let f = finished.clone();
+        let handler = move |lat: Option<Duration>| {
+            let f = f.clone();
+            async move {
+                if lat.is_none() {
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                }
+                f.lock().unwrap().push(lat);
+                Ok::<(), Box<dyn StdError>>(())
+            }
+        };
+        let client = Typed::new(SessionBuilder::new(right).client().start());
+        let (mut hb, ctl) = Heartbeat::start(client, config(Some(Arc::new(handler))))
+            .await
+            .unwrap();
+
+        let res = tokio::time::timeout(Duration::from_secs(60), hb.accept_typed())
+            .await
+            .expect("accept should fail after a missed heartbeat");
+        assert!(matches!(res, Err(Error::SessionClosed)));
+        drop(ctl);
+        drop(hb);
+
+        tokio::time::sleep(Duration::from_secs(10)).await;
+        assert_eq!(*finished.lock().unwrap(), vec![None]);
+    }
+
+    /// An open that is waiting on the wrapped session when a heartbeat is
+    /// missed fails rather than hanging.
+    #[tokio::test(start_paused = true)]
+    async fn pending_open_fails_after_missed_heartbeat() {
+        // A session whose opens never finish and that can't be shut down.
+        struct Stuck(Typed<crate::MuxadoSession>);
+        #[async_trait]
+        impl TypedAccept for Stuck {
+            async fn accept_typed(&mut self) -> Result<TypedStream, Error> {
+                self.0.accept_typed().await
+            }
+        }
+        #[async_trait]
+        impl TypedOpenClose for Stuck {
+            async fn open_typed(&mut self, typ: StreamType) -> Result<TypedStream, Error> {
+                if typ == HEARTBEAT_TYPE {
+                    self.0.open_typed(typ).await
+                } else {
+                    future::pending().await
+                }
+            }
+            async fn close(&mut self, error: Error, msg: String) -> Result<(), Error> {
+                self.0.close(error, msg).await
+            }
+        }
+        impl TypedSession for Stuck {
+            type TypedAccept = Self;
+            type TypedOpen = Self;
+            fn split_typed(self) -> (Self, Self) {
+                unimplemented!()
+            }
+        }
+
+        let (left, right) = duplex(64 * 1024);
+        let mut server = Typed::new(SessionBuilder::new(left).server().start());
+        tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok(stream) = server.accept_typed().await {
+                held.push(stream);
+            }
+        });
+
+        let client = Stuck(Typed::new(SessionBuilder::new(right).client().start()));
+        let (mut hb, _ctl) = Heartbeat::start(client, config(None)).await.unwrap();
+        let res =
+            tokio::time::timeout(Duration::from_secs(60), hb.open_typed(StreamType::clamp(1)))
+                .await
+                .expect("open should not hang after a missed heartbeat");
+        assert!(matches!(res, Err(Error::SessionClosed)));
     }
 }

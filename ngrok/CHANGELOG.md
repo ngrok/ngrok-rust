@@ -1,5 +1,8 @@
 ## Unreleased
+- Close the session and reconnect when a heartbeat reply doesn't arrive within the heartbeat interval plus tolerance. Before, a connection that stopped answering heartbeats without erroring, such as a half-open TCP connection or one dropped by a NAT, was never closed: the session sent no more heartbeats, never reconnected, and its tunnels stopped receiving connections.
+- A heartbeat handler set with `SessionBuilder::handle_heartbeat` is now called with `None` once when a heartbeat is missed, as the session closes, rather than repeatedly while the session stays up.
 - If a heartbeat handler returns an error, the error is now logged and the handler keeps being called. Before, the handler was never called again, so later missed heartbeats went unreported.
+- `Session::close` marks the session closed before it closes the connection, so the close can't be taken for a lost connection and start a reconnect.
 
 ## 0.19.1
 - Cap the wait between reconnect attempts after a session loses its connection. It starts at 50 ms and doubles up to 30 s, scaled by a random factor in [0, 1) so that sessions that drop together don't reconnect at the same moment. Before, the wait grew 50-fold per attempt with no limit: about 1 h 44 min before the fifth attempt, and a wait long enough to overflow the clock ended reconnecting for good.

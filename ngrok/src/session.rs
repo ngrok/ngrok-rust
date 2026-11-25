@@ -890,6 +890,10 @@ impl SessionBuilder {
 
     /// Call the provided handler whenever a heartbeat response is received.
     ///
+    /// The handler is called with `None` if a heartbeat reply isn't received
+    /// within the heartbeat interval plus tolerance. By then the session has
+    /// been closed and a reconnect will be attempted.
+    ///
     /// An error returned from the handler is logged and otherwise ignored: it
     /// doesn't stop heartbeats or close the session.
     pub fn handle_heartbeat(&mut self, callback: impl HeartbeatHandler) -> &mut Self {
@@ -1266,10 +1270,12 @@ impl Session {
     /// Close the ngrok session.
     pub async fn close(&mut self) -> Result<(), RpcError> {
         let inner = self.inner.load();
-        let res = inner.client.lock().await.close().await;
+        // Mark the session closed before closing the connection. The close
+        // ends the accept loop, which mustn't then see an open session and
+        // reconnect.
         inner.closed.store(true, Ordering::SeqCst);
         inner.closing.notify_waiters();
-        res
+        inner.client.lock().await.close().await
     }
 }
 
@@ -1540,11 +1546,61 @@ mod test {
             .expect("close session");
     }
 
+    /// Plays the ngrok service for one connection: accepts the session's
+    /// authentication, then keeps the connection open and reads the client's
+    /// heartbeats. If `echo` is false it never answers them, as a peer
+    /// behind a half-open connection would; otherwise it echoes each one.
+    async fn serve_auth_then_heartbeats(io: DuplexStream, echo: bool) {
+        let mut sess = muxado::typed::Typed::new(muxado::SessionBuilder::new(io).server().start());
+        loop {
+            let Ok(mut stream) = sess.accept_typed().await else {
+                return;
+            };
+            if stream.typ() == AUTH_REQ {
+                let mut req = Vec::new();
+                while serde_json::from_slice::<serde_json::Value>(&req).is_err() {
+                    let mut buf = [0u8; 1024];
+                    let n = stream.read(&mut buf).await.expect("client sends auth");
+                    assert_ne!(n, 0, "client closed the auth stream before a request");
+                    req.extend_from_slice(&buf[..n]);
+                }
+                let resp = AuthResp {
+                    version: "2".into(),
+                    client_id: "fake-client-id".into(),
+                    extra: Default::default(),
+                };
+                stream
+                    .write_all(&serde_json::to_vec(&resp).unwrap())
+                    .await
+                    .expect("write auth response");
+                stream.shutdown().await.expect("end auth response");
+                tokio::spawn(async move {
+                    let _ = stream.read_to_end(&mut Vec::new()).await;
+                });
+            } else {
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 4];
+                    while stream.read_exact(&mut buf).await.is_ok() {
+                        if echo && stream.write_all(&buf).await.is_err() {
+                            return;
+                        }
+                    }
+                });
+            }
+        }
+    }
+
     /// What the fake ngrok service does with one connect.
     #[derive(Clone, Copy)]
     enum Answer {
         /// Accept the session's authentication, then drop the connection.
         Serve,
+        /// Accept the session's authentication, then keep the connection
+        /// open but never answer a heartbeat.
+        IgnoreHeartbeats,
+        /// Accept the session's authentication, then keep the connection
+        /// open and answer every heartbeat.
+        EchoHeartbeats,
         /// Fail the connect as a refused TCP connection.
         Refuse,
         /// Fail the connect with ConnectError::Canceled.
@@ -1586,6 +1642,12 @@ mod test {
                         Answer::Serve => {
                             let (client, server) = tokio::io::duplex(64 * 1024);
                             tokio::spawn(serve_auth_then_disconnect(server));
+                            Ok(Box::new(client) as Box<dyn IoStream>)
+                        }
+                        Answer::IgnoreHeartbeats | Answer::EchoHeartbeats => {
+                            let (client, server) = tokio::io::duplex(64 * 1024);
+                            let echo = matches!(answer, Answer::EchoHeartbeats);
+                            tokio::spawn(serve_auth_then_heartbeats(server, echo));
                             Ok(Box::new(client) as Box<dyn IoStream>)
                         }
                         Answer::Refuse => {
@@ -2122,6 +2184,152 @@ mod test {
         assert_eq!(
             sanitize_ua_string("something@really☺weird"),
             "something#really#weird"
+        );
+    }
+
+    /// Records the latencies a session's heartbeat handler is called with.
+    fn record_heartbeats(
+        builder: &mut SessionBuilder,
+    ) -> Arc<std::sync::Mutex<Vec<Option<Duration>>>> {
+        let beats = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let b = beats.clone();
+        builder.handle_heartbeat(move |latency: Option<Duration>| {
+            b.lock().unwrap().push(latency);
+            async { Ok::<(), Box<dyn std::error::Error>>(()) }
+        });
+        beats
+    }
+
+    /// A connection that stops answering heartbeats is closed within the
+    /// heartbeat interval plus tolerance, and the session reconnects.
+    #[tokio::test(start_paused = true)]
+    async fn unanswered_heartbeats_reconnect() {
+        let interval = Duration::from_secs(1);
+        let tolerance = Duration::from_secs(1);
+        let mut builder = Session::builder();
+        builder
+            .heartbeat_interval(interval)
+            .unwrap()
+            .heartbeat_tolerance(tolerance)
+            .unwrap();
+        let beats = record_heartbeats(&mut builder);
+
+        let start = Instant::now();
+        let (_session, mut attempts) =
+            connect_scripted(&mut builder, |_| Answer::IgnoreHeartbeats).await;
+
+        let first = tokio::time::timeout(Duration::from_secs(60), next_attempt(&mut attempts))
+            .await
+            .expect("the session should reconnect after missed heartbeats");
+        assert!(
+            first.at - start <= interval + tolerance + Duration::from_millis(10),
+            "the first reconnect should start within interval + tolerance, took {:?}",
+            first.at - start,
+        );
+        assert!(
+            matches!(first.cause, Some(AcceptError::Transport(_))),
+            "the reconnect should be caused by the transport closing: {:?}",
+            first.cause,
+        );
+
+        // Each new connection also ignores heartbeats, so the session keeps
+        // reconnecting on the same schedule rather than hanging again.
+        let gaps = reconnect_gaps(&mut attempts, 3).await;
+        for gap in gaps {
+            assert!(
+                gap <= interval + tolerance + Duration::from_millis(10),
+                "reconnects should happen every interval + tolerance: {gap:?}",
+            );
+        }
+
+        let beats = beats.lock().unwrap();
+        assert!(
+            beats.iter().all(Option::is_none),
+            "no heartbeat was answered, so all handler calls should be timeouts: {beats:?}",
+        );
+        assert!(
+            beats.len() >= 4,
+            "the handler should be told about each timeout: {beats:?}",
+        );
+    }
+
+    /// A heartbeat handler that takes a while over a missed heartbeat runs
+    /// to completion, though the reconnect it caused replaces the connection
+    /// it was watching in the meantime.
+    #[tokio::test(start_paused = true)]
+    async fn slow_heartbeat_handler_outlives_reconnect() {
+        let mut builder = Session::builder();
+        builder
+            .heartbeat_interval(Duration::from_secs(1))
+            .unwrap()
+            .heartbeat_tolerance(Duration::from_secs(1))
+            .unwrap();
+        let started = Arc::new(AtomicUsize::new(0));
+        let finished = Arc::new(AtomicUsize::new(0));
+        let (s, f) = (started.clone(), finished.clone());
+        builder.handle_heartbeat(move |latency: Option<Duration>| {
+            let (s, f) = (s.clone(), f.clone());
+            async move {
+                if latency.is_none() {
+                    s.fetch_add(1, Ordering::SeqCst);
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    f.fetch_add(1, Ordering::SeqCst);
+                }
+                Ok::<(), Box<dyn std::error::Error>>(())
+            }
+        });
+
+        let (_session, mut attempts) = connect_scripted(&mut builder, |k| {
+            if k == 0 {
+                Answer::IgnoreHeartbeats
+            } else {
+                Answer::EchoHeartbeats
+            }
+        })
+        .await;
+
+        tokio::time::timeout(Duration::from_secs(60), next_attempt(&mut attempts))
+            .await
+            .expect("the session should reconnect after missed heartbeats");
+        // The reconnect is done well within the handler's five seconds.
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        assert_eq!(started.load(Ordering::SeqCst), 1);
+        assert_eq!(finished.load(Ordering::SeqCst), 0);
+
+        tokio::time::sleep(Duration::from_secs(10)).await;
+        assert_eq!(
+            finished.load(Ordering::SeqCst),
+            1,
+            "the handler should finish its missed-heartbeat call",
+        );
+    }
+
+    /// A healthy connection that answers heartbeats isn't closed.
+    #[tokio::test(start_paused = true)]
+    async fn answered_heartbeats_dont_reconnect() {
+        let mut builder = Session::builder();
+        builder
+            .heartbeat_interval(Duration::from_secs(1))
+            .unwrap()
+            .heartbeat_tolerance(Duration::from_secs(1))
+            .unwrap();
+        let beats = record_heartbeats(&mut builder);
+
+        let (_session, mut attempts) =
+            connect_scripted(&mut builder, |_| Answer::EchoHeartbeats).await;
+
+        let next = tokio::time::timeout(Duration::from_secs(60), attempts.recv()).await;
+        assert!(next.is_err(), "the session reconnected: {next:?}");
+
+        let beats = beats.lock().unwrap();
+        assert!(
+            beats.iter().all(Option::is_some),
+            "every heartbeat was answered, so none should time out: {beats:?}",
+        );
+        assert!(
+            beats.len() >= 50,
+            "heartbeats should keep being sent and answered, got {}",
+            beats.len(),
         );
     }
 }
